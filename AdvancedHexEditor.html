@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>High-Performance Hex Editor (Final)</title>
+    <style>
+        :root {
+            --bg-color: #1e1e1e; --text-color: #d4d4d4; --address-color: #858585;
+            --highlight-bg: #264f78; --search-highlight-bg: #998a58; --border-color: #333;
+            --control-bg: #252526; --input-bg: #3c3c3c; --input-disabled-bg: #2d2d2d;
+            --button-bg: #0e639c; --button-hover-bg: #1177bb; --scrollbar-track-bg: #2a2d2e;
+            --line-height: 24px;
+        }
+        body {
+            font-family: 'Consolas', 'Menlo', 'Courier New', monospace; background-color: var(--bg-color);
+            color: var(--text-color); margin: 0; padding: 0; display: flex; flex-direction: column;
+            height: 100vh; overflow: hidden;
+        }
+        .main-controls {
+            background-color: var(--control-bg); padding: 10px; border-bottom: 1px solid var(--border-color);
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .controls-row {
+            display: flex; align-items: center; gap: 10px;
+        }
+        .controls-row input[type="text"], .controls-row select, .controls-row button {
+            background-color: var(--input-bg); color: var(--text-color); border: 1px solid var(--border-color);
+            padding: 5px 8px; border-radius: 3px;
+        }
+        .controls-row button { background-color: var(--button-bg); cursor: pointer; transition: background-color 0.2s; }
+        .controls-row button:hover:not(:disabled) { background-color: var(--button-hover-bg); }
+        .controls-row button:disabled { background-color: #555; cursor: not-allowed; opacity: 0.6; }
+        #download-btn[draggable="true"] { cursor: grab; }
+        #drop-zone {
+            flex-grow: 1; display: flex; justify-content: center; align-items: center; border: 3px dashed var(--border-color);
+            margin: 20px; border-radius: 10px; text-align: center; transition: background-color 0.3s, border-color 0.3s;
+        }
+        #drop-zone.drag-over { background-color: var(--highlight-bg); border-color: var(--button-bg); }
+        #main-content { display: none; flex-direction: column; flex-grow: 1; overflow: hidden; }
+        #editor-container {
+            display: grid; grid-template-columns: 1fr auto auto;
+            flex-grow: 1; overflow: hidden;
+        }
+        .editor-main {
+            overflow: hidden; /* Hide native scrollbar */
+            position: relative;
+        }
+        .column {
+            padding: 0 5px; white-space: pre; line-height: var(--line-height);
+            position: absolute; top: 0;
+        }
+        #address-column { color: var(--address-color); text-align: right; left: 0; width: 90px; user-select: none; }
+        #hex-column { left: 100px; user-select: none; }
+        #ascii-column { left: 620px; user-select: none; }
+        #hex-column span, #ascii-column span {
+            display: inline-block; min-width: 0.6em; text-align: center; cursor: pointer;
+            padding: 0 1px; border-radius: 2px;
+        }
+        #hex-column span { min-width: 1.2em; }
+        .selected { background-color: var(--highlight-bg); }
+        .found { background-color: var(--search-highlight-bg); color: #1e1e1e; font-weight: bold; }
+        
+        /* Custom Scrollbar Styles */
+        #custom-scrollbar {
+            width: 15px; background-color: var(--scrollbar-track-bg);
+            position: relative; cursor: pointer;
+        }
+        #custom-scrollbar-thumb {
+            background-color: #555; border-radius: 10px;
+            position: absolute; left: 2px; right: 2px;
+        }
+        #custom-scrollbar-thumb:hover { background-color: #666; }
+
+        #scrollbar-map {
+            width: 15px; background-color: var(--scrollbar-track-bg); position: relative;
+            padding: 15px 0; box-sizing: border-box;
+        }
+        .scrollbar-tick {
+            position: absolute; width: 100%; height: 2px;
+            background-color: var(--search-highlight-bg); left: 0;
+        }
+        #inspector-panel {
+            background-color: var(--control-bg); padding: 8px 10px; border-bottom: 1px solid var(--border-color);
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px 15px; font-size: 0.9em;
+        }
+        .inspector-item { display: flex; align-items: center; gap: 5px; }
+        .inspector-item label {
+            width: 100px; color: var(--address-color); flex-shrink: 0;
+            white-space: nowrap;
+            margin-right: 5px;
+        }
+        .inspector-item input[type="text"] {
+            flex-grow: 1; font-family: inherit; background-color: var(--input-bg); color: var(--text-color);
+            border: 1px solid var(--border-color); padding: 3px 5px;
+        }
+        .inspector-item input:disabled { background-color: var(--input-disabled-bg); color: var(--address-color); }
+        .string-editor { grid-column: 1 / -1; }
+        .string-editor input { min-width: 200px; }
+        .string-editor select, .string-editor button { font-size: 0.9em; padding: 3px 6px; }
+
+        /* Help Modal Styles */
+        #help-modal {
+            display: none; position: fixed; z-index: 1000; left: 0; top: 0;
+            width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6);
+        }
+        .help-content {
+            background-color: var(--control-bg); margin: 10% auto; padding: 20px;
+            border: 1px solid var(--border-color); width: 80%; max-width: 700px;
+            border-radius: 5px; position: relative;
+        }
+        .help-content h3 { margin-top: 0; color: var(--button-hover-bg); }
+        .help-content h4 { border-bottom: 1px solid var(--border-color); padding-bottom: 5px; margin-top: 25px; }
+        .help-content p, .help-content li { font-size: 0.95em; line-height: 1.6; }
+        .help-content code { background-color: var(--input-bg); padding: 2px 5px; border-radius: 3px; }
+        .close-btn {
+            color: var(--address-color); position: absolute; top: 10px; right: 20px;
+            font-size: 28px; font-weight: bold; cursor: pointer;
+        }
+        .close-btn:hover, .close-btn:focus { color: var(--text-color); }
+    </style>
+</head>
+<body>
+
+    <div class="main-controls">
+        <div class="controls-row">
+            <span class="file-info" id="file-info-text">No file loaded.</span>
+            <div style="flex-grow: 1;"></div>
+            <button id="download-btn" disabled>Download Modified File</button>
+        </div>
+        <div class="controls-row">
+            <div>
+                <button id="help-btn">Help (F1)</button>
+                <button id="goto-btn" disabled>Go to...</button>
+            </div>
+            <div style="flex-grow: 1;"></div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <input type="text" id="search-input" placeholder="Search for...">
+                <select id="search-type"></select>
+                <button id="search-btn">Search</button>
+                <button id="prev-found-btn" disabled>&lt; Prev</button>
+                <button id="next-found-btn" disabled>Next &gt;</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-content">
+        <div id="inspector-panel"></div>
+        <div id="editor-container">
+            <div class="editor-main" id="editor-main">
+                <div id="address-column" class="column"></div>
+                <div id="hex-column" class="column"></div>
+                <div id="ascii-column" class="column"></div>
+            </div>
+            <div id="custom-scrollbar">
+                <div id="custom-scrollbar-thumb"></div>
+            </div>
+            <div id="scrollbar-map"></div>
+        </div>
+    </div>
+    
+    <div id="drop-zone">
+        <div>
+            <h2>Drag & Drop File Here</h2>
+            <p>or click to select a file</p>
+            <input type="file" id="file-input" style="display: none;">
+        </div>
+    </div>
+
+    <div id="help-modal">
+        <div class="help-content">
+            <span class="close-btn">&times;</span>
+            <h3>Hex Editor Help</h3>
+            
+            <h4>File Operations</h4>
+            <p><strong>Loading:</strong> Drag and drop a file onto the main window, or click the window to open a file selection dialog.</p>
+            <p><strong>Saving:</strong> Click the <code>Download Modified File</code> button. You can also drag this button directly to your desktop or a file manager to save the file.</p>
+
+            <h4>Navigation</h4>
+            <ul>
+                <li><strong>Mouse:</strong> Click and drag in either the Hex or ASCII panes to select bytes.</li>
+                <li><strong>Keyboard:</strong> Use <code>PageUp</code>/<code>PageDown</code> to scroll by a full screen. Use <code>ArrowUp</code>/<code>ArrowDown</code>/<code>ArrowLeft</code>/<code>ArrowRight</code> to move the selection. Use <code>Home</code>/<code>End</code> to jump to the start/end of the file.</li>
+                <li><strong>Go to Address:</strong> Click the <code>Go to...</code> button and enter a hexadecimal address to jump directly to that location.</li>
+            </ul>
+
+            <h4>Editing</h4>
+            <p>The <strong>Inspector Panel</strong> at the top is the primary tool for editing. When you select bytes, it shows their interpretation as different data types.</p>
+            <ul>
+                <li><strong>Number Editing (Overwrite):</strong> To edit a number (e.g., <code>Int32</code>, <code>Float64</code>), type a new value into its corresponding input box in the inspector and press <code>Enter</code>. This will <strong>overwrite</strong> a fixed number of bytes at the start of your selection without changing the file size.</li>
+                <li><strong>Text/Hex Editing (Replace):</strong> To edit a block of bytes, use the "Selection As" editor. Choose an encoding (UTF-8, UTF-16 LE, or Hex), type your new content, and press <code>Enter</code>. This will <strong>replace</strong> the entire selected block, which may change the file size.</li>
+                <li><strong>Deleting:</strong> Select bytes and click the <code>Delete Selection</code> button in the inspector panel.</li>
+            </ul>
+            <p>In any inspector input, press <code>Escape</code> to cancel an edit and revert to the original value.</p>
+
+            <h4>Search</h4>
+            <ul>
+                <li><strong>Performing a Search:</strong> Type your query, select the data type (Text, Hex, or a specific number format), and click <code>Search</code> or press <code>Enter</code>. The search runs in the background and will not freeze the application.</li>
+                <li><strong>Navigating Results:</strong> After a search is complete, use the <code>&lt; Prev</code> and <code>Next &gt;</code> buttons to jump between found occurrences. The navigation is relative to your current position in the viewport.</li>
+                <li><strong>Scrollbar Map:</strong> The thin bar on the far right provides a map of all search results in the entire file. Each tick mark represents a line containing at least one match.</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const elements = {
+                dropZone: document.getElementById('drop-zone'), fileInput: document.getElementById('file-input'),
+                mainContent: document.getElementById('main-content'), editorMain: document.getElementById('editor-main'),
+                addressColumn: document.getElementById('address-column'), hexColumn: document.getElementById('hex-column'),
+                asciiColumn: document.getElementById('ascii-column'), downloadBtn: document.getElementById('download-btn'),
+                searchBtn: document.getElementById('search-btn'), searchInput: document.getElementById('search-input'),
+                searchType: document.getElementById('search-type'), scrollbarMap: document.getElementById('scrollbar-map'),
+                fileInfoText: document.getElementById('file-info-text'), 
+                inspectorPanel: document.getElementById('inspector-panel'),
+                gotoBtn: document.getElementById('goto-btn'),
+                prevFoundBtn: document.getElementById('prev-found-btn'),
+                nextFoundBtn: document.getElementById('next-found-btn'),
+                helpBtn: document.getElementById('help-btn'),
+                helpModal: document.getElementById('help-modal'),
+                closeHelpBtn: document.querySelector('.close-btn'),
+                customScrollbar: document.getElementById('custom-scrollbar'),
+                customScrollbarThumb: document.getElementById('custom-scrollbar-thumb'),
+                // Delete button will be assigned dynamically after it's created
+            };
+
+            let fileData = []; let fileName = '';
+            let selectionStart = -1, selectionEnd = -1, isSelecting = false;
+            let lastSearch = { needle: null, allFoundBytes: new Set(), sortedHitOffsets: [] };
+
+            const BYTES_PER_LINE = 16;
+            const LINE_HEIGHT = 24;
+            const BUFFER_LINES = 20;
+            let isScrolling = false;
+            
+            // --- Custom Scrollbar State ---
+            let virtualScrollTop = 0;
+            let totalVirtualHeight = 0;
+            let isDraggingThumb = false;
+            let dragStartY = 0;
+            let dragStartScrollTop = 0;
+
+            const inspectorDefs = [
+                { name: 'Int8', size: 1 }, { name: 'Uint8', size: 1 }, { name: 'Int16', size: 2 },
+                { name: 'Uint16', size: 2 }, { name: 'Int32', size: 4 }, { name: 'Uint32', size: 4 },
+                { name: 'Float32', size: 4 }, { name: 'Float64', size: 8 }
+            ];
+
+            function loadFile(file) {
+                fileName = file.name;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    fileData = Array.from(new Uint8Array(e.target.result));
+                    elements.dropZone.style.display = 'none';
+                    elements.mainContent.style.display = 'flex';
+                    virtualScrollTop = 0;
+                    updateVirtualScroll();
+                    updateControlStates();
+                };
+                reader.readAsArrayBuffer(file);
+            }
+
+            function updateVirtualScroll() {
+                const totalLines = Math.ceil(fileData.length / BYTES_PER_LINE);
+                totalVirtualHeight = totalLines * LINE_HEIGHT;
+                renderVisibleContent();
+                updateCustomScrollbar();
+                updateFileInfo();
+                updateInspector();
+                updateScrollbarMap();
+            }
+
+            function renderVisibleContent() {
+                const totalLines = Math.ceil(fileData.length / BYTES_PER_LINE);
+                const viewportHeight = elements.editorMain.clientHeight;
+                
+                const firstVisibleLine = Math.floor(virtualScrollTop / LINE_HEIGHT);
+                const visibleLinesCount = Math.ceil(viewportHeight / LINE_HEIGHT);
+
+                const startLine = Math.max(0, firstVisibleLine - BUFFER_LINES);
+                const endLine = Math.min(totalLines, firstVisibleLine + visibleLinesCount + BUFFER_LINES);
+
+                let addressHtml = '', hexHtml = '', asciiHtml = '';
+
+                for (let i = startLine; i < endLine; i++) {
+                    const offset = i * BYTES_PER_LINE;
+                    addressHtml += `${offset.toString(16).padStart(8, '0').toUpperCase()}<br>`;
+                    for (let j = 0; j < BYTES_PER_LINE; j++) {
+                        const byteOffset = offset + j;
+                        if (byteOffset < fileData.length) {
+                            const byte = fileData[byteOffset];
+                            const isFound = lastSearch.allFoundBytes.has(byteOffset);
+                            const foundClass = isFound ? ' found' : '';
+                            
+                            hexHtml += `<span class="${foundClass}" data-offset="${byteOffset}">${byte.toString(16).padStart(2, '0').toUpperCase()}</span> `;
+                            const char = (byte >= 32 && byte <= 126) ? String.fromCharCode(byte) : '.';
+                            asciiHtml += `<span class="${foundClass}" data-offset="${byteOffset}">${char.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span>`;
+                        } else {
+                            hexHtml += '   '; asciiHtml += ' ';
+                        }
+                    }
+                    hexHtml += '<br>'; asciiHtml += '<br>';
+                }
+
+                elements.addressColumn.innerHTML = addressHtml;
+                elements.hexColumn.innerHTML = hexHtml;
+                elements.asciiColumn.innerHTML = asciiHtml;
+
+                const transformY = startLine * LINE_HEIGHT - virtualScrollTop;
+                elements.addressColumn.style.transform = `translateY(${transformY}px)`;
+                elements.hexColumn.style.transform = `translateY(${transformY}px)`;
+                elements.asciiColumn.style.transform = `translateY(${transformY}px)`;
+
+                highlightSelection();
+            }
+            
+            function updateFileInfo() {
+                const hexLength = fileData.length.toString(16).toUpperCase();
+                elements.fileInfoText.textContent = `File: ${fileName} (${fileData.length} bytes / 0x${hexLength})`;
+            }
+            
+            function updateControlStates() {
+                const hasFile = fileData.length > 0;
+                const hasSelection = selectionStart !== -1;
+                elements.downloadBtn.disabled = !hasFile; elements.downloadBtn.draggable = !!hasFile;
+                if (elements.deleteBtn) elements.deleteBtn.disabled = !hasSelection;
+                elements.gotoBtn.disabled = !hasFile;
+                const hasSearchResults = lastSearch.sortedHitOffsets.length > 0;
+                elements.prevFoundBtn.disabled = !hasSearchResults;
+                elements.nextFoundBtn.disabled = !hasSearchResults;
+            }
+
+            function initializeEventListeners() {
+                elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); elements.dropZone.classList.add('drag-over'); });
+                elements.dropZone.addEventListener('dragleave', () => { elements.dropZone.classList.remove('drag-over'); });
+                elements.dropZone.addEventListener('drop', (e) => {
+                    e.preventDefault(); elements.dropZone.classList.remove('drag-over');
+                    if (e.dataTransfer.files.length > 0) loadFile(e.dataTransfer.files[0]);
+                });
+                elements.dropZone.addEventListener('click', () => elements.fileInput.click());
+                elements.fileInput.addEventListener('change', () => { if (elements.fileInput.files.length > 0) loadFile(elements.fileInput.files[0]); });
+
+                const handleMouseDown = (e) => {
+                    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
+                        document.activeElement.blur();
+                    }
+                    if (e.target.tagName === 'SPAN' && e.target.dataset.offset) {
+                        e.preventDefault(); isSelecting = true;
+                        selectionStart = selectionEnd = parseInt(e.target.dataset.offset, 10);
+                        highlightSelection(); updateInspector(); updateControlStates();
+                    }
+                };
+                const handleMouseOver = (e) => {
+                    if (isSelecting && e.target.tagName === 'SPAN' && e.target.dataset.offset) {
+                        selectionEnd = parseInt(e.target.dataset.offset, 10);
+                        highlightSelection(); updateInspector();
+                    }
+                };
+                elements.editorMain.addEventListener('mousedown', handleMouseDown);
+                elements.editorMain.addEventListener('mouseover', handleMouseOver);
+                document.body.addEventListener('mouseup', () => { isSelecting = false; });
+
+                elements.downloadBtn.addEventListener('dragstart', (e) => {
+                    const blob = new Blob([new Uint8Array(fileData)], { type: 'application/octet-stream' });
+                    const url = URL.createObjectURL(blob);
+                    e.dataTransfer.setData('DownloadURL', `application/octet-stream:${fileName}:${url}`);
+                });
+                elements.downloadBtn.addEventListener('click', () => {
+                    const blob = new Blob([new Uint8Array(fileData)], { type: 'application/octet-stream' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.href = url; a.download = fileName || 'edited.bin'; a.click();
+                    URL.revokeObjectURL(url);
+                });
+                elements.searchInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        elements.searchBtn.click();
+                    }
+                });
+                document.body.addEventListener('keydown', (e) => {
+                    if (e.key === 'F1') {
+                        e.preventDefault();
+                        openHelpModal();
+                    }
+                    if (e.key === 'Escape' && elements.helpModal.style.display === 'block') {
+                        closeHelpModal();
+                    }
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+                    
+                    const pageSize = Math.floor(elements.editorMain.clientHeight / LINE_HEIGHT) * BYTES_PER_LINE;
+                    let offsetChange = 0;
+
+                    switch (e.key) {
+                        case 'ArrowUp': offsetChange = -BYTES_PER_LINE; break;
+                        case 'ArrowDown': offsetChange = BYTES_PER_LINE; break;
+                        case 'ArrowLeft': offsetChange = -1; break;
+                        case 'ArrowRight': offsetChange = 1; break;
+                        case 'PageUp':
+                            e.preventDefault();
+                            if (e.shiftKey) {
+                                handleSelectionMovement(-pageSize, true);
+                            } else {
+                                setVirtualScrollTop(virtualScrollTop - elements.editorMain.clientHeight);
+                            }
+                            return;
+                        case 'PageDown':
+                            e.preventDefault();
+                            if (e.shiftKey) {
+                                handleSelectionMovement(pageSize, true);
+                            } else {
+                                setVirtualScrollTop(virtualScrollTop + elements.editorMain.clientHeight);
+                            }
+                            return;
+                        case 'Home':
+                            e.preventDefault();
+                            setVirtualScrollTop(0);
+                            return;
+                        case 'End':
+                            e.preventDefault();
+                            const maxScroll = totalVirtualHeight - elements.editorMain.clientHeight;
+                            setVirtualScrollTop(maxScroll);
+                            return;
+                        default:
+                            return; // Do nothing for other keys
+                    }
+
+                    e.preventDefault();
+                    handleSelectionMovement(offsetChange, e.shiftKey);
+                });
+                elements.gotoBtn.addEventListener('click', handleGoTo);
+                elements.nextFoundBtn.addEventListener('click', () => findNext(true));
+                elements.prevFoundBtn.addEventListener('click', () => findNext(false));
+                
+                elements.helpBtn.addEventListener('click', openHelpModal);
+                elements.closeHelpBtn.addEventListener('click', closeHelpModal);
+                elements.helpModal.addEventListener('click', (e) => {
+                    if (e.target === elements.helpModal) {
+                        closeHelpModal();
+                    }
+                });
+
+                // Custom Scrollbar Events
+                elements.editorMain.addEventListener('wheel', handleWheelScroll);
+                elements.customScrollbarThumb.addEventListener('mousedown', handleThumbMouseDown);
+                elements.customScrollbar.addEventListener('mousedown', handleTrackMouseDown);
+            }
+
+            function highlightSelection() {
+                const previouslySelected = document.querySelectorAll('.selected');
+                previouslySelected.forEach(el => el.classList.remove('selected'));
+
+                if (selectionStart === -1) return;
+                const start = Math.min(selectionStart, selectionEnd);
+                const end = Math.max(selectionStart, selectionEnd);
+                for (let i = start; i <= end; i++) {
+                    document.querySelectorAll(`[data-offset='${i}']`).forEach(el => el.classList.add('selected'));
+                }
+            }
+
+            function buildInspector() {
+                elements.inspectorPanel.innerHTML = '';
+                inspectorDefs.forEach(def => {
+                    ['BE', 'LE'].forEach(endian => {
+                        if (def.size === 1 && endian === 'LE') return;
+                        const id = `inspector-${def.name}-${endian}`;
+                        const labelText = `${def.name} ${def.size > 1 ? endian : ''}`;
+                        const item = document.createElement('div');
+                        item.className = 'inspector-item';
+                        item.innerHTML = `<label for="${id}">${labelText}</label><input type="text" id="${id}" disabled>`;
+                        elements.inspectorPanel.appendChild(item);
+                        
+                        document.getElementById(id).addEventListener('keydown', (e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleInspectorEdit(def.name, def.size, endian === 'LE', e.target.value);
+                            } else if (e.key === 'Escape') {
+                                e.preventDefault(); updateInspector(); e.target.blur();
+                            }
+                        });
+                    });
+                });
+                const stringEditorHTML = `
+                    <div class="inspector-item string-editor">
+                        <label for="selection-encoding-select">Selection As</label>
+                        <select id="selection-encoding-select" disabled>
+                            <option value="UTF8">UTF-8</option>
+                            <option value="UTF16LE">UTF-16 LE</option>
+                            <option value="Hex">Hex</option>
+                        </select>
+                        <input type="text" id="selection-text-input" disabled>
+                        <button id="delete-btn" disabled>Delete Selection</button>
+                    </div>`;
+                elements.inspectorPanel.insertAdjacentHTML('beforeend', stringEditorHTML);
+                
+                elements.deleteBtn = document.getElementById('delete-btn');
+                elements.deleteBtn.addEventListener('click', () => {
+                    if (selectionStart === -1) return;
+                    const start = Math.min(selectionStart, selectionEnd);
+                    const count = Math.abs(selectionEnd - selectionStart) + 1;
+                    fileData.splice(start, count);
+                    selectionStart = selectionEnd = -1;
+                    lastSearch.allFoundBytes.clear(); lastSearch.sortedHitOffsets = [];
+                    updateVirtualScroll(); updateControlStates();
+                });
+
+                const textInput = document.getElementById('selection-text-input');
+                const encodingSelect = document.getElementById('selection-encoding-select');
+                
+                encodingSelect.addEventListener('change', () => updateInspector());
+                textInput.addEventListener('keydown', e => {
+                    if(e.key === 'Enter') { e.preventDefault(); handleStringEdit(); }
+                    if(e.key === 'Escape') { e.preventDefault(); updateInspector(); textInput.blur(); }
+                });
+            }
+
+            function populateSearchTypes() {
+                const select = elements.searchType;
+                select.innerHTML = `
+                    <option value="UTF8">UTF-8</option>
+                    <option value="UTF16LE">UTF-16 LE</option>
+                    <option value="Hex">Hex</option>
+                `;
+                const separator = document.createElement('option');
+                separator.disabled = true;
+                separator.textContent = '--- Numbers ---';
+                select.appendChild(separator);
+
+                inspectorDefs.forEach(def => {
+                    ['BE', 'LE'].forEach(endian => {
+                        if (def.size === 1 && endian === 'LE') return;
+                        const option = document.createElement('option');
+                        const endianSuffix = def.size > 1 ? `-${endian}` : '';
+                        option.value = `${def.name}${endianSuffix}`;
+                        option.textContent = `${def.name} ${def.size > 1 ? endian : ''}`;
+                        select.appendChild(option);
+                    });
+                });
+            }
+
+            function updateInspector() {
+                const hasSelection = selectionStart !== -1;
+                const textInput = document.getElementById('selection-text-input');
+                const encodingSelect = document.getElementById('selection-encoding-select');
+
+                if (!hasSelection) {
+                    elements.inspectorPanel.querySelectorAll('input').forEach(i => { i.value = 'N/A'; i.disabled = true; });
+                    textInput.value = 'No selection';
+                    encodingSelect.disabled = true;
+                    return;
+                }
+
+                const start = Math.min(selectionStart, selectionEnd);
+                const selLength = Math.abs(selectionEnd - selectionStart) + 1;
+                const fileBuffer = new Uint8Array(fileData).buffer;
+                const view = new DataView(fileBuffer);
+                
+                inspectorDefs.forEach(def => {
+                    ['BE', 'LE'].forEach(endian => {
+                        if (def.size === 1 && endian === 'LE') return;
+                        const input = document.getElementById(`inspector-${def.name}-${endian}`);
+                        if (!input) return;
+                        
+                        if (start + def.size <= fileData.length) {
+                            input.disabled = false;
+                            const methodName = `get${def.name}`;
+                            let value;
+                            if (def.size === 1) {
+                                value = view[methodName](start);
+                            } else {
+                                value = view[methodName](start, endian === 'LE');
+                            }
+                            input.value = value;
+                        } else {
+                            input.value = `Not enough data`; input.disabled = true;
+                        }
+                    });
+                });
+                
+                const selectedBytes = new Uint8Array(fileData.slice(start, start + selLength));
+                textInput.disabled = false;
+                encodingSelect.disabled = false;
+                
+                switch (encodingSelect.value) {
+                    case 'UTF8': textInput.value = new TextDecoder('utf-8', { fatal: false }).decode(selectedBytes); break;
+                    case 'UTF16LE': textInput.value = new TextDecoder('utf-16le', { fatal: false }).decode(selectedBytes); break;
+                    case 'Hex': textInput.value = Array.from(selectedBytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' '); break;
+                }
+            }
+
+            function handleInspectorEdit(typeName, size, isLE, value) {
+                let numValue = typeName.includes('Float') ? parseFloat(value) : parseInt(value, 10);
+                if (isNaN(numValue)) { alert("Invalid number format."); updateInspector(); return; }
+
+                const buffer = new ArrayBuffer(size);
+                const view = new DataView(buffer);
+                try {
+                    const methodName = `set${typeName}`;
+                    if (size === 1) {
+                        view[methodName](0, numValue);
+                    } else {
+                        view[methodName](0, numValue, isLE);
+                    }
+                } catch(e) { alert(`Value out of range for ${typeName}.`); updateInspector(); return; }
+                
+                const newBytes = Array.from(new Uint8Array(buffer));
+                const start = Math.min(selectionStart, selectionEnd);
+                
+                if (start + size > fileData.length) {
+                    alert("Not enough space in file to write this data type at the selected offset.");
+                    return;
+                }
+                fileData.splice(start, size, ...newBytes);
+
+                selectionStart = start;
+                selectionEnd = start + newBytes.length - 1;
+                lastSearch.allFoundBytes.clear(); lastSearch.sortedHitOffsets = [];
+                updateVirtualScroll();
+            }
+
+            function handleStringEdit() {
+                const textInput = document.getElementById('selection-text-input');
+                const encoding = document.getElementById('selection-encoding-select').value;
+                let newBytes;
+                if (encoding === 'Hex') {
+                    newBytes = parseHex(textInput.value);
+                } else if (encoding === 'UTF16LE') {
+                    newBytes = encodeUtf16le(textInput.value);
+                } else {
+                    newBytes = Array.from(new TextEncoder().encode(textInput.value));
+                }
+                if (!newBytes) { alert("Invalid input string."); return; }
+                
+                const start = Math.min(selectionStart, selectionEnd);
+                const count = Math.abs(selectionEnd - selectionStart) + 1;
+                fileData.splice(start, count, ...newBytes);
+
+                selectionStart = start;
+                selectionEnd = start + newBytes.length - 1;
+                lastSearch.allFoundBytes.clear(); lastSearch.sortedHitOffsets = [];
+                updateVirtualScroll();
+            }
+
+            function parseHex(hexStr) {
+                const cleanHex = hexStr.replace(/[^0-9a-fA-F\s]/g, '').replace(/\s/g, '');
+                if (cleanHex.length % 2 !== 0) return null;
+                const bytes = [];
+                for (let i = 0; i < cleanHex.length; i+=2) {
+                    bytes.push(parseInt(cleanHex.substr(i, 2), 16));
+                }
+                return bytes;
+            }
+
+            function encodeUtf16le(str) {
+                const bytes = [];
+                for (let i = 0; i < str.length; i++) {
+                    const charCode = str.charCodeAt(i);
+                    bytes.push(charCode & 0xFF);
+                    bytes.push(charCode >> 8);
+                }
+                return bytes;
+            }
+
+            // --- Asynchronous Search with Web Worker ---
+            const searchWorkerScript = `
+                onmessage = function(e) {
+                    const { fileData, needle } = e.data;
+                    if (!needle || needle.length === 0) {
+                        postMessage({ allFoundBytes: [], sortedHitOffsets: [] });
+                        return;
+                    }
+                    const allFoundBytes = new Set();
+                    const sortedHitOffsets = [];
+                    for (let i = 0; i <= fileData.length - needle.length; i++) {
+                        let match = true;
+                        for (let j = 0; j < needle.length; j++) {
+                            if (fileData[i + j] !== needle[j]) {
+                                match = false;
+                                break;
+                            }
+                        }
+                        if (match) {
+                            sortedHitOffsets.push(i);
+                            for (let k = 0; k < needle.length; k++) {
+                                allFoundBytes.add(i + k);
+                            }
+                        }
+                    }
+                    postMessage({ allFoundBytes: Array.from(allFoundBytes), sortedHitOffsets });
+                };
+            `;
+            const searchWorkerBlob = new Blob([searchWorkerScript], { type: 'application/javascript' });
+            let searchWorker = null;
+
+            function getNeedleFromQuery(query, type) {
+                if (type === 'Hex') return parseHex(query);
+                if (type === 'UTF8') return Array.from(new TextEncoder().encode(query));
+                if (type === 'UTF16LE') return encodeUtf16le(query);
+
+                const [typeName, endian] = type.split('-');
+                const isLE = endian === 'LE';
+                const def = inspectorDefs.find(d => d.name === typeName);
+                if (!def) return null;
+
+                let numValue = typeName.includes('Float') ? parseFloat(query) : parseInt(query, 10);
+                if (isNaN(numValue)) {
+                    alert("Invalid number format for search.");
+                    return null;
+                }
+
+                const buffer = new ArrayBuffer(def.size);
+                const view = new DataView(buffer);
+                try {
+                    const methodName = `set${def.name}`;
+                    if (def.size === 1) {
+                        view[methodName](0, numValue);
+                    } else {
+                        view[methodName](0, numValue, isLE);
+                    }
+                    return Array.from(new Uint8Array(buffer));
+                } catch (e) {
+                    alert(`Value out of range for ${type}.`);
+                    return null;
+                }
+            }
+
+            elements.searchBtn.addEventListener('click', () => {
+                const query = elements.searchInput.value; if (!query || !fileData.length) return;
+                const type = elements.searchType.value;
+                
+                const needle = getNeedleFromQuery(query, type);
+                if (!needle) return;
+
+                if (searchWorker) {
+                    searchWorker.terminate();
+                }
+                searchWorker = new Worker(URL.createObjectURL(searchWorkerBlob));
+
+                elements.searchBtn.disabled = true;
+                elements.searchBtn.textContent = 'Searching...';
+
+                searchWorker.onmessage = (e) => {
+                    lastSearch.needle = needle;
+                    lastSearch.allFoundBytes = new Set(e.data.allFoundBytes);
+                    lastSearch.sortedHitOffsets = e.data.sortedHitOffsets;
+                    
+                    renderVisibleContent();
+                    updateScrollbarMap();
+                    updateControlStates();
+
+                    elements.searchBtn.disabled = false;
+                    elements.searchBtn.textContent = 'Search';
+                    searchWorker.terminate();
+                    searchWorker = null;
+                };
+
+                searchWorker.postMessage({ fileData: fileData, needle: needle });
+            });
+
+            function updateScrollbarMap() {
+                elements.scrollbarMap.innerHTML = '';
+                if (lastSearch.allFoundBytes.size === 0) return;
+
+                const totalLines = Math.ceil(fileData.length / BYTES_PER_LINE);
+                if (totalLines === 0) return;
+
+                const scrollbarHeight = elements.scrollbarMap.clientHeight;
+                const drawnPixelRows = new Set();
+
+                for (const offset of lastSearch.sortedHitOffsets) {
+                    const line = Math.floor(offset / BYTES_PER_LINE);
+                    const percent = line / totalLines;
+                    const pixelY = Math.floor(percent * scrollbarHeight);
+
+                    if (!drawnPixelRows.has(pixelY)) {
+                        drawnPixelRows.add(pixelY);
+                        const tick = document.createElement('div');
+                        tick.className = 'scrollbar-tick';
+                        tick.style.top = `${percent * 100}%`;
+                        elements.scrollbarMap.appendChild(tick);
+                    }
+                }
+            }
+
+            // --- Navigation Functions ---
+            function scrollToOffset(offset) {
+                const line = Math.floor(offset / BYTES_PER_LINE);
+                const targetScrollTop = (line * LINE_HEIGHT) - (elements.editorMain.clientHeight / 2) + (LINE_HEIGHT / 2);
+                setVirtualScrollTop(targetScrollTop);
+            }
+
+            function ensureOffsetIsVisible(offset) {
+                const line = Math.floor(offset / BYTES_PER_LINE);
+                const offsetTop = line * LINE_HEIGHT;
+                const offsetBottom = offsetTop + LINE_HEIGHT;
+
+                if (offsetTop < virtualScrollTop) {
+                    setVirtualScrollTop(offsetTop);
+                } else if (offsetBottom > virtualScrollTop + elements.editorMain.clientHeight) {
+                    setVirtualScrollTop(offsetBottom - elements.editorMain.clientHeight);
+                }
+            }
+
+            function handleSelectionMovement(offsetChange, isShift) {
+                if (selectionStart === -1) return;
+                
+                let newEnd = selectionEnd + offsetChange;
+                newEnd = Math.max(0, Math.min(fileData.length - 1, newEnd));
+
+                if (isShift) {
+                    selectionEnd = newEnd;
+                } else {
+                    selectionStart = selectionEnd = newEnd;
+                }
+                
+                ensureOffsetIsVisible(selectionEnd);
+                renderVisibleContent();
+                updateInspector();
+            }
+
+            function handleGoTo() {
+                const addressStr = prompt("Enter hexadecimal address to go to:", "1000");
+                if (!addressStr) return;
+                const offset = parseInt(addressStr, 16);
+                if (isNaN(offset) || offset < 0 || offset >= fileData.length) {
+                    alert("Invalid address.");
+                    return;
+                }
+                selectionStart = selectionEnd = offset;
+                scrollToOffset(offset);
+                renderVisibleContent();
+                updateInspector();
+            }
+
+            function findNext(isForward) {
+                if (lastSearch.sortedHitOffsets.length === 0) return;
+                const hits = lastSearch.sortedHitOffsets;
+                let nextHit;
+                
+                if (isForward) {
+                    const endOfViewScrollTop = virtualScrollTop + elements.editorMain.clientHeight;
+                    const referencePos = Math.floor(endOfViewScrollTop / LINE_HEIGHT) * BYTES_PER_LINE;
+                    
+                    nextHit = hits.find(offset => offset >= referencePos);
+                    if (nextHit === undefined) nextHit = hits[0];
+                } else {
+                    const referencePos = Math.floor(virtualScrollTop / LINE_HEIGHT) * BYTES_PER_LINE;
+
+                    const prevHits = hits.filter(offset => offset < referencePos);
+                    if (prevHits.length > 0) {
+                        nextHit = prevHits[prevHits.length - 1];
+                    } else {
+                        nextHit = hits[hits.length - 1];
+                    }
+                }
+
+                if (nextHit !== undefined) {
+                    selectionStart = nextHit;
+                    selectionEnd = nextHit + lastSearch.needle.length - 1;
+                    scrollToOffset(nextHit);
+                    renderVisibleContent();
+                    updateInspector();
+                }
+            }
+
+            function openHelpModal() {
+                elements.helpModal.style.display = 'block';
+            }
+            function closeHelpModal() {
+                elements.helpModal.style.display = 'none';
+            }
+
+            // --- Custom Scrollbar Logic ---
+            function setVirtualScrollTop(newScrollTop) {
+                const maxScroll = totalVirtualHeight - elements.editorMain.clientHeight;
+                virtualScrollTop = Math.max(0, Math.min(newScrollTop, maxScroll));
+                renderVisibleContent();
+                updateCustomScrollbar();
+            }
+
+            function updateCustomScrollbar() {
+                const viewportHeight = elements.editorMain.clientHeight;
+                if (totalVirtualHeight <= viewportHeight) {
+                    elements.customScrollbar.style.display = 'none';
+                    return;
+                }
+                elements.customScrollbar.style.display = 'block';
+
+                const trackHeight = elements.customScrollbar.clientHeight;
+                const thumbHeight = Math.max(20, (viewportHeight / totalVirtualHeight) * trackHeight);
+                elements.customScrollbarThumb.style.height = `${thumbHeight}px`;
+
+                const maxScroll = totalVirtualHeight - viewportHeight;
+                const scrollPercentage = virtualScrollTop / maxScroll;
+                const maxThumbTop = trackHeight - thumbHeight;
+                elements.customScrollbarThumb.style.top = `${scrollPercentage * maxThumbTop}px`;
+            }
+
+            function handleWheelScroll(e) {
+                e.preventDefault();
+                setVirtualScrollTop(virtualScrollTop + e.deltaY);
+            }
+
+            function handleThumbMouseDown(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                isDraggingThumb = true;
+                dragStartY = e.clientY;
+                dragStartScrollTop = virtualScrollTop;
+                document.addEventListener('mousemove', handleThumbMouseMove);
+                document.addEventListener('mouseup', handleThumbMouseUp);
+            }
+
+            function handleThumbMouseMove(e) {
+                if (!isDraggingThumb) return;
+                e.preventDefault();
+                const deltaY = e.clientY - dragStartY;
+                const trackHeight = elements.customScrollbar.clientHeight;
+                const thumbHeight = elements.customScrollbarThumb.offsetHeight;
+                const maxThumbTop = trackHeight - thumbHeight;
+                const scrollRatio = (totalVirtualHeight - elements.editorMain.clientHeight) / maxThumbTop;
+                setVirtualScrollTop(dragStartScrollTop + deltaY * scrollRatio);
+            }
+
+            function handleThumbMouseUp() {
+                isDraggingThumb = false;
+                document.removeEventListener('mousemove', handleThumbMouseMove);
+                document.removeEventListener('mouseup', handleThumbMouseUp);
+            }
+
+            function handleTrackMouseDown(e) {
+                if (e.target === elements.customScrollbarThumb) return;
+                const rect = elements.customScrollbar.getBoundingClientRect();
+                const clickY = e.clientY - rect.top;
+                const thumbTop = elements.customScrollbarThumb.offsetTop;
+                if (clickY < thumbTop) {
+                    setVirtualScrollTop(virtualScrollTop - elements.editorMain.clientHeight);
+                } else {
+                    setVirtualScrollTop(virtualScrollTop + elements.editorMain.clientHeight);
+                }
+            }
+
+            // --- Initialize App ---
+            buildInspector();
+            populateSearchTypes();
+            initializeEventListeners();
+        });
+    </script>
+</body>
+</html>

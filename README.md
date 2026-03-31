@@ -1,0 +1,14 @@
+# Single-file HTML apps
+
+Open any app directly from the links below. The list mirrors the repository structure so folder-based apps stay grouped together.
+
+## Apps
+
+- [Advanced Hex Editor](https://koudelkab.github.io/singleHtmlApps/AdvancedHexEditor.html) - Hex editor for inspecting and editing binary files, with search, selection, and download support.
+- Print File Tools/
+  - [PJL / PCL XL Inspector](https://koudelkab.github.io/singleHtmlApps/Print%20File%20Tools/PJL_PCL6_Inspector.html) - Inspector for PJL and PCL XL print jobs that shows the block tree, typed attributes, offsets, and raw payloads.
+
+## Notes
+
+- Most apps are designed to open files you drop into the page.
+- Some apps also let you export or download the modified result after editing.

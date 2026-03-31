@@ -1,0 +1,2356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PJL / PCL XL Inspector</title>
+    <style>
+        :root {
+            --bg: #08141a;
+            --bg-soft: #10232b;
+            --panel: rgba(10, 27, 35, 0.86);
+            --panel-strong: rgba(14, 34, 44, 0.96);
+            --line: rgba(161, 212, 227, 0.18);
+            --line-strong: rgba(161, 212, 227, 0.34);
+            --text: #e6f2f5;
+            --muted: #94b9c3;
+            --accent: #7ad9b4;
+            --accent-strong: #3dc49f;
+            --warning: #ffca70;
+            --language: #ffd992;
+            --pjl: #8bc7ff;
+            --uel: #ff97be;
+            --operator: #b5f06c;
+            --attribute: #9fd8ff;
+            --value: #ffe39b;
+            --error: #ff8d8d;
+            --overlay: rgba(3, 10, 14, 0.74);
+            --shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+            --mono: Consolas, "Courier New", monospace;
+            --sans: "Trebuchet MS", Verdana, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            background:
+                radial-gradient(circle at top left, rgba(61, 196, 159, 0.12), transparent 34%),
+                radial-gradient(circle at bottom right, rgba(139, 199, 255, 0.16), transparent 32%),
+                linear-gradient(180deg, #071118 0%, #0b1f28 100%);
+            color: var(--text);
+            font-family: var(--sans);
+        }
+
+        body {
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .shell {
+            display: grid;
+            grid-template-rows: auto auto 1fr;
+            height: 100vh;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 22px 28px 16px;
+        }
+
+        .headline {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .headline h1 {
+            margin: 0;
+            font-size: 28px;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+        }
+
+        .headline p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .file-pill {
+            max-width: 48vw;
+            padding: 12px 16px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: rgba(8, 20, 26, 0.66);
+            color: var(--muted);
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding: 0 28px 16px;
+        }
+
+        .button,
+        .search {
+            border: 1px solid var(--line);
+            background: rgba(11, 31, 40, 0.9);
+            color: var(--text);
+            border-radius: 12px;
+            min-height: 44px;
+            box-shadow: var(--shadow);
+        }
+
+        .button {
+            padding: 0 16px;
+            cursor: pointer;
+            font: inherit;
+            transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+        }
+
+        .button:hover {
+            border-color: var(--line-strong);
+            background: rgba(14, 39, 49, 0.98);
+            transform: translateY(-1px);
+        }
+
+        .search {
+            flex: 1 1 280px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0 14px;
+        }
+
+        .search input {
+            width: 100%;
+            border: 0;
+            outline: 0;
+            background: transparent;
+            color: var(--text);
+            font: inherit;
+        }
+
+        .stats {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .stat {
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(8, 20, 26, 0.6);
+            min-width: 110px;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .stat-value {
+            margin-top: 4px;
+            font-family: var(--mono);
+            font-size: 15px;
+            color: var(--accent);
+        }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: minmax(420px, 1.35fr) minmax(320px, 0.9fr);
+            gap: 18px;
+            padding: 0 28px 28px;
+            min-height: 0;
+        }
+
+        .panel {
+            min-height: 0;
+            border: 1px solid var(--line);
+            border-radius: 22px;
+            background: var(--panel);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(12px);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--line);
+            background: linear-gradient(180deg, rgba(18, 47, 59, 0.96), rgba(11, 27, 35, 0.96));
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .panel-header h2 {
+            margin: 0;
+            font-size: 15px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .panel-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: auto;
+        }
+
+        .panel-body.tree-panel-body {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-body.tree-panel-body .tree {
+            display: none;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: auto;
+        }
+
+        .panel-body.tree-panel-body.has-content .tree {
+            display: block;
+        }
+
+        .drop-zone {
+            flex: 1 1 auto;
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            margin: 0;
+            padding: 42px 24px;
+            border: 2px dashed var(--line-strong);
+            border-radius: 0;
+            text-align: center;
+            color: var(--muted);
+            background:
+                linear-gradient(145deg, rgba(20, 48, 58, 0.75), rgba(10, 22, 28, 0.75)),
+                repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0 10px, transparent 10px 20px);
+            transition: border-color 160ms ease, transform 160ms ease, background 160ms ease;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .panel-body.tree-panel-body.has-content .drop-zone {
+            display: none;
+        }
+
+        .drop-zone.dragover {
+            border-color: var(--accent);
+            transform: scale(1.01);
+            background:
+                linear-gradient(145deg, rgba(20, 57, 63, 0.88), rgba(10, 26, 31, 0.88)),
+                repeating-linear-gradient(135deg, rgba(122, 217, 180, 0.06) 0 10px, transparent 10px 20px);
+        }
+
+        .drop-glyph {
+            font-size: 52px;
+            line-height: 1;
+            color: var(--accent);
+        }
+
+        .drop-zone strong {
+            display: block;
+            margin-top: 14px;
+            color: var(--text);
+            font-size: 18px;
+        }
+
+        .drop-zone span {
+            display: block;
+            margin-top: 8px;
+            font-size: 13px;
+        }
+
+        .tree {
+            padding: 14px 12px 28px;
+        }
+
+        .tree-node {
+            margin: 2px 0;
+        }
+
+        .tree-row {
+            display: grid;
+            grid-template-columns: 20px 104px 58px minmax(0, 1fr);
+            align-items: center;
+            gap: 10px;
+            padding: 7px 10px;
+            margin-left: calc(var(--depth, 0) * 18px);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 140ms ease, border-color 140ms ease;
+            border: 1px solid transparent;
+        }
+
+        .tree-row:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .tree-row.selected {
+            border-color: rgba(122, 217, 180, 0.34);
+            background: rgba(122, 217, 180, 0.08);
+        }
+
+        .toggle {
+            width: 18px;
+            height: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted);
+            user-select: none;
+            font-size: 12px;
+        }
+
+        .toggle.spacer {
+            opacity: 0;
+        }
+
+        .offset,
+        .tag-code,
+        .hex-inline,
+        .detail-code,
+        .detail-pre {
+            font-family: var(--mono);
+        }
+
+        .offset,
+        .tag-code {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .kind {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 38px;
+            padding: 3px 7px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+        }
+
+        .badge.block,
+        .badge.operator {
+            color: #12251f;
+            background: var(--operator);
+        }
+
+        .badge.attribute {
+            color: #0b2430;
+            background: var(--attribute);
+        }
+
+        .badge.language {
+            color: #35260c;
+            background: var(--language);
+        }
+
+        .badge.segment {
+            color: #0d2130;
+            background: var(--pjl);
+        }
+
+        .badge.uel {
+            color: #351223;
+            background: var(--uel);
+        }
+
+        .badge.warning {
+            color: #33230d;
+            background: var(--warning);
+        }
+
+        .label-text {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .meta-line {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 0 10px 8px;
+            margin-left: calc(var(--depth, 0) * 18px + 212px);
+        }
+
+        .block-body {
+            position: relative;
+        }
+
+        .block-body::before {
+            content: "";
+            position: absolute;
+            top: 2px;
+            bottom: 8px;
+            left: calc((var(--depth, 0) + 1) * 18px + 21px);
+            width: 1px;
+            background: linear-gradient(180deg, rgba(122, 217, 180, 0.28), rgba(122, 217, 180, 0.08));
+            pointer-events: none;
+        }
+
+        .chip {
+            padding: 3px 8px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            color: var(--muted);
+            font-size: 11px;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .chip.button-chip {
+            cursor: pointer;
+            background: rgba(20, 52, 61, 0.95);
+            transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+        }
+
+        .chip.button-chip:hover {
+            border-color: var(--accent);
+            color: var(--text);
+            background: rgba(24, 66, 74, 1);
+        }
+
+        .chip.begin-chip {
+            border-color: rgba(139, 199, 255, 0.34);
+            background: rgba(25, 62, 82, 0.95);
+            color: #bfe6ff;
+        }
+
+        .chip.begin-chip:hover {
+            border-color: rgba(139, 199, 255, 0.8);
+            background: rgba(31, 79, 103, 1);
+            color: #eefaff;
+        }
+
+        .chip.end-chip {
+            border-color: rgba(122, 217, 180, 0.34);
+            background: rgba(26, 69, 56, 0.95);
+            color: #c9ffe6;
+        }
+
+        .chip.end-chip:hover {
+            border-color: rgba(122, 217, 180, 0.82);
+            background: rgba(33, 88, 70, 1);
+            color: #f1fff8;
+        }
+
+        .children.hidden {
+            display: none;
+        }
+
+        .details {
+            padding: 18px;
+            display: grid;
+            gap: 16px;
+        }
+
+        .detail-card {
+            padding: 14px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(9, 24, 30, 0.72);
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: minmax(120px, 160px) minmax(0, 1fr);
+            gap: 10px 14px;
+            align-items: start;
+        }
+
+        .detail-key {
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .detail-value {
+            min-width: 0;
+            word-break: break-word;
+        }
+
+        .detail-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .mini-button {
+            border: 1px solid var(--line-strong);
+            background: rgba(18, 49, 58, 0.92);
+            color: var(--text);
+            border-radius: 999px;
+            min-height: 30px;
+            padding: 0 12px;
+            cursor: pointer;
+            font: inherit;
+            font-size: 12px;
+            transition: background 140ms ease, border-color 140ms ease;
+        }
+
+        .mini-button:hover {
+            background: rgba(23, 62, 72, 0.98);
+            border-color: var(--accent);
+        }
+
+        .mini-button.begin-button {
+            border-color: rgba(139, 199, 255, 0.36);
+            background: rgba(25, 62, 82, 0.95);
+            color: #d8f1ff;
+        }
+
+        .mini-button.begin-button:hover {
+            border-color: rgba(139, 199, 255, 0.84);
+            background: rgba(31, 79, 103, 1);
+        }
+
+        .mini-button.end-button {
+            border-color: rgba(122, 217, 180, 0.36);
+            background: rgba(26, 69, 56, 0.95);
+            color: #dcfff0;
+        }
+
+        .mini-button.end-button:hover {
+            border-color: rgba(122, 217, 180, 0.84);
+            background: rgba(33, 88, 70, 1);
+        }
+
+        .detail-code {
+            color: var(--accent);
+        }
+
+        .detail-pre {
+            margin: 0;
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(0, 0, 0, 0.22);
+            color: #d9f7ec;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 12px;
+            line-height: 1.45;
+            overflow-x: auto;
+        }
+
+        .empty {
+            padding: 26px;
+            color: var(--muted);
+        }
+
+        .hidden-input {
+            display: none;
+        }
+
+        .help-dialog[hidden] {
+            display: none;
+        }
+
+        .help-dialog {
+            position: fixed;
+            inset: 0;
+            z-index: 40;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+        }
+
+        .help-backdrop {
+            position: absolute;
+            inset: 0;
+            background: var(--overlay);
+            backdrop-filter: blur(10px);
+        }
+
+        .help-card {
+            position: relative;
+            width: min(720px, 100%);
+            max-height: min(82vh, 760px);
+            overflow: auto;
+            border: 1px solid var(--line-strong);
+            border-radius: 24px;
+            background: rgba(8, 22, 28, 0.96);
+            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+        }
+
+        .help-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 18px 20px;
+            border-bottom: 1px solid var(--line);
+            background: linear-gradient(180deg, rgba(18, 47, 59, 0.98), rgba(11, 27, 35, 0.96));
+        }
+
+        .help-header h2 {
+            margin: 0;
+            font-size: 17px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .help-content {
+            display: grid;
+            gap: 16px;
+            padding: 20px;
+        }
+
+        .help-content p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.55;
+        }
+
+        .help-list {
+            margin: 0;
+            padding-left: 20px;
+            display: grid;
+            gap: 10px;
+        }
+
+        .help-list li {
+            line-height: 1.55;
+        }
+
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.12);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(161, 212, 227, 0.22);
+            border-radius: 999px;
+        }
+
+        @media (max-width: 980px) {
+            body {
+                overflow: auto;
+            }
+
+            .shell {
+                height: auto;
+                min-height: 100vh;
+            }
+
+            .topbar,
+            .toolbar,
+            .workspace {
+                padding-left: 16px;
+                padding-right: 16px;
+            }
+
+            .workspace {
+                grid-template-columns: 1fr;
+                padding-bottom: 16px;
+            }
+
+            .panel {
+                min-height: 420px;
+            }
+
+            .file-pill {
+                max-width: none;
+            }
+
+            .tree-row {
+                grid-template-columns: 18px 96px 52px minmax(0, 1fr);
+                gap: 8px;
+                font-size: 13px;
+            }
+
+            .meta-line {
+                margin-left: calc(var(--depth, 0) * 18px + 192px);
+            }
+
+            .block-body::before {
+                left: calc((var(--depth, 0) + 1) * 18px + 19px);
+            }
+
+            .help-dialog {
+                padding: 12px;
+            }
+
+            .help-header {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="topbar">
+            <div class="headline">
+                <h1>PJL / PCL XL Inspector</h1>
+                <p>Single-file drag-and-drop viewer for mixed PJL + PCL XL jobs with block hierarchy, typed attributes, offsets, and hex payloads.</p>
+            </div>
+            <div id="fileInfo" class="file-pill">No file loaded</div>
+        </div>
+
+        <div class="toolbar">
+            <button id="openButton" class="button" type="button">Open File</button>
+            <button id="expandButton" class="button" type="button">Expand All Blocks</button>
+            <button id="collapseButton" class="button" type="button">Collapse Blocks</button>
+            <button id="helpButton" class="button" type="button" aria-controls="helpDialog" aria-haspopup="dialog" aria-keyshortcuts="F1">Help (F1)</button>
+            <label class="search" aria-label="Filter parsed tree">
+                <span>Filter</span>
+                <input id="filterInput" type="text" placeholder="page, textdata, beginimage, 0x43...">
+            </label>
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-label">Nodes</div>
+                    <div id="statNodes" class="stat-value">0</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Operators</div>
+                    <div id="statOperators" class="stat-value">0</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Pages</div>
+                    <div id="statPages" class="stat-value">0</div>
+                </div>
+            </div>
+            <input id="fileInput" class="hidden-input" type="file">
+        </div>
+
+        <div class="workspace">
+            <section class="panel">
+                <div class="panel-header">
+                    <h2>Tree</h2>
+                    <span id="treeHint" class="chip">Drop a job file to begin</span>
+                </div>
+                <div id="treePanelBody" class="panel-body tree-panel-body">
+                    <div id="dropZone" class="drop-zone" tabindex="0">
+                        <div class="drop-glyph">▣</div>
+                        <strong>Drop a PJL / PCL XL file here</strong>
+                        <span>The tree shows segments, operators, typed attributes, begin/end block nesting, offsets, tag hex, and raw bytes.</span>
+                    </div>
+                    <div id="tree" class="tree"></div>
+                </div>
+            </section>
+
+            <aside class="panel">
+                <div class="panel-header">
+                    <h2>Details</h2>
+                    <span class="chip">Offset + tag + raw bytes</span>
+                </div>
+                <div id="details" class="panel-body details">
+                    <div class="empty">Select a segment, block, operator, or attribute to inspect its decoded value and raw hex.</div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <div id="helpDialog" class="help-dialog" role="dialog" aria-modal="true" aria-labelledby="helpTitle" hidden>
+        <div id="helpBackdrop" class="help-backdrop"></div>
+        <div class="help-card">
+            <div class="help-header">
+                <h2 id="helpTitle">Using the Inspector</h2>
+                <button id="helpCloseButton" class="button" type="button">Close</button>
+            </div>
+            <div class="help-content">
+                <p>Use this viewer to inspect mixed PJL jobs and PCL XL payloads without losing the surrounding job structure.</p>
+                <ul class="help-list">
+                    <li>Drop a print job anywhere in the full left pane or use Open File.</li>
+                    <li>The tree keeps UEL and PJL commands visible, including PJL JOB and EOJ boundaries.</li>
+                    <li>Only payloads selected by PJL ENTER LANGUAGE as PCL XL or PCL6 are decoded as operators and typed attributes. Other languages are shown as opaque payload nodes so the structure stays honest.</li>
+                    <li>Use Expand All Blocks, Collapse Blocks, and Filter to navigate large jobs quickly.</li>
+                    <li>Select a node to inspect offsets, decoded values, raw hex, and begin or end jump links. Press F1 to reopen this help and Escape to close it.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const OPERATORS = {"0x41":"O_BEGINSESSION","0x42":"O_ENDSESSION","0x43":"O_BEGINPAGE","0x44":"O_ENDPAGE","0x45":"O_RESERVED1","0x46":"O_RESERVED2","0x47":"O_COMMENT","0x48":"O_OPENDATASOURCE","0x49":"O_CLOSEDATASOURCE","0x4a":"O_RESERVED3","0x4b":"O_RESERVED4","0x4c":"O_RESERVED5","0x4d":"O_RESERVED6","0x4e":"O_RESERVED7","0x4f":"O_BEGINFONTHEADER","0x50":"O_READFONTHEADER","0x51":"O_ENDFONTHEADER","0x52":"O_BEGINCHAR","0x53":"O_READCHAR","0x54":"O_ENDCHAR","0x55":"O_REMOVEFONT","0x56":"O_SETCHARATTRIBUTES","0x57":"O_SETDEFAULTGS","0x58":"O_SETCOLORTREATMENT","0x59":"O_RESERVED8","0x5a":"O_RESERVED9","0x5b":"O_BEGINSTREAM","0x5c":"O_READSTREAM","0x5d":"O_ENDSTREAM","0x5e":"O_EXECSTREAM","0x5f":"O_REMOVESTREAM","0x60":"O_POPGS","0x61":"O_PUSHGS","0x62":"O_SETCLIPREPLACE","0x63":"O_SETBRUSHSOURCE","0x64":"O_SETCHARANGLE","0x65":"O_SETCHARSCALE","0x66":"O_SETCHARSHEAR","0x67":"O_SETCLIPINTERSECT","0x68":"O_SETCLIPRECTANGLE","0x69":"O_SETCLIPTOPAGE","0x6a":"O_SETCOLORSPACE","0x6b":"O_SETCURSOR","0x6c":"O_SETCURSORREL","0x6d":"O_SETHALFTONEMETHOD","0x6e":"O_SETFILLMODE","0x6f":"O_SETFONT","0x70":"O_SETLINEDASH","0x71":"O_SETLINECAP","0x72":"O_SETLINEJOIN","0x73":"O_SETMITERLIMIT","0x74":"O_SETPAGEDEFAULTCTM","0x75":"O_SETPAGEORIGIN","0x76":"O_SETPAGEROTATION","0x77":"O_SETPAGESCALE","0x78":"O_SETPATTERNTXMODE","0x79":"O_SETPENSOURCE","0x7a":"O_SETPENWIDTH","0x7b":"O_SETROP","0x7c":"O_SETSOURCETXMODE","0x7d":"O_SETCHARBOLDVALUE","0x7e":"O_SETNEUTRALAXIS","0x7f":"O_SETCLIPMODE","0x80":"O_SETPATHTOCLIP","0x81":"O_SETCHARSUBMODE","0x84":"O_CLOSESUBPATH","0x85":"O_NEWPATH","0x86":"O_PAINTPATH","0x87":"O_RESERVED10","0x88":"O_RESERVED11","0x89":"O_RESERVED12","0x8a":"O_RESERVED13","0x8b":"O_UNKNOWN1","0x8c":"O_UNKNOWN2","0x8d":"O_UNKNOWN3","0x8e":"O_UNKNOWN4","0x8f":"O_UNKNOWN5","0x90":"O_UNKNOWN6","0x91":"O_ARCPATH","0x92":"O_SETCOLORTRAPPING","0x93":"O_BEZIERPATH","0x94":"O_SETADAPTIVEHALFTONING","0x95":"O_BEZIERRELPATH","0x96":"O_CHORD","0x97":"O_CHORDPATH","0x98":"O_ELLIPSE","0x99":"O_ELLIPSEPATH","0x9a":"O_RESERVED14","0x9b":"O_LINEPATH","0x9c":"O_RESERVED15","0x9d":"O_LINERELPATH","0x9e":"O_PIE","0x9f":"O_PIEPATH","0xa0":"O_RECTANGLE","0xa1":"O_RECTANGLEPATH","0xa2":"O_ROUNDRECTANGLE","0xa3":"O_ROUNDRECTANGLEPATH","0xa4":"O_RESERVED16","0xa5":"O_RESERVED17","0xa6":"O_RESERVED18","0xa7":"O_RESERVED19","0xa8":"O_TEXT","0xa9":"O_TEXTPATH","0xaa":"O_RESERVED20","0xab":"O_RESERVED21","0xac":"O_RESERVED22","0xad":"O_RESERVED23","0xae":"O_RESERVED24","0xaf":"O_RESERVED25","0xb0":"O_BEGINIMAGE","0xb1":"O_READIMAGE","0xb2":"O_ENDIMAGE","0xb3":"O_BEGINRASTPATTERN","0xb4":"O_READRASTPATTERN","0xb5":"O_ENDRASTPATTERN","0xb6":"O_BEGINSCAN","0xb7":"O_RESERVED26","0xb8":"O_ENDSCAN","0xb9":"O_SCANLINEREL","0xba":"O_RESERVED27","0xbb":"O_RESERVED28","0xbc":"O_RESERVED29","0xbd":"O_RESERVED30","0xbe":"O_RESERVED31","0xbf":"O_PASSTHROUGH"};
+        const ATTRIBUTES = {"0x2":"PALETTEDEPTH","0x3":"COLORSPACE","0x4":"NULLBRUSH","0x5":"NULLPEN","0x6":"PALETTEDATA","0x8":"PATTERNSELECTID","0x9":"GRAYLEVEL","0xb":"RGBCOLOR","0xc":"PATTERNORIGIN","0xd":"NEWDESTINATIONSIZE","0xe":"PRIMARYARRAY","0xf":"PRIMARYDEPTH","0x1d":"ALLOBJECTTYPES","0x1e":"TEXTOBJECTS","0x1f":"VECTOROBJECTS","0x20":"RASTEROBJECTS","0x21":"DEVICEMATRIX","0x22":"DITHERMATRIXDATATYPE","0x23":"DITHERORIGIN","0x24":"MEDIADESTINATION","0x25":"MEDIASIZE","0x26":"MEDIASOURCE","0x27":"MEDIATYPE","0x28":"ORIENTATION","0x29":"PAGEANGLE","0x2a":"PAGEORIGIN","0x2b":"PAGESCALE","0x2c":"ROP3","0x2d":"TXMODE","0x2f":"CUSTOMMEDIASIZE","0x30":"CUSTOMMEDIASIZEUNITS","0x31":"PAGECOPIES","0x32":"DITHERMATRIXSIZE","0x33":"DITHERMATRIXDEPTH","0x34":"SIMPLEXPAGEMODE","0x35":"DUPLEXPAGEMODE","0x36":"DUPLEXPAGESIDE","0x41":"ARCDIRECTION","0x42":"BOUNDINGBOX","0x43":"DASHOFFSET","0x44":"ELLIPSEDIMENSION","0x45":"ENDPOINT","0x46":"FILLMODE","0x47":"LINECAPSTYLE","0x48":"LINEJOINSTYLE","0x49":"MITERLENGTH","0x4a":"LINEDASHSTYLE","0x4b":"PENWIDTH","0x4c":"POINT","0x4d":"NUMBEROFPOINTS","0x4e":"SOLIDLINE","0x4f":"STARTPOINT","0x50":"POINTTYPE","0x51":"CONTROLPOINT1","0x52":"CONTROLPOINT2","0x53":"CLIPREGION","0x54":"CLIPMODE","0x62":"COLORDEPTH","0x63":"BLOCKHEIGHT","0x64":"COLORMAPPING","0x65":"COMPRESSMODE","0x66":"DESTINATIONBOX","0x67":"DESTINATIONSIZE","0x68":"PATTERNPERSISTENCE","0x69":"PATTERNDEFINEID","0x6b":"SOURCEHEIGHT","0x6c":"SOURCEWIDTH","0x6d":"STARTLINE","0x6e":"PADBYTESMULTIPLE","0x6f":"BLOCKBYTELENGTH","0x73":"NUMBEROFSCANLINES","0x78":"COLORTREATMENT","0x7a":"RESERVED1","0x81":"COMMENTDATA","0x82":"DATAORG","0x86":"MEASURE","0x88":"SOURCETYPE","0x89":"UNITSPERMEASURE","0x8b":"STREAMNAME","0x8c":"STREAMDATALENGTH","0x8f":"ERRORREPORT","0x91":"RESERVED2","0x92":"RESERVED3","0x93":"RESERVED4","0x94":"RESERVED5","0x95":"RESERVED6","0x96":"RESERVED7","0x97":"RESERVED8","0x98":"RESERVED9","0x99":"RESERVED10","0x9a":"RESERVED11","0x9b":"RESERVED12","0x9c":"RESERVED13","0x9d":"RESERVED14","0x9e":"RESERVED15","0x9f":"RESERVED16","0xa1":"CHARANGLE","0xa2":"CHARCODE","0xa3":"CHARDATASIZE","0xa4":"CHARSCALE","0xa5":"CHARSHEAR","0xa6":"CHARSIZE","0xa7":"FONTHEADERLENGTH","0xa8":"FONTNAME","0xa9":"FONTFORMAT","0xaa":"SYMBOLSET","0xab":"TEXTDATA","0xac":"CHARSUBMODEARRAY","0xad":"PCLSELECTFONT","0xaf":"XSPACINGDATA","0xb0":"YSPACINGDATA","0xb1":"CHARBOLDVALUE"};
+
+        const TAGS = {
+            DT_UBYTE: 0xc0,
+            DT_UINT16: 0xc1,
+            DT_UINT32: 0xc2,
+            DT_SINT16: 0xc3,
+            DT_SINT32: 0xc4,
+            DT_REAL32: 0xc5,
+            DT_UBYTE_ARRAY: 0xc8,
+            DT_UINT16_ARRAY: 0xc9,
+            DT_UINT32_ARRAY: 0xca,
+            DT_SINT16_ARRAY: 0xcb,
+            DT_SINT32_ARRAY: 0xcc,
+            DT_REAL32_ARRAY: 0xcd,
+            DT_UBYTE_XY: 0xd0,
+            DT_UINT16_XY: 0xd1,
+            DT_UINT32_XY: 0xd2,
+            DT_SINT16_XY: 0xd3,
+            DT_SINT32_XY: 0xd4,
+            DT_REAL32_XY: 0xd5,
+            DT_UBYTE_BOX: 0xe0,
+            DT_UINT16_BOX: 0xe1,
+            DT_UINT32_BOX: 0xe2,
+            DT_SINT16_BOX: 0xe3,
+            DT_SINT32_BOX: 0xe4,
+            DT_REAL32_BOX: 0xe5,
+            T_ATTR_UBYTE: 0xf8,
+            T_ATTR_UINT16: 0xf9,
+            E_DATALENGTH: 0xfa,
+            E_DATALENGTHBYTE: 0xfb
+        };
+
+        const TYPE_INFO = {
+            0xc0: { name: "ubyte", size: 1, mode: "uint" },
+            0xc1: { name: "uint16", size: 2, mode: "uint" },
+            0xc2: { name: "uint32", size: 4, mode: "uint" },
+            0xc3: { name: "sint16", size: 2, mode: "int" },
+            0xc4: { name: "sint32", size: 4, mode: "int" },
+            0xc5: { name: "real32", size: 4, mode: "float" },
+            0xc8: { name: "ubyte_array", size: 1, mode: "uint", shape: "array" },
+            0xc9: { name: "uint16_array", size: 2, mode: "uint", shape: "array" },
+            0xca: { name: "uint32_array", size: 4, mode: "uint", shape: "array" },
+            0xcb: { name: "sint16_array", size: 2, mode: "int", shape: "array" },
+            0xcc: { name: "sint32_array", size: 4, mode: "int", shape: "array" },
+            0xcd: { name: "real32_array", size: 4, mode: "float", shape: "array" },
+            0xd0: { name: "ubyte_xy", size: 1, mode: "uint", shape: "xy", count: 2 },
+            0xd1: { name: "uint16_xy", size: 2, mode: "uint", shape: "xy", count: 2 },
+            0xd2: { name: "uint32_xy", size: 4, mode: "uint", shape: "xy", count: 2 },
+            0xd3: { name: "sint16_xy", size: 2, mode: "int", shape: "xy", count: 2 },
+            0xd4: { name: "sint32_xy", size: 4, mode: "int", shape: "xy", count: 2 },
+            0xd5: { name: "real32_xy", size: 4, mode: "float", shape: "xy", count: 2 },
+            0xe0: { name: "ubyte_box", size: 1, mode: "uint", shape: "box", count: 4 },
+            0xe1: { name: "uint16_box", size: 2, mode: "uint", shape: "box", count: 4 },
+            0xe2: { name: "uint32_box", size: 4, mode: "uint", shape: "box", count: 4 },
+            0xe3: { name: "sint16_box", size: 2, mode: "int", shape: "box", count: 4 },
+            0xe4: { name: "sint32_box", size: 4, mode: "int", shape: "box", count: 4 },
+            0xe5: { name: "real32_box", size: 4, mode: "float", shape: "box", count: 4 }
+        };
+
+        const ENUMS = {
+            COLORSPACE: { "1": "eGray", "2": "eRGB" },
+            COLORDEPTH: { "0": "e1Bit", "1": "e4Bit", "2": "e8Bit" },
+            COLORMAPPING: { "0": "eDirectPixel", "1": "eIndexedPixel" },
+            COMPRESSMODE: { "0": "eNoCompression", "1": "eRLECompression", "2": "eJPEGCompression" },
+            ORIENTATION: { "0": "ePortrait", "1": "eLandscape", "2": "eReversePortrait", "3": "eReverseLandscape" },
+            DUPLEXPAGEMODE: { "0": "DuplexHorizontalBinding", "1": "DuplexVerticalBinding" },
+            TXMODE: { "0": "eOpaque", "1": "eTransparent" },
+            FILLMODE: { "0": "eNonZeroWinding", "1": "eEvenOdd" },
+            LINECAPSTYLE: { "0": "eButtCap", "1": "eRoundCap", "2": "eSquareCap", "3": "eTriangleCap" },
+            LINEJOINSTYLE: { "0": "eMiterJoin", "1": "eRoundJoin", "2": "eBevelJoin", "3": "eNoJoin" },
+            CLIPMODE: { "0": "eInterior", "1": "eExterior" },
+            DATAORG: { "0": "eBinaryHighByteFirst", "1": "eBinaryLowByteFirst" },
+            MEASURE: { "0": "eInch", "1": "eMillimeter", "2": "eTenthsOfAMillimeter" },
+            SOURCETYPE: { "0": "eDefault", "1": "eNull", "2": "ePattern", "3": "eIndexedPixel", "4": "eDirectPixel" },
+            DUPLEXPAGESIDE: { "0": "eFrontMediaSide", "1": "eBackMediaSide" },
+            ARCDIRECTION: { "0": "eClockWise", "1": "eCounterClockWise" },
+            POINTTYPE: { "0": "eAbsolute", "1": "eRelative" },
+            COLORTRAP: { "0": "eOff", "1": "eOn" },
+            MEDIASOURCE: {
+                "0": "eDefaultSource",
+                "1": "eAutoSelect",
+                "2": "eManualFeed",
+                "3": "eMultiPurposeTray",
+                "4": "eUpperCassette",
+                "5": "eLowerCassette",
+                "7": "eEnvelopeTray"
+            },
+            MEDIADESTINATION: {
+                "0": "eDefaultDestination",
+                "1": "eFaceDownBin",
+                "2": "eFaceUpBin",
+                "3": "eJobOffsetBin",
+                "4": "eStaplerBin"
+            },
+            MEDIASIZE: {
+                "0": "eLetterPaper",
+                "1": "eLegalPaper",
+                "2": "eA4Paper",
+                "3": "eExecPaper",
+                "4": "eLedgerPaper",
+                "5": "eA3Paper",
+                "6": "eCOM10Envelope",
+                "7": "eMonarchEnvelope",
+                "8": "eC5Envelope",
+                "9": "eDLEnvelope",
+                "10": "eJB4Paper",
+                "11": "eJB5Paper",
+                "12": "eB5Envelope",
+                "13": "eB5Paper",
+                "14": "eJPostCard",
+                "15": "eA5Ricoh",
+                "16": "eA5Paper",
+                "17": "eA6Paper",
+                "18": "eJB6Paper",
+                "19": "eJIS8K",
+                "20": "eJIS16K",
+                "22": "eUSStandardPaper",
+                "23": "eLegalSmallPaper",
+                "24": "eQuartoPaper",
+                "25": "eFolioPaper",
+                "26": "eFoolscapPaper",
+                "31": "eISOB4Paper",
+                "33": "e305X440Paper",
+                "34": "eRA4Paper",
+                "35": "eSRA4Paper",
+                "36": "e228X305Paper",
+                "37": "eRA3Paper",
+                "38": "e305X457Paper",
+                "39": "eSRA3Paper",
+                "40": "e9X12Paper",
+                "41": "eTabloidExtraPaper",
+                "42": "eUSGovernmentPaper",
+                "43": "eLetterGovernmentPaper",
+                "44": "eLegalGovernmentPaper",
+                "45": "e12X17_3Paper",
+                "46": "eLetter8_25X10Paper",
+                "47": "e12x19_2Paper",
+                "48": "e305X488Paper",
+                "50": "eCustomPaper",
+                "51": "eA4TabPaper",
+                "52": "eLetterTabPaper",
+                "53": "e12_6X19_2Paper"
+            }
+        };
+
+        const BLOCK_MATCH = buildBlockPairs();
+        const PREVIEW_LIMIT = 192;
+        const PCLXL_LANGUAGES = new Set(["PCL6", "PCL6XL", "PCLXL"]);
+        const textDecoder = new TextDecoder("utf-8", { fatal: false });
+        const utf16Decoder = new TextDecoder("utf-16le", { fatal: false });
+
+        const state = {
+            root: null,
+            nodes: [],
+            selectedId: null,
+            filter: "",
+            sourceBytes: null,
+            nextId: 1
+        };
+
+        const dropZone = document.getElementById("dropZone");
+        const fileInput = document.getElementById("fileInput");
+        const tree = document.getElementById("tree");
+        const treePanelBody = document.getElementById("treePanelBody");
+        const details = document.getElementById("details");
+        const fileInfo = document.getElementById("fileInfo");
+        const treeHint = document.getElementById("treeHint");
+        const filterInput = document.getElementById("filterInput");
+        const statNodes = document.getElementById("statNodes");
+        const statOperators = document.getElementById("statOperators");
+        const statPages = document.getElementById("statPages");
+        const helpButton = document.getElementById("helpButton");
+        const helpDialog = document.getElementById("helpDialog");
+        const helpCloseButton = document.getElementById("helpCloseButton");
+        const helpBackdrop = document.getElementById("helpBackdrop");
+
+        let helpReturnFocus = null;
+
+        document.getElementById("openButton").addEventListener("click", () => fileInput.click());
+        document.getElementById("expandButton").addEventListener("click", () => setAllBlocksCollapsed(false));
+        document.getElementById("collapseButton").addEventListener("click", () => setAllBlocksCollapsed(true));
+        helpButton.addEventListener("click", openHelp);
+        helpCloseButton.addEventListener("click", closeHelp);
+        helpBackdrop.addEventListener("click", closeHelp);
+        document.addEventListener("keydown", handleGlobalKeydown);
+
+        filterInput.addEventListener("input", () => {
+            state.filter = filterInput.value.trim().toLowerCase();
+            if (state.root && state.filter) {
+                applyFilterVisibility(state.root);
+                expandFilterMatchPaths(state.root);
+            }
+            renderTree();
+        });
+
+        fileInput.addEventListener("change", (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                loadFile(file);
+            }
+        });
+
+        ["dragenter", "dragover"].forEach((type) => {
+            dropZone.addEventListener(type, (event) => {
+                event.preventDefault();
+                dropZone.classList.add("dragover");
+            });
+        });
+
+        ["dragleave", "dragend", "drop"].forEach((type) => {
+            dropZone.addEventListener(type, (event) => {
+                event.preventDefault();
+                dropZone.classList.remove("dragover");
+            });
+        });
+
+        dropZone.addEventListener("drop", (event) => {
+            const file = event.dataTransfer.files[0];
+            if (file) {
+                loadFile(file);
+            }
+        });
+
+        dropZone.addEventListener("click", () => fileInput.click());
+        dropZone.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                fileInput.click();
+            }
+        });
+
+        async function loadFile(file) {
+            const buffer = await file.arrayBuffer();
+            const bytes = new Uint8Array(buffer);
+            state.sourceBytes = bytes;
+            state.nextId = 1;
+            state.root = parseJob(bytes);
+            annotateParents(state.root, null);
+            state.nodes = [];
+            flattenNodes(state.root, state.nodes);
+            state.selectedId = state.nodes.length ? state.nodes[0].id : null;
+            treePanelBody.classList.add("has-content");
+            fileInfo.textContent = `${file.name} • ${bytes.length.toLocaleString()} bytes`;
+            treeHint.textContent = "Click a node for typed details and raw hex";
+            statNodes.textContent = String(state.nodes.length);
+            statOperators.textContent = String(state.nodes.filter((node) => node.kind === "operator").length);
+            statPages.textContent = String(state.nodes.filter((node) => node.kind === "block" && node.blockKey === "PAGE").length);
+            renderTree();
+            renderDetails(getNodeById(state.selectedId));
+        }
+
+        function parseJob(bytes) {
+            const root = createNode({
+                kind: "root",
+                title: "Root",
+                offset: 0,
+                tagHex: "",
+                children: []
+            });
+
+            const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+            const stack = [root];
+            let pendingAttributes = [];
+            let offset = 0;
+            let activeLanguage = "";
+
+            while (offset < bytes.length) {
+                if (activeLanguage && !isPclXlLanguage(activeLanguage)) {
+                    if (offset + 9 <= bytes.length && equalsAscii(bytes, offset, "\x1B%-12345X")) {
+                        const uel = tryReadTextSegment(bytes, offset);
+                        if (uel) {
+                            attachTextSegmentNode(uel.node, stack);
+                            offset = uel.nextOffset;
+                            activeLanguage = "";
+                            continue;
+                        }
+                    }
+
+                    const payload = consumeOpaquePayload(
+                        bytes,
+                        offset,
+                        activeLanguage,
+                        `Opaque ${activeLanguage} payload selected by PJL ENTER LANGUAGE`
+                    );
+                    stack[stack.length - 1].children.push(payload.node);
+                    offset = payload.nextOffset;
+                    activeLanguage = "";
+                    continue;
+                }
+
+                const segment = tryReadTextSegment(bytes, offset);
+                if (segment) {
+                    if (isPclXlLanguage(activeLanguage) && !segment.isPclxlHeader) {
+                        pendingAttributes = flushPendingAttributes(pendingAttributes, stack[stack.length - 1]);
+                        exitPclXlContext(stack);
+                        activeLanguage = "";
+                    }
+
+                    attachTextSegmentNode(segment.node, stack);
+                    offset = segment.nextOffset;
+
+                    if (segment.node.kind === "uel") {
+                        activeLanguage = "";
+                        continue;
+                    }
+
+                    if (segment.enteredLanguage) {
+                        activeLanguage = segment.enteredLanguage;
+                        continue;
+                    }
+
+                    if (!activeLanguage && segment.isPclxlHeader) {
+                        activeLanguage = "PCLXL";
+                    }
+
+                    continue;
+                }
+
+                if (!activeLanguage) {
+                    const payload = consumeOpaquePayload(
+                        bytes,
+                        offset,
+                        "Unknown",
+                        "Binary data without a preceding PJL ENTER LANGUAGE or a PCL XL header"
+                    );
+                    stack[stack.length - 1].children.push(payload.node);
+                    offset = payload.nextOffset;
+                    continue;
+                }
+
+                const start = offset;
+                const tag = view.getUint8(offset++);
+
+                if (isOperatorTag(tag)) {
+                    const operator = createOperatorNode(tag, start, pendingAttributes, bytes);
+                    pendingAttributes = [];
+                    attachOperatorNode(operator, stack);
+                    continue;
+                }
+
+                if (tag === TAGS.T_ATTR_UBYTE || tag === TAGS.T_ATTR_UINT16) {
+                    const attrBinding = bindAttributeName(bytes, view, tag, start, offset, pendingAttributes);
+                    offset = attrBinding.nextOffset;
+                    continue;
+                }
+
+                const valueResult = parseValue(bytes, view, tag, start, offset);
+                if (!valueResult) {
+                    const unknown = createNode({
+                        kind: "warning",
+                        title: `Unknown tag 0x${toHex(tag, 2)}`,
+                        offset: start,
+                        tagHex: `0x${toHex(tag, 2)}`,
+                        rawBytes: Array.from(bytes.slice(start, Math.min(bytes.length, start + 1))),
+                        detailType: "UnknownTag",
+                        children: []
+                    });
+                    stack[stack.length - 1].children.push(unknown);
+                    continue;
+                }
+
+                pendingAttributes.push(valueResult.node);
+                offset = valueResult.nextOffset;
+            }
+
+            pendingAttributes = flushPendingAttributes(pendingAttributes, stack[stack.length - 1]);
+
+            return root;
+        }
+
+        function tryReadTextSegment(bytes, offset) {
+            if (offset + 9 <= bytes.length && equalsAscii(bytes, offset, "\x1B%-12345X")) {
+                const raw = Array.from(bytes.slice(offset, offset + 9));
+                return {
+                    nextOffset: offset + 9,
+                    node: createNode({
+                        kind: "uel",
+                        title: "UEL",
+                        offset,
+                        tagHex: "0x1B",
+                        summary: "Universal Exit Language",
+                        text: "ESC%-12345X",
+                        rawBytes: raw,
+                        children: []
+                    })
+                };
+            }
+
+            if (offset + 4 <= bytes.length && isTextSegmentBoundary(bytes, offset) && equalsAscii(bytes, offset, "@PJL")) {
+                const end = findLineEnd(bytes, offset);
+                const raw = Array.from(bytes.slice(offset, end));
+                const text = asciiText(bytes.slice(offset, end)).replace(/[\r\n]+$/, "");
+                const upper = text.toUpperCase();
+                const isJob = /^@PJL\s+JOB\b/.test(upper);
+                const isEoj = /^@PJL\s+EOJ\b/.test(upper);
+                const enteredLanguage = extractEnteredLanguage(text);
+                return {
+                    nextOffset: end,
+                    enteredLanguage,
+                    node: createNode({
+                        kind: isJob ? "block" : "segment",
+                        title: text,
+                        offset,
+                        tagHex: "0x40",
+                        summary: text,
+                        text,
+                        rawBytes: raw,
+                        blockKey: isJob ? "PJLJOB" : undefined,
+                        collapsed: isJob,
+                        isPjlCommand: true,
+                        languageName: enteredLanguage || "",
+                        isPjlJobBegin: isJob,
+                        isPjlJobEnd: isEoj,
+                        children: []
+                    })
+                };
+            }
+
+            if (offset + 11 <= bytes.length && isTextSegmentBoundary(bytes, offset) && equalsAscii(bytes, offset, ") HP-PCL XL")) {
+                const end = findLineEnd(bytes, offset);
+                const raw = Array.from(bytes.slice(offset, end));
+                const text = asciiText(bytes.slice(offset, end)).replace(/[\r\n]+$/, "");
+                return {
+                    nextOffset: end,
+                    isPclxlHeader: true,
+                    node: createNode({
+                        kind: "segment",
+                        title: "PCLXL Header",
+                        offset,
+                        tagHex: "0x29",
+                        summary: text,
+                        text,
+                        isPclxlHeader: true,
+                        languageName: "PCLXL",
+                        rawBytes: raw,
+                        children: []
+                    })
+                };
+            }
+
+            return null;
+        }
+
+        function parseValue(bytes, view, tag, start, offset) {
+            const info = TYPE_INFO[tag];
+            if (!info) {
+                if (tag === TAGS.E_DATALENGTHBYTE || tag === TAGS.E_DATALENGTH) {
+                    const embedded = parseEmbeddedData(bytes, view, tag, start, offset);
+                    return { node: embedded.node, nextOffset: embedded.nextOffset };
+                }
+                return null;
+            }
+
+            let cursor = offset;
+            let value;
+            let valueForEnum;
+            let lengthInfo = null;
+
+            if (info.shape === "array") {
+                const length = readLengthToken(view, cursor);
+                if (!length) {
+                    return null;
+                }
+                cursor = length.nextOffset;
+                const byteCount = length.count * info.size;
+                if (cursor + byteCount > bytes.length) {
+                    return null;
+                }
+                const slice = bytes.slice(cursor, cursor + byteCount);
+                value = decodeArrayValue(slice, info, length.count);
+                valueForEnum = value.enumCandidate;
+                lengthInfo = { count: length.count, lengthType: length.typeName };
+                cursor += byteCount;
+            } else if (info.shape === "xy" || info.shape === "box") {
+                const count = info.count;
+                const values = [];
+                for (let index = 0; index < count; index++) {
+                    const read = readPrimitive(view, cursor, info.mode, info.size);
+                    if (!read) {
+                        return null;
+                    }
+                    values.push(read.value);
+                    cursor = read.nextOffset;
+                }
+                value = {
+                    printable: info.shape === "xy" ? `(${values[0]}, ${values[1]})` : `[${values.join(", ")}]`,
+                    structured: values,
+                    detail: JSON.stringify(values),
+                    enumCandidate: values.join(",")
+                };
+                valueForEnum = value.enumCandidate;
+            } else {
+                const read = readPrimitive(view, cursor, info.mode, info.size);
+                if (!read) {
+                    return null;
+                }
+                cursor = read.nextOffset;
+                value = {
+                    printable: String(read.value),
+                    structured: read.value,
+                    detail: String(read.value),
+                    enumCandidate: String(read.value)
+                };
+                valueForEnum = value.enumCandidate;
+            }
+
+            const rawBytes = Array.from(bytes.slice(start, cursor));
+            const node = createNode({
+                kind: "attribute",
+                title: "Unbound attribute value",
+                offset: start,
+                tagHex: `0x${toHex(tag, 2)}`,
+                tagDec: tag,
+                dataType: info.name,
+                rawBytes,
+                valuePrintable: value.printable,
+                valueStructured: value.structured,
+                valueDetail: value.detail,
+                enumCandidate: valueForEnum,
+                lengthInfo,
+                children: []
+            });
+
+            return { node, nextOffset: cursor };
+        }
+
+        function parseEmbeddedData(bytes, view, tag, start, offset) {
+            let cursor = offset;
+            let dataLength;
+            let lengthFieldBytes;
+            if (tag === TAGS.E_DATALENGTHBYTE) {
+                if (cursor >= bytes.length) {
+                    return { node: null, nextOffset: cursor };
+                }
+                dataLength = view.getUint8(cursor);
+                cursor += 1;
+                lengthFieldBytes = 1;
+            } else {
+                if (cursor + 4 > bytes.length) {
+                    return { node: null, nextOffset: cursor };
+                }
+                dataLength = view.getUint32(cursor, true);
+                cursor += 4;
+                lengthFieldBytes = 4;
+            }
+
+            const end = Math.min(bytes.length, cursor + dataLength);
+            const payload = bytes.slice(cursor, end);
+            cursor = end;
+            const rawBytes = Array.from(bytes.slice(start, end));
+            const node = createNode({
+                kind: "attribute",
+                title: "Embedded data",
+                offset: start,
+                tagHex: `0x${toHex(tag, 2)}`,
+                tagDec: tag,
+                dataType: tag === TAGS.E_DATALENGTHBYTE ? "embedded_data_byte_length" : "embedded_data_length",
+                rawBytes,
+                valuePrintable: `${dataLength} byte${dataLength === 1 ? "" : "s"}`,
+                valueStructured: { dataLength, lengthFieldBytes },
+                valueDetail: `${dataLength} bytes of embedded payload`,
+                embeddedHex: toHexBytes(payload, PREVIEW_LIMIT),
+                children: []
+            });
+            return { node, nextOffset: cursor };
+        }
+
+        function bindAttributeName(bytes, view, tag, start, offset, pendingAttributes) {
+            let cursor = offset;
+            let attrId;
+            if (tag === TAGS.T_ATTR_UBYTE) {
+                attrId = view.getUint8(cursor);
+                cursor += 1;
+            } else {
+                attrId = view.getUint16(cursor, true);
+                cursor += 2;
+            }
+
+            const attrHex = `0x${attrId.toString(16)}`;
+            const attrName = ATTRIBUTES[attrHex] || `UNKNOWN_${toHex(attrId, tag === TAGS.T_ATTR_UBYTE ? 2 : 4)}`;
+            const lastValue = pendingAttributes[pendingAttributes.length - 1];
+
+            if (lastValue) {
+                lastValue.title = attrName;
+                lastValue.attributeName = attrName;
+                lastValue.attributeId = attrId;
+                lastValue.attributeTagHex = `0x${toHex(tag, 2)}`;
+                lastValue.rawBytes = lastValue.rawBytes.concat(Array.from(bytes.slice(start, cursor)));
+                const enumReadable = getEnumLabel(attrName, lastValue.enumCandidate, lastValue.valueStructured);
+                if (enumReadable) {
+                    lastValue.enumReadable = enumReadable;
+                }
+            } else {
+                pendingAttributes.push(createNode({
+                    kind: "attribute",
+                    title: attrName,
+                    offset: start,
+                    tagHex: `0x${toHex(tag, 2)}`,
+                    tagDec: tag,
+                    dataType: "attribute_identifier_only",
+                    rawBytes: Array.from(bytes.slice(start, cursor)),
+                    valuePrintable: "No preceding value",
+                    valueStructured: null,
+                    valueDetail: "Attribute identifier without a preceding data value",
+                    attributeName: attrName,
+                    attributeId: attrId,
+                    children: []
+                }));
+            }
+
+            return { nextOffset: cursor };
+        }
+
+        function consumeOpaquePayload(bytes, offset, languageName, detail) {
+            const nextOffset = findNextUelOffset(bytes, offset);
+            const payload = bytes.slice(offset, nextOffset);
+            const sizeLabel = `${payload.length.toLocaleString()} byte${payload.length === 1 ? "" : "s"}`;
+            return {
+                nextOffset,
+                node: createNode({
+                    kind: "language",
+                    title: `${languageName} payload`,
+                    offset,
+                    tagHex: payload.length ? `0x${toHex(payload[0], 2)}` : "",
+                    tagDec: payload.length ? payload[0] : undefined,
+                    summary: `${languageName} payload • ${sizeLabel}`,
+                    text: detail,
+                    languageName,
+                    dataType: "opaque_payload",
+                    rawBytes: Array.from(payload),
+                    valuePrintable: sizeLabel,
+                    valueStructured: { language: languageName, bytes: payload.length },
+                    valueDetail: detail,
+                    children: []
+                })
+            };
+        }
+
+        function flushPendingAttributes(pendingAttributes, parent) {
+            if (!pendingAttributes.length) {
+                return pendingAttributes;
+            }
+
+            parent.children.push(createNode({
+                kind: "warning",
+                title: "Trailing attribute values",
+                offset: pendingAttributes[0].offset,
+                tagHex: pendingAttributes[0].tagHex,
+                rawBytes: [],
+                summary: `${pendingAttributes.length} unbound values at end of stream`,
+                children: pendingAttributes
+            }));
+
+            return [];
+        }
+
+        function exitPclXlContext(stack) {
+            while (stack.length > 1 && stack[stack.length - 1].blockKey !== "PJLJOB") {
+                stack.pop();
+            }
+        }
+
+        function createOperatorNode(tag, offset, attributes, bytes) {
+            const name = OPERATORS[`0x${tag.toString(16)}`] || `O_UNKNOWN_${toHex(tag, 2)}`;
+            const rawBytes = Array.from(bytes.slice(offset, offset + 1));
+            const base = createNode({
+                kind: "operator",
+                title: name,
+                offset,
+                tagHex: `0x${toHex(tag, 2)}`,
+                tagDec: tag,
+                rawBytes,
+                attributes,
+                children: attributes.slice(),
+                detailType: "Operator"
+            });
+
+            const blockKey = getBeginBlockKey(name);
+            if (blockKey) {
+                base.kind = "block";
+                base.blockKey = blockKey;
+                base.collapsed = true;
+                base.detailType = "BeginEndBlock";
+                base.summary = `${blockKey} block`;
+            }
+
+            return base;
+        }
+
+        function attachOperatorNode(node, stack) {
+            const currentParent = stack[stack.length - 1];
+            const closingKey = getEndBlockKey(node.title);
+
+            if (closingKey) {
+                const matching = findMatchingBlock(stack, closingKey);
+                if (matching) {
+                    matching.children.push(node);
+                    matching.beginOperator = matching;
+                    matching.endOperator = node;
+                    matching.endOffset = node.offset;
+                    matching.endTagHex = node.tagHex;
+                    node.isEndOperator = true;
+                    node.beginBlock = matching;
+                    node.blockOrdinal = matching.blockOrdinal;
+                    matching.summary = `${matching.blockKey} block (${matching.children.length - matching.attributes.length - 1} inner nodes)`;
+                    while (stack.length - 1 >= matching.stackIndex) {
+                        stack.pop();
+                    }
+                    return;
+                }
+            }
+
+            if (node.kind === "block") {
+                if (!currentParent.blockCounters) {
+                    currentParent.blockCounters = {};
+                }
+                currentParent.blockCounters[node.blockKey] = (currentParent.blockCounters[node.blockKey] || 0) + 1;
+                node.blockOrdinal = currentParent.blockCounters[node.blockKey];
+            }
+
+            currentParent.children.push(node);
+            if (node.kind === "block") {
+                node.stackIndex = stack.length;
+                stack.push(node);
+            }
+        }
+
+        function attachTextSegmentNode(node, stack) {
+            const currentParent = stack[stack.length - 1];
+
+            if (node.isPjlJobEnd) {
+                const matching = findMatchingPjlJobBlock(stack);
+                if (matching) {
+                    matching.children.push(node);
+                    matching.beginOperator = matching;
+                    matching.endOperator = node;
+                    matching.endOffset = node.offset;
+                    matching.endTagHex = node.tagHex;
+                    node.isEndOperator = true;
+                    node.beginBlock = matching;
+                    node.blockOrdinal = matching.blockOrdinal;
+                    while (stack.length - 1 >= matching.stackIndex) {
+                        stack.pop();
+                    }
+                    return;
+                }
+            }
+
+            if (node.kind === "block") {
+                if (!currentParent.blockCounters) {
+                    currentParent.blockCounters = {};
+                }
+                currentParent.blockCounters[node.blockKey] = (currentParent.blockCounters[node.blockKey] || 0) + 1;
+                node.blockOrdinal = currentParent.blockCounters[node.blockKey];
+                currentParent.children.push(node);
+                node.stackIndex = stack.length;
+                stack.push(node);
+                return;
+            }
+
+            currentParent.children.push(node);
+        }
+
+        function findMatchingPjlJobBlock(stack) {
+            for (let index = stack.length - 1; index >= 1; index--) {
+                const candidate = stack[index];
+                if (candidate.kind === "block" && candidate.blockKey === "PJLJOB" && !candidate.endOperator) {
+                    candidate.stackIndex = index;
+                    return candidate;
+                }
+            }
+            return null;
+        }
+
+        function findMatchingBlock(stack, blockKey) {
+            for (let index = stack.length - 1; index >= 1; index--) {
+                const candidate = stack[index];
+                if (candidate.kind === "block" && candidate.blockKey === blockKey && !candidate.endOperator) {
+                    candidate.stackIndex = index;
+                    return candidate;
+                }
+            }
+            return null;
+        }
+
+        function createNode(properties) {
+            return {
+                id: state.nextId++,
+                children: [],
+                collapsed: false,
+                rawBytes: [],
+                ...properties
+            };
+        }
+
+        function renderTree() {
+            tree.innerHTML = "";
+            if (!state.root) {
+                return;
+            }
+            applyFilterVisibility(state.root);
+            const visible = renderChildren(state.root.children, tree, 0);
+            if (!visible) {
+                tree.innerHTML = '<div class="empty">No nodes match the current filter.</div>';
+            }
+        }
+
+        function renderChildren(children, container, depth) {
+            let visibleCount = 0;
+            for (const child of children) {
+                if (renderNode(child, container, depth)) {
+                    visibleCount += 1;
+                }
+            }
+            return visibleCount;
+        }
+
+        function renderNode(node, container, depth) {
+            const childHost = document.createElement("div");
+            const endHost = document.createElement("div");
+            const bodyChildren = node.kind === "block" && node.endOperator
+                ? (node.children || []).filter((child) => child.id !== node.endOperator.id)
+                : (node.children || []);
+            const childMatches = renderChildren(bodyChildren, childHost, depth + 1);
+            const endVisible = node.kind === "block" && node.endOperator
+                ? renderNode(node.endOperator, endHost, depth)
+                : false;
+            const shouldShow = !state.filter || node._filterVisible || childMatches > 0 || endVisible;
+            if (!shouldShow) {
+                return false;
+            }
+
+            const wrapper = document.createElement("div");
+            wrapper.className = "tree-node";
+
+            const row = document.createElement("div");
+            row.className = `tree-row${state.selectedId === node.id ? " selected" : ""}`;
+            row.style.setProperty("--depth", String(depth));
+            row.dataset.nodeId = String(node.id);
+
+            const hasChildren = node.children && node.children.length > 0;
+            const toggle = document.createElement("span");
+            toggle.className = `toggle${hasChildren ? "" : " spacer"}`;
+            toggle.textContent = hasChildren ? (node.collapsed ? "▶" : "▼") : "•";
+            row.appendChild(toggle);
+
+            const offset = document.createElement("span");
+            offset.className = "offset";
+            offset.textContent = formatOffset(node.offset);
+            row.appendChild(offset);
+
+            const tag = document.createElement("span");
+            tag.className = "tag-code";
+            tag.textContent = node.tagHex || "";
+            row.appendChild(tag);
+
+            const kind = document.createElement("span");
+            kind.className = "kind";
+            kind.innerHTML = `<span class="badge ${badgeClass(node)}">${badgeText(node)}</span><span class="label-text"></span>`;
+            kind.querySelector(".label-text").textContent = labelForNode(node);
+            row.appendChild(kind);
+
+            row.addEventListener("click", () => {
+                state.selectedId = node.id;
+                if (hasChildren && (node.kind === "block" || node.kind === "operator" || node.kind === "warning")) {
+                    if (node.kind === "block" || node.kind === "warning") {
+                        node.collapsed = !node.collapsed;
+                    }
+                }
+                renderTree();
+                renderDetails(node);
+            });
+
+            if (hasChildren) {
+                toggle.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    node.collapsed = !node.collapsed;
+                    renderTree();
+                });
+            }
+
+            wrapper.appendChild(row);
+
+            const chips = buildMetaChips(node);
+            if (chips.length) {
+                const meta = document.createElement("div");
+                meta.className = "meta-line";
+                meta.style.setProperty("--depth", String(depth));
+                meta.innerHTML = chips.map((chip) => {
+                    if (chip.jumpNodeId != null) {
+                        return `<button type="button" class="chip button-chip ${chip.chipClass || ""}" data-jump-node-id="${chip.jumpNodeId}">${escapeHtml(chip.text)}</button>`;
+                    }
+                    return `<span class="chip">${escapeHtml(chip.text)}</span>`;
+                }).join("");
+                for (const button of meta.querySelectorAll("[data-jump-node-id]")) {
+                    button.addEventListener("click", (event) => {
+                        event.stopPropagation();
+                        const targetId = Number(button.getAttribute("data-jump-node-id"));
+                        jumpToNode(targetId);
+                    });
+                }
+                wrapper.appendChild(meta);
+            }
+
+            if (hasChildren) {
+                const blockContent = document.createElement("div");
+                blockContent.className = `children${node.collapsed ? " hidden" : ""}`;
+                if (childHost.childNodes.length) {
+                    childHost.classList.add("block-body");
+                    childHost.style.setProperty("--depth", String(depth));
+                    blockContent.appendChild(childHost);
+                }
+                if (endHost.childNodes.length) {
+                    blockContent.appendChild(endHost);
+                }
+                wrapper.appendChild(blockContent);
+            }
+
+            container.appendChild(wrapper);
+            return true;
+        }
+
+        function renderDetails(node) {
+            if (!node) {
+                details.innerHTML = '<div class="empty">No selection.</div>';
+                return;
+            }
+
+            const infoRows = [
+                detailRow("Kind", node.kind),
+                detailRow("Label", escapeHtml(labelForNode(node))),
+                detailRow("Offset", `<span class="detail-code">${formatOffset(node.offset)}</span>`),
+                detailRow("Tag hex", `<span class="detail-code">${escapeHtml(node.tagHex || "")}</span>`),
+                detailRow("Tag dec", node.tagDec != null ? String(node.tagDec) : "")
+            ];
+
+            if (node.blockKey) {
+                infoRows.push(detailRow("Block", escapeHtml(node.blockKey)));
+            }
+            if (node.endOffset != null) {
+                const endAction = node.endOperator
+                    ? `<span class="detail-action"><span class="detail-code">${formatOffset(node.endOffset)}</span><button class="mini-button end-button" type="button" data-jump-node-id="${node.endOperator.id}">End</button></span>`
+                    : `<span class="detail-code">${formatOffset(node.endOffset)}</span>`;
+                infoRows.push(detailRow("End offset", endAction));
+            }
+            if (node.isEndOperator && node.beginBlock) {
+                const beginAction = `<span class="detail-action"><span class="detail-code">${formatOffset(node.beginBlock.offset)}</span><button class="mini-button begin-button" type="button" data-jump-node-id="${node.beginBlock.id}">Begin</button></span>`;
+                infoRows.push(detailRow("Begin offset", beginAction));
+            }
+            if (node.endTagHex) {
+                infoRows.push(detailRow("End tag", `<span class="detail-code">${escapeHtml(node.endTagHex)}</span>`));
+            }
+            if (node.attributeName) {
+                infoRows.push(detailRow("Attribute", escapeHtml(node.attributeName)));
+            }
+            if (node.languageName) {
+                infoRows.push(detailRow("Language", escapeHtml(node.languageName)));
+            }
+            if (node.attributeId != null) {
+                infoRows.push(detailRow("Attribute id", `<span class="detail-code">0x${toHex(node.attributeId, node.attributeId > 0xff ? 4 : 2)}</span>`));
+            }
+            if (node.dataType) {
+                infoRows.push(detailRow("Data type", escapeHtml(node.dataType)));
+            }
+            if (node.lengthInfo) {
+                infoRows.push(detailRow("Length prefix", `${escapeHtml(node.lengthInfo.lengthType)} • ${node.lengthInfo.count} item(s)`));
+            }
+            if (node.enumReadable) {
+                infoRows.push(detailRow("Enum", escapeHtml(node.enumReadable)));
+            }
+            if (node.summary) {
+                infoRows.push(detailRow("Summary", escapeHtml(node.summary)));
+            }
+            if (node.text) {
+                infoRows.push(detailRow("Text", escapeHtml(node.text)));
+            }
+            if (node.valuePrintable != null) {
+                infoRows.push(detailRow("Value", escapeHtml(node.valuePrintable)));
+            }
+
+            const rawHex = node.rawBytes && node.rawBytes.length ? toHexBytes(node.rawBytes, PREVIEW_LIMIT) : "";
+            const cards = [
+                `<div class="detail-card"><div class="detail-grid">${infoRows.join("")}</div></div>`
+            ];
+
+            if (node.valueStructured != null || node.valueDetail || node.embeddedHex) {
+                const structured = node.valueStructured == null ? "" : formatStructuredValue(node.valueStructured);
+                cards.push(`
+                    <div class="detail-card">
+                        <div class="detail-key">Decoded</div>
+                        <pre class="detail-pre">${escapeHtml(node.valueDetail || structured || "")}</pre>
+                    </div>
+                `);
+            }
+
+            if (node.embeddedHex) {
+                cards.push(`
+                    <div class="detail-card">
+                        <div class="detail-key">Embedded Payload Hex</div>
+                        <pre class="detail-pre">${escapeHtml(node.embeddedHex)}</pre>
+                    </div>
+                `);
+            }
+
+            cards.push(`
+                <div class="detail-card">
+                    <div class="detail-key">Raw Hex</div>
+                    <pre class="detail-pre">${escapeHtml(rawHex || "No raw bytes stored")}</pre>
+                </div>
+            `);
+
+            details.innerHTML = cards.join("");
+            for (const button of details.querySelectorAll("[data-jump-node-id]")) {
+                button.addEventListener("click", () => {
+                    const targetId = Number(button.getAttribute("data-jump-node-id"));
+                    jumpToNode(targetId);
+                });
+            }
+        }
+
+        function detailRow(key, value) {
+            return `<div class="detail-key">${escapeHtml(key)}</div><div class="detail-value">${value}</div>`;
+        }
+
+        function setAllBlocksCollapsed(collapsed) {
+            if (!state.root) {
+                return;
+            }
+            forEachNode(state.root, (node) => {
+                if (node.kind === "block") {
+                    node.collapsed = collapsed;
+                }
+            }
+            );
+            renderTree();
+        }
+
+        function annotateParents(node, parent) {
+            node.parent = parent;
+            for (const child of node.children || []) {
+                annotateParents(child, node);
+            }
+        }
+
+        function flattenNodes(node, result) {
+            if (node.kind !== "root") {
+                result.push(node);
+            }
+            for (const child of node.children || []) {
+                flattenNodes(child, result);
+            }
+        }
+
+        function forEachNode(node, callback) {
+            callback(node);
+            for (const child of node.children || []) {
+                forEachNode(child, callback);
+            }
+        }
+
+        function getNodeById(id) {
+            return state.nodes.find((node) => node.id === id) || null;
+        }
+
+        function jumpToNode(nodeId) {
+            const target = getNodeById(nodeId);
+            if (!target) {
+                return;
+            }
+            let current = target.parent;
+            while (current) {
+                if (current.kind === "block") {
+                    current.collapsed = false;
+                }
+                current = current.parent;
+            }
+            state.selectedId = target.id;
+            renderTree();
+            renderDetails(target);
+            const row = tree.querySelector(`[data-node-id="${target.id}"]`);
+            if (row) {
+                row.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+        }
+
+        function applyFilterVisibility(node) {
+            const selfMatch = nodeMatchesFilter(node);
+            let descendantVisible = false;
+            for (const child of node.children || []) {
+                if (applyFilterVisibility(child)) {
+                    descendantVisible = true;
+                }
+            }
+
+            if (!state.filter) {
+                node._filterVisible = true;
+                node._filterBodyVisible = true;
+                return true;
+            }
+
+            node._filterBodyVisible = selfMatch || (node.children || []).some((child) => !child.isEndOperator && child._filterVisible);
+            node._filterVisible = selfMatch || descendantVisible;
+
+            if (node.isEndOperator && node.beginBlock && node.beginBlock._filterBodyVisible) {
+                node._filterVisible = true;
+            }
+
+            return node._filterVisible;
+        }
+
+        function expandFilterMatchPaths(node) {
+            let containsVisibleDescendant = false;
+            for (const child of node.children || []) {
+                if (expandFilterMatchPaths(child)) {
+                    containsVisibleDescendant = true;
+                }
+            }
+
+            if (node.kind === "block" && containsVisibleDescendant) {
+                node.collapsed = false;
+            }
+
+            return Boolean(node._filterVisible);
+        }
+
+        function nodeMatchesFilter(node) {
+            if (!state.filter) {
+                return true;
+            }
+            const haystack = [
+                node.title,
+                node.summary,
+                node.attributeName,
+                node.languageName,
+                node.tagHex,
+                node.text,
+                node.valuePrintable,
+                node.enumReadable,
+                node.dataType,
+                node.blockKey,
+                node.offset != null ? formatOffset(node.offset) : ""
+            ].filter(Boolean).join(" ").toLowerCase();
+            return haystack.includes(state.filter);
+        }
+
+        function labelForNode(node) {
+            const numberedTitle = node.blockOrdinal != null ? `${node.title} [${node.blockOrdinal}]` : node.title;
+            if (node.kind === "attribute") {
+                const pieces = [node.title];
+                if (node.enumReadable) {
+                    pieces.push(`= ${node.enumReadable}`);
+                } else if (node.valuePrintable != null) {
+                    pieces.push(`= ${node.valuePrintable}`);
+                }
+                return pieces.join(" ");
+            }
+            if (node.kind === "language") {
+                return node.summary || numberedTitle;
+            }
+            if (node.kind === "segment" || node.kind === "uel") {
+                return node.summary || node.title;
+            }
+            if (node.kind === "block" || node.isEndOperator) {
+                return numberedTitle;
+            }
+            return numberedTitle;
+        }
+
+        function buildMetaChips(node) {
+            const chips = [];
+            if (node.kind === "attribute" && node.dataType) {
+                chips.push({ text: node.dataType });
+            }
+            if (node.kind === "language" && node.languageName) {
+                chips.push({ text: node.languageName });
+            }
+            if (node.kind === "attribute" && node.enumReadable) {
+                chips.push({ text: node.enumReadable });
+            }
+            if (node.kind === "block" && node.endOffset != null) {
+                chips.push({
+                    text: `end ${formatOffset(node.endOffset)}`,
+                    jumpNodeId: node.endOperator ? node.endOperator.id : null,
+                    chipClass: "end-chip"
+                });
+            }
+            if (node.isEndOperator && node.beginBlock) {
+                chips.push({
+                    text: `begin ${formatOffset(node.beginBlock.offset)}`,
+                    jumpNodeId: node.beginBlock.id,
+                    chipClass: "begin-chip"
+                });
+            }
+            if (node.kind === "segment" && node.text) {
+                chips.push({ text: trimForChip(node.text) });
+            }
+            if (node.kind === "operator" && node.attributes && node.attributes.length) {
+                chips.push({ text: `${node.attributes.length} attr` });
+            }
+            if (node.kind === "block" && node.attributes && node.attributes.length) {
+                chips.push({ text: `${node.attributes.length} attr` });
+            }
+            if (node.rawBytes && node.rawBytes.length) {
+                chips.push({ text: `${node.rawBytes.length} raw byte${node.rawBytes.length === 1 ? "" : "s"}` });
+            }
+            return chips;
+        }
+
+        function badgeClass(node) {
+            switch (node.kind) {
+                case "block":
+                    return "block";
+                case "operator":
+                    return "operator";
+                case "attribute":
+                    return "attribute";
+                case "language":
+                    return "language";
+                case "segment":
+                    return "segment";
+                case "uel":
+                    return "uel";
+                default:
+                    return "warning";
+            }
+        }
+
+        function badgeText(node) {
+            switch (node.kind) {
+                case "block":
+                    return "blk";
+                case "operator":
+                    return "op";
+                case "attribute":
+                    return "attr";
+                case "language":
+                    return "lang";
+                case "segment":
+                    return node.isPjlCommand ? "pjl" : node.isPclxlHeader ? "pcl" : "txt";
+                case "uel":
+                    return "uel";
+                default:
+                    return "warn";
+            }
+        }
+
+        function readLengthToken(view, offset) {
+            if (offset >= view.byteLength) {
+                return null;
+            }
+            const tag = view.getUint8(offset);
+            if (tag === TAGS.DT_UBYTE) {
+                if (offset + 2 > view.byteLength) {
+                    return null;
+                }
+                return { count: view.getUint8(offset + 1), nextOffset: offset + 2, typeName: "ubyte" };
+            }
+            if (tag === TAGS.DT_UINT16) {
+                if (offset + 3 > view.byteLength) {
+                    return null;
+                }
+                return { count: view.getUint16(offset + 1, true), nextOffset: offset + 3, typeName: "uint16" };
+            }
+            if (tag === TAGS.DT_UINT32) {
+                if (offset + 5 > view.byteLength) {
+                    return null;
+                }
+                return { count: view.getUint32(offset + 1, true), nextOffset: offset + 5, typeName: "uint32" };
+            }
+            return null;
+        }
+
+        function decodeArrayValue(slice, info, count) {
+            if (info.mode === "uint" && info.size === 1) {
+                const text = printableText(slice);
+                const values = Array.from(slice);
+                return {
+                    printable: text != null ? `"${text}"` : `[${values.join(", ")}]`,
+                    structured: text != null ? text : values,
+                    detail: text != null ? text : JSON.stringify(values),
+                    enumCandidate: text != null ? text : values.join(",")
+                };
+            }
+
+            if (info.mode === "uint" && info.size === 2) {
+                const decodedUtf16 = printableUtf16(slice);
+                if (decodedUtf16 != null) {
+                    return {
+                        printable: `"${decodedUtf16}"`,
+                        structured: decodedUtf16,
+                        detail: decodedUtf16,
+                        enumCandidate: decodedUtf16
+                    };
+                }
+            }
+
+            const values = [];
+            const view = new DataView(slice.buffer, slice.byteOffset, slice.byteLength);
+            let offset = 0;
+            for (let index = 0; index < count; index++) {
+                const read = readPrimitive(view, offset, info.mode, info.size);
+                if (!read) {
+                    break;
+                }
+                values.push(read.value);
+                offset = read.nextOffset;
+            }
+            return {
+                printable: `[${values.join(", ")}]`,
+                structured: values,
+                detail: JSON.stringify(values),
+                enumCandidate: values.length === 1 ? String(values[0]) : values.join(",")
+            };
+        }
+
+        function readPrimitive(view, offset, mode, size) {
+            if (offset + size > view.byteLength) {
+                return null;
+            }
+            let value;
+            if (mode === "uint") {
+                value = size === 1 ? view.getUint8(offset) : size === 2 ? view.getUint16(offset, true) : view.getUint32(offset, true);
+            } else if (mode === "int") {
+                value = size === 2 ? view.getInt16(offset, true) : view.getInt32(offset, true);
+            } else {
+                value = view.getFloat32(offset, true);
+            }
+            return { value, nextOffset: offset + size };
+        }
+
+        function getEnumLabel(attributeName, enumCandidate, structured) {
+            if (!attributeName) {
+                return "";
+            }
+            const table = ENUMS[attributeName];
+            if (!table) {
+                return "";
+            }
+            const key = String(enumCandidate);
+            if (Object.prototype.hasOwnProperty.call(table, key)) {
+                return table[key];
+            }
+            if (Array.isArray(structured) && structured.length === 1 && Object.prototype.hasOwnProperty.call(table, String(structured[0]))) {
+                return table[String(structured[0])];
+            }
+            return "";
+        }
+
+        function buildBlockPairs() {
+            const pairs = {};
+            for (const name of Object.values(OPERATORS)) {
+                if (!name.startsWith("O_BEGIN")) {
+                    continue;
+                }
+                const suffix = name.slice("O_BEGIN".length);
+                const endName = `O_END${suffix}`;
+                if (Object.values(OPERATORS).includes(endName)) {
+                    pairs[suffix] = { begin: name, end: endName };
+                }
+            }
+            return pairs;
+        }
+
+        function getBeginBlockKey(name) {
+            if (!name.startsWith("O_BEGIN")) {
+                return "";
+            }
+            const key = name.slice("O_BEGIN".length);
+            return BLOCK_MATCH[key] ? key : "";
+        }
+
+        function getEndBlockKey(name) {
+            if (!name.startsWith("O_END")) {
+                return "";
+            }
+            const key = name.slice("O_END".length);
+            return BLOCK_MATCH[key] ? key : "";
+        }
+
+        function isOperatorTag(tag) {
+            return tag >= 0x41 && tag <= 0xbf;
+        }
+
+        function extractEnteredLanguage(text) {
+            const match = text.match(/^@PJL\s+ENTER\s+LANGUAGE\s*=\s*(.+)$/i);
+            if (!match) {
+                return "";
+            }
+            return match[1].trim().replace(/^"(.*)"$/, "$1").replace(/\s+/g, " ");
+        }
+
+        function normalizeLanguageName(languageName) {
+            return String(languageName || "").toUpperCase().replace(/[\s_-]+/g, "");
+        }
+
+        function isPclXlLanguage(languageName) {
+            return PCLXL_LANGUAGES.has(normalizeLanguageName(languageName));
+        }
+
+        function findNextUelOffset(bytes, start) {
+            for (let offset = start; offset + 9 <= bytes.length; offset += 1) {
+                if (equalsAscii(bytes, offset, "\x1B%-12345X")) {
+                    return offset;
+                }
+            }
+            return bytes.length;
+        }
+
+        function isLineStart(bytes, offset) {
+            return offset === 0 || bytes[offset - 1] === 0x0a || bytes[offset - 1] === 0x0d;
+        }
+
+        function isTextSegmentBoundary(bytes, offset) {
+            return isLineStart(bytes, offset) || isImmediatelyAfterUel(bytes, offset);
+        }
+
+        function isImmediatelyAfterUel(bytes, offset) {
+            return offset >= 9 && equalsAscii(bytes, offset - 9, "\x1B%-12345X");
+        }
+
+        function equalsAscii(bytes, offset, text) {
+            for (let index = 0; index < text.length; index++) {
+                if (bytes[offset + index] !== text.charCodeAt(index)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function findLineEnd(bytes, start) {
+            let offset = start;
+            while (offset < bytes.length && bytes[offset] !== 0x0a) {
+                offset += 1;
+            }
+            if (offset < bytes.length) {
+                offset += 1;
+            }
+            return offset;
+        }
+
+        function asciiText(bytes) {
+            return Array.from(bytes, (value) => String.fromCharCode(value)).join("");
+        }
+
+        function printableText(bytes) {
+            const text = textDecoder.decode(bytes);
+            const cleaned = text.replace(/\0+$/g, "");
+            if (!cleaned) {
+                return "";
+            }
+            const printable = /^[\t\n\r\x20-\x7e]+$/.test(cleaned);
+            return printable ? cleaned : null;
+        }
+
+        function printableUtf16(bytes) {
+            if (bytes.length % 2 !== 0) {
+                return null;
+            }
+            const text = utf16Decoder.decode(bytes).replace(/\0+$/g, "");
+            if (!text) {
+                return "";
+            }
+            const printable = /^[\t\n\r\x20-\x7e]+$/.test(text);
+            return printable ? text : null;
+        }
+
+        function trimForChip(text) {
+            return text.length > 48 ? `${text.slice(0, 45)}...` : text;
+        }
+
+        function formatOffset(offset) {
+            return `0x${toHex(offset, 8)}`;
+        }
+
+        function toHex(value, width) {
+            return value.toString(16).toUpperCase().padStart(width, "0");
+        }
+
+        function toHexBytes(bytes, limit) {
+            const source = Array.from(bytes);
+            const shown = source.slice(0, limit).map((value) => toHex(value, 2));
+            const chunks = [];
+            for (let index = 0; index < shown.length; index += 16) {
+                chunks.push(shown.slice(index, index + 16).join(" "));
+            }
+            if (source.length > limit) {
+                chunks.push(`... (${source.length - limit} more bytes)`);
+            }
+            return chunks.join("\n");
+        }
+
+        function formatStructuredValue(value) {
+            if (typeof value === "string") {
+                return value;
+            }
+            try {
+                return JSON.stringify(value, null, 2);
+            } catch {
+                return String(value);
+            }
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function openHelp() {
+            helpReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            helpDialog.hidden = false;
+            helpCloseButton.focus();
+        }
+
+        function closeHelp() {
+            if (helpDialog.hidden) {
+                return;
+            }
+            helpDialog.hidden = true;
+            const focusTarget = helpReturnFocus && document.body.contains(helpReturnFocus) ? helpReturnFocus : helpButton;
+            helpReturnFocus = null;
+            focusTarget.focus();
+        }
+
+        function handleGlobalKeydown(event) {
+            if (event.key === "F1") {
+                event.preventDefault();
+                if (helpDialog.hidden) {
+                    openHelp();
+                } else {
+                    closeHelp();
+                }
+                return;
+            }
+
+            if (event.key === "Escape" && !helpDialog.hidden) {
+                event.preventDefault();
+                closeHelp();
+            }
+        }
+    </script>
+</body>
+</html>
