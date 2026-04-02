@@ -1,0 +1,3067 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log Explorer</title>
+    <style>
+        :root {
+            --bg: #eef3fb;
+            --bg-accent: #dde8f9;
+            --panel: rgba(255, 255, 255, 0.88);
+            --panel-strong: #ffffff;
+            --surface: #f7f9fd;
+            --surface-2: #ecf2fb;
+            --border: #d4deee;
+            --border-strong: #b8c7df;
+            --text: #1b2430;
+            --muted: #61758e;
+            --accent: #2f80ed;
+            --accent-strong: #195fc4;
+            --accent-soft: #d8e8ff;
+            --preview: #1f6fe5;
+            --danger: #cb3b46;
+            --warning: #b57400;
+            --success: #217a48;
+            --shadow: 0 18px 48px rgba(61, 87, 125, 0.18);
+            --row-height: 22px;
+            --gutter-width: 96px;
+            --radius: 16px;
+            --font: "Consolas", "Menlo", "Courier New", monospace;
+            --ui-font: "Segoe UI", "Noto Sans", sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            background:
+                radial-gradient(circle at top right, rgba(82, 154, 255, 0.18), transparent 24%),
+                linear-gradient(180deg, #f5f8fe 0%, #eaf1fb 100%);
+            color: var(--text);
+            font-family: var(--ui-font);
+            overflow: hidden;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        button,
+        input,
+        select,
+        textarea {
+            font: inherit;
+        }
+
+        button,
+        select,
+        input[type="text"],
+        input[type="number"],
+        textarea {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--panel-strong);
+            color: var(--text);
+        }
+
+        button {
+            cursor: pointer;
+            padding: 9px 12px;
+            transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+        }
+
+        button:hover:not(:disabled) {
+            border-color: var(--accent);
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+        }
+
+        .primary {
+            background: linear-gradient(180deg, #4e95f8, #2f80ed);
+            color: #fff;
+            border-color: #2f80ed;
+        }
+
+        .ghost {
+            background: var(--surface);
+        }
+
+        .danger {
+            color: var(--danger);
+        }
+
+        .app-shell {
+            display: grid;
+            grid-template-rows: auto auto 1fr auto;
+            gap: 12px;
+            height: 100%;
+            padding: 18px;
+        }
+
+        .topbar,
+        .toolbar,
+        .statusbar,
+        .workspace,
+        .modal-card,
+        .drop-zone {
+            border: 1px solid rgba(255, 255, 255, 0.65);
+            box-shadow: var(--shadow);
+            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(14px);
+        }
+
+        .topbar,
+        .toolbar,
+        .statusbar {
+            background: var(--panel);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+        }
+
+        .topbar {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .topbar-side {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .title-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .title-group h1 {
+            margin: 0;
+            font-size: 1.25rem;
+            letter-spacing: 0.02em;
+        }
+
+        .title-group p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+
+        .stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .quick-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .icon-button,
+        .app-menu-summary {
+            width: 42px;
+            height: 42px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            font-size: 1.05rem;
+            line-height: 1;
+        }
+
+        .icon-button {
+            background: var(--panel-strong);
+        }
+
+        .app-menu {
+            position: relative;
+        }
+
+        .app-menu summary {
+            list-style: none;
+        }
+
+        .app-menu summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .app-menu-summary {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--panel-strong);
+            color: var(--text);
+            cursor: pointer;
+            transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+        }
+
+        .app-menu-summary:hover {
+            border-color: var(--accent);
+            transform: translateY(-1px);
+        }
+
+        .app-menu[open] .app-menu-summary {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+
+        .app-menu-panel {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            width: min(380px, calc(100vw - 40px));
+            display: grid;
+            gap: 10px;
+            padding: 12px;
+            border-radius: 18px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.96);
+            box-shadow: var(--shadow);
+            z-index: 25;
+        }
+
+        .menu-group {
+            display: grid;
+            gap: 8px;
+        }
+
+        .menu-label {
+            font-size: 0.76rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .menu-stack {
+            display: grid;
+            gap: 8px;
+        }
+
+        .menu-button {
+            width: 100%;
+            justify-content: flex-start;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+
+        .toolbar {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px;
+        }
+
+        .compact-toolbar {
+            align-items: center;
+        }
+
+        .toolbar-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            min-width: 0;
+        }
+
+        .toolbar-section label {
+            color: var(--muted);
+            font-size: 0.86rem;
+        }
+
+        .toolbar-section.actions button {
+            min-width: 112px;
+        }
+
+        .toolbar-hint {
+            color: var(--muted);
+            font-size: 0.84rem;
+        }
+
+        .toolbar input[type="text"],
+        .toolbar select,
+        .toolbar textarea,
+        .toolbar input[type="number"] {
+            padding: 8px 10px;
+        }
+
+        .toolbar .wide {
+            min-width: 180px;
+            flex: 1 1 180px;
+        }
+
+        .workspace {
+            min-height: 0;
+            display: grid;
+            grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+            gap: 14px;
+            background: transparent;
+            box-shadow: none;
+            border: none;
+        }
+
+        .panel {
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            background: var(--panel);
+            border: 1px solid rgba(255, 255, 255, 0.65);
+            box-shadow: var(--shadow);
+            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(14px);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .panel-header h2 {
+            margin: 0;
+            font-size: 1rem;
+        }
+
+        .panel-body {
+            min-height: 0;
+            padding: 12px;
+            overflow: auto;
+        }
+
+        .operator-actions {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .operator-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .operator-card {
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: var(--panel-strong);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .operator-card.selected {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(47, 128, 237, 0.16);
+        }
+
+        .operator-card.disabled {
+            opacity: 0.58;
+            background: var(--surface);
+        }
+
+        .operator-head,
+        .operator-meta,
+        .operator-row,
+        .mini-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .operator-head {
+            justify-content: space-between;
+        }
+
+        .operator-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .operator-title strong {
+            font-size: 0.95rem;
+        }
+
+        .operator-index {
+            color: var(--muted);
+            min-width: 32px;
+        }
+
+        .operator-meta {
+            color: var(--muted);
+            font-size: 0.85rem;
+        }
+
+        .operator-card textarea {
+            width: 100%;
+            min-height: 42px;
+            resize: none;
+            padding: 8px 10px;
+            font-family: var(--font);
+            line-height: 1.45;
+        }
+
+        .operator-card input[type="text"],
+        .operator-card input[type="number"],
+        .operator-card select {
+            padding: 7px 9px;
+        }
+
+        .operator-card .grow {
+            flex: 1 1 140px;
+        }
+
+        .clause-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .clause-item {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto auto;
+            gap: 6px;
+            align-items: start;
+        }
+
+        .operator-hint {
+            margin-bottom: 12px;
+            color: var(--muted);
+            font-size: 0.86rem;
+        }
+
+        .viewer-panel {
+            position: relative;
+        }
+
+        .viewer-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(245, 249, 253, 0.88));
+        }
+
+        .viewer-toolbar .spacer {
+            flex: 1 1 auto;
+        }
+
+        .viewer-stage-label {
+            color: var(--muted);
+            font-size: 0.86rem;
+        }
+
+        .viewer-shell {
+            min-height: 0;
+            flex: 1 1 auto;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 16px;
+            grid-template-rows: minmax(0, 1fr) 16px;
+            gap: 0;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 249, 255, 0.96));
+        }
+
+        .viewer-viewport {
+            position: relative;
+            overflow: hidden;
+            min-height: 0;
+            font-family: var(--font);
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .line-layer {
+            position: absolute;
+            inset: 0;
+        }
+
+        .log-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: var(--row-height);
+            line-height: var(--row-height);
+            white-space: pre;
+            display: grid;
+            grid-template-columns: var(--gutter-width) minmax(0, 1fr);
+            align-items: center;
+            font-size: 13px;
+        }
+
+        .log-line:nth-child(even) {
+            background: rgba(230, 239, 251, 0.35);
+        }
+
+        .log-line.preview-next-filter .line-text {
+            color: var(--preview);
+        }
+
+        .line-number {
+            color: var(--muted);
+            border-right: 1px solid rgba(212, 222, 238, 0.75);
+            padding: 0 12px 0 14px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .line-text {
+            display: flex;
+            align-items: center;
+            min-width: 0;
+            padding-left: 10px;
+            color: var(--text);
+        }
+
+        .line-fragment {
+            white-space: pre;
+        }
+
+        .line-fragment.selected {
+            background: rgba(47, 128, 237, 0.24);
+            box-shadow: inset 0 0 0 1px rgba(47, 128, 237, 0.18);
+            border-radius: 3px;
+        }
+
+        .empty-state,
+        .drop-zone {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .empty-state {
+            position: absolute;
+            inset: 0;
+            padding: 32px;
+            color: var(--muted);
+            pointer-events: none;
+        }
+
+        .drop-zone {
+            position: fixed;
+            inset: 18px;
+            border-radius: 28px;
+            border: 2px dashed rgba(47, 128, 237, 0.4);
+            background: rgba(245, 249, 255, 0.82);
+            color: var(--accent-strong);
+            z-index: 30;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.18s ease, visibility 0.18s ease, transform 0.18s ease;
+            transform: scale(0.985);
+        }
+
+        .drop-zone.visible {
+            opacity: 1;
+            visibility: visible;
+            transform: scale(1);
+        }
+
+        .drop-zone.drag-over {
+            background: rgba(221, 235, 255, 0.96);
+            border-color: var(--accent);
+        }
+
+        .drop-zone h2 {
+            margin: 0 0 10px;
+            font-size: 1.5rem;
+        }
+
+        .drop-zone p {
+            margin: 0;
+            color: var(--muted);
+        }
+
+        .scrollbar-track {
+            position: relative;
+            background: linear-gradient(180deg, #edf3fb, #e1eaf7);
+        }
+
+        .scrollbar-track.vertical {
+            grid-column: 2;
+            grid-row: 1;
+            border-left: 1px solid var(--border);
+        }
+
+        .scrollbar-track.horizontal {
+            grid-column: 1;
+            grid-row: 2;
+            border-top: 1px solid var(--border);
+        }
+
+        .scrollbar-thumb {
+            position: absolute;
+            background: linear-gradient(180deg, #8eb8fb, #5e95ef);
+            border-radius: 999px;
+        }
+
+        .scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #78abfb, #4a88ea);
+        }
+
+        .scrollbar-thumb.vertical {
+            left: 2px;
+            right: 2px;
+            min-height: 22px;
+        }
+
+        .scrollbar-thumb.horizontal {
+            top: 2px;
+            bottom: 2px;
+            min-width: 24px;
+        }
+
+        .statusbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.88rem;
+            color: var(--muted);
+        }
+
+        .statusbar strong {
+            color: var(--text);
+        }
+
+        .busy-indicator {
+            color: var(--accent-strong);
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(24, 32, 43, 0.26);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 40;
+        }
+
+        .modal-backdrop.visible {
+            display: flex;
+        }
+
+        .modal-card {
+            width: min(760px, 100%);
+            max-height: min(90vh, 900px);
+            overflow: auto;
+            background: var(--panel);
+            border-radius: 22px;
+            padding: 24px;
+        }
+
+        .modal-card h3 {
+            margin-top: 0;
+        }
+
+        .modal-card p,
+        .modal-card li {
+            line-height: 1.58;
+            color: #2e3947;
+        }
+
+        .modal-card code {
+            font-family: var(--font);
+            background: var(--surface);
+            padding: 1px 4px;
+            border-radius: 6px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 20px;
+        }
+
+        .visually-hidden,
+        #fileInput,
+        #profileImportInput {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        #measureRuler {
+            position: absolute;
+            left: -9999px;
+            top: -9999px;
+            visibility: hidden;
+            white-space: pre;
+            font-family: var(--font);
+            font-size: 13px;
+        }
+
+        @media (max-width: 1200px) {
+            .workspace {
+                grid-template-columns: 1fr;
+            }
+
+            .toolbar {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 900px) {
+            .topbar {
+                grid-template-columns: 1fr;
+            }
+
+            .topbar-side {
+                justify-content: flex-start;
+            }
+
+            .menu-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-shell">
+        <section class="topbar">
+            <div class="title-group">
+                <h1>Log Explorer</h1>
+                <p>Cached staged browsing with structural selection, keyboard control, and UTF-8-normalized inputs.</p>
+            </div>
+            <div class="topbar-side">
+                <div class="stats">
+                    <span class="pill" id="fileInfo">No source loaded</span>
+                    <span class="pill" id="encodingInfo">Encoding: n/a</span>
+                    <span class="pill" id="lineInfo">Lines: 0</span>
+                </div>
+                <div class="quick-actions">
+                    <button class="icon-button primary" id="openFileButton" title="Open file">⊞</button>
+                    <button class="icon-button" id="pasteClipboardButton" title="Paste clipboard">⎘</button>
+                    <button class="icon-button" id="copySelectionButton" disabled title="Copy selection">⧉</button>
+                    <button class="icon-button" id="helpButton" title="Help and shortcuts">?</button>
+                    <details class="app-menu" id="appMenu">
+                        <summary class="app-menu-summary" title="App menu">☰</summary>
+                        <div class="app-menu-panel">
+                            <div class="menu-group">
+                                <span class="menu-label">View</span>
+                                <div class="menu-grid">
+                                    <button class="menu-button" id="exportViewButton" disabled>⇩ Download view</button>
+                                    <button class="menu-button" id="copyViewButton" disabled>◫ Copy view</button>
+                                    <button class="menu-button" id="copyColumnButton" disabled>║ Copy column</button>
+                                    <button class="menu-button" id="copyBlockButton" disabled>▦ Copy block</button>
+                                </div>
+                                <button class="menu-button" id="resetViewButton" disabled>↺ Reset view</button>
+                            </div>
+                            <div class="menu-group">
+                                <span class="menu-label">Profiles</span>
+                                <div class="menu-stack">
+                                    <input class="wide" type="text" id="profileNameInput" placeholder="Profile name">
+                                    <label for="profileSelect" class="visually-hidden">Saved profiles</label>
+                                    <select id="profileSelect" title="Saved profiles"></select>
+                                </div>
+                                <div class="menu-grid">
+                                    <button class="menu-button" id="saveProfileButton" disabled>⇢ Save</button>
+                                    <button class="menu-button" id="loadProfileButton" disabled>⇠ Load</button>
+                                    <button class="menu-button" id="deleteProfileButton" disabled>✕ Delete</button>
+                                    <button class="menu-button" id="exportProfilesButton">⇩ Export</button>
+                                </div>
+                                <button class="menu-button" id="importProfilesButton">⇧ Import profiles</button>
+                            </div>
+                        </div>
+                    </details>
+                    <input type="file" id="fileInput" title="Open a log file">
+                    <input type="file" id="profileImportInput" accept=".json,application/json"
+                        title="Import a profile bundle">
+                </div>
+            </div>
+        </section>
+
+        <section class="toolbar compact-toolbar">
+            <div class="toolbar-section actions">
+                <button class="primary" id="addFilterButton"
+                    title="Add filter from current selection with Enter shortcut">⊕ Filter</button>
+                <button id="addReplaceButton" title="Add replace or delete from current selection">⇄ Replace</button>
+                <button id="addSortButton" title="Add sort">⇅ Sort</button>
+                <button id="addDiffButton" title="Add diff">≠ Diff</button>
+            </div>
+            <div class="toolbar-section">
+                <span class="toolbar-hint">Shortcuts: Enter include, Esc exclude, Delete remove, Ctrl+A select all,
+                    Ctrl+C copy.</span>
+            </div>
+        </section>
+
+        <section class="workspace">
+            <div class="panel">
+                <div class="panel-header">
+                    <h2>Operations</h2>
+                    <span class="pill" id="stageSummary">Stage: raw</span>
+                </div>
+                <div class="panel-body">
+                    <div class="operator-hint">Single click smart-selects structures. Drag to override. Ctrl+click picks
+                        the smallest matching token.</div>
+                    <div class="operator-list" id="operatorList"></div>
+                </div>
+            </div>
+
+            <div class="panel viewer-panel">
+                <div class="viewer-toolbar">
+                    <span class="viewer-stage-label" id="viewerStageLabel">Previewing raw source</span>
+                    <span class="pill" id="selectionInfo">Selection: none</span>
+                    <span class="pill" id="scrollInfo">Scroll: row 1, col 1</span>
+                    <span class="spacer"></span>
+                    <span class="pill" id="cacheInfo">Cache: 0 stages</span>
+                </div>
+                <div class="viewer-shell">
+                    <div class="viewer-viewport" id="viewerViewport">
+                        <div class="line-layer" id="lineLayer"></div>
+                        <div class="empty-state" id="emptyState">
+                            <div>
+                                <h2>Drop a log file, open one, or paste clipboard text</h2>
+                                <p>The viewer keeps rows unwrapped, caches stage results, and supports Ctrl + wheel for
+                                    horizontal scrolling.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="scrollbar-track vertical" id="verticalTrack">
+                        <div class="scrollbar-thumb vertical" id="verticalThumb"></div>
+                    </div>
+                    <div class="scrollbar-track horizontal" id="horizontalTrack">
+                        <div class="scrollbar-thumb horizontal" id="horizontalThumb"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="statusbar">
+            <span id="statusMessage"><strong>Status:</strong> Ready.</span>
+            <span class="busy-indicator" id="busyIndicator"></span>
+        </section>
+    </div>
+
+    <div class="drop-zone visible" id="dropZone">
+        <div>
+            <h2>Drop a file or profile bundle</h2>
+            <p>Log files are decoded to UTF-8. JSON profile bundles are imported. You can also paste text or file
+                content from the clipboard.</p>
+        </div>
+    </div>
+
+    <div class="modal-backdrop" id="helpModal">
+        <div class="modal-card">
+            <h3>How to use Log Explorer</h3>
+            <p>Load content by drop, file picker, or clipboard. Inputs are normalized to UTF-8 before indexing. Rows
+                stay unwrapped; use the custom scrollbars, arrow keys, Page Up, Page Down, Home, End, or Ctrl + wheel
+                for horizontal movement.</p>
+            <p>The top bar keeps the most common actions visible and moves secondary commands into the app menu.
+                Profiles live in that menu together with export, import, and alternate copy commands.</p>
+            <p>Each operation row is selectable. Only enabled operations from the top down to the selected row affect
+                the preview. Disabled rows stay visible but do not contribute. If the next enabled row after the
+                selected stage is a Filter, lines that would stay after that Filter are previewed in blue.</p>
+            <ul>
+                <li><strong>Filter:</strong> include and exclude lists, with per-clause case sensitivity. Clause editors
+                    are multiline; each non-empty line acts as an alternative match for that clause.</li>
+                <li><strong>Replace:</strong> whole-stage text replacement, including multi-line search and replacement.
+                </li>
+                <li><strong>Sort:</strong> positional and anchor-based extraction. Non-parsable rows stay attached to
+                    the nearest preceding parsable row and move as a block.</li>
+                <li><strong>Diff:</strong> positional numeric or temporal delta. Non-parsable rows stay attached to the
+                    preceding parsable anchor row. Applying the inverted diff right after the normal diff restores the
+                    cached original stage.</li>
+            </ul>
+            <p>Single click prefers a structural selection on the clicked line: words, floats, dotted identifiers,
+                paths, URLs, quoted strings, bracketed spans, date-times, time spans, JSON fragments, and XML tags.
+                Ctrl+click picks the smallest matching token. Shift plus navigation extends the current selection.</p>
+            <p>Keyboard actions outside editors: <code>Ctrl+A</code> selects the current stage, <code>Ctrl+C</code>
+                copies selection, <code>Enter</code> creates an include Filter from the selection, <code>Esc</code>
+                creates an exclude Filter or clears selection, and <code>Delete</code> creates a delete-style Replace.
+            </p>
+            <p>Mouse selection is copyable. <code>Copy Column</code> uses the current selection width across the whole
+                preview. <code>Copy Block</code> copies the current rectangular selection across its selected line span.
+                Profiles persist locally, can be saved by name, exported as JSON, and imported by button or file drop.
+            </p>
+            <div class="modal-actions">
+                <button id="closeHelpButton" class="primary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="measureRuler">0000000000</div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const STORAGE_WORKING_SET = "logExplorer.workingSet.v1";
+            const STORAGE_PROFILES = "logExplorer.profiles.v1";
+            const PROFILE_KIND = "LogExplorerProfiles";
+            const PROFILE_VERSION = 1;
+            const CACHE_MAX_STAGES = 18;
+            const CACHE_MAX_BYTES = 220 * 1024 * 1024;
+            const BUFFER_ROWS = 10;
+
+            const elements = {
+                fileInfo: document.getElementById("fileInfo"),
+                encodingInfo: document.getElementById("encodingInfo"),
+                lineInfo: document.getElementById("lineInfo"),
+                appMenu: document.getElementById("appMenu"),
+                stageSummary: document.getElementById("stageSummary"),
+                viewerStageLabel: document.getElementById("viewerStageLabel"),
+                selectionInfo: document.getElementById("selectionInfo"),
+                scrollInfo: document.getElementById("scrollInfo"),
+                cacheInfo: document.getElementById("cacheInfo"),
+                statusMessage: document.getElementById("statusMessage"),
+                busyIndicator: document.getElementById("busyIndicator"),
+                openFileButton: document.getElementById("openFileButton"),
+                pasteClipboardButton: document.getElementById("pasteClipboardButton"),
+                exportViewButton: document.getElementById("exportViewButton"),
+                copyViewButton: document.getElementById("copyViewButton"),
+                copySelectionButton: document.getElementById("copySelectionButton"),
+                copyColumnButton: document.getElementById("copyColumnButton"),
+                copyBlockButton: document.getElementById("copyBlockButton"),
+                resetViewButton: document.getElementById("resetViewButton"),
+                helpButton: document.getElementById("helpButton"),
+                closeHelpButton: document.getElementById("closeHelpButton"),
+                fileInput: document.getElementById("fileInput"),
+                profileImportInput: document.getElementById("profileImportInput"),
+                importProfilesButton: document.getElementById("importProfilesButton"),
+                exportProfilesButton: document.getElementById("exportProfilesButton"),
+                profileNameInput: document.getElementById("profileNameInput"),
+                profileSelect: document.getElementById("profileSelect"),
+                saveProfileButton: document.getElementById("saveProfileButton"),
+                loadProfileButton: document.getElementById("loadProfileButton"),
+                deleteProfileButton: document.getElementById("deleteProfileButton"),
+                addFilterButton: document.getElementById("addFilterButton"),
+                addReplaceButton: document.getElementById("addReplaceButton"),
+                addSortButton: document.getElementById("addSortButton"),
+                addDiffButton: document.getElementById("addDiffButton"),
+                operatorList: document.getElementById("operatorList"),
+                viewerViewport: document.getElementById("viewerViewport"),
+                lineLayer: document.getElementById("lineLayer"),
+                emptyState: document.getElementById("emptyState"),
+                verticalTrack: document.getElementById("verticalTrack"),
+                verticalThumb: document.getElementById("verticalThumb"),
+                horizontalTrack: document.getElementById("horizontalTrack"),
+                horizontalThumb: document.getElementById("horizontalThumb"),
+                dropZone: document.getElementById("dropZone"),
+                helpModal: document.getElementById("helpModal"),
+                measureRuler: document.getElementById("measureRuler")
+            };
+
+            const state = {
+                source: {
+                    name: "",
+                    originalEncoding: "",
+                    normalizedEncoding: "utf-8",
+                    stage: null
+                },
+                operators: [],
+                selectedOperatorId: null,
+                nextOperatorId: 1,
+                stageCache: new Map(),
+                stageCacheOrder: [],
+                stageCacheBytes: 0,
+                view: {
+                    rowHeight: 22,
+                    gutterWidth: 96,
+                    charWidth: 8,
+                    scrollTop: 0,
+                    scrollLeftCols: 0,
+                    viewportRows: 1,
+                    viewportCols: 1,
+                    draggingVertical: false,
+                    draggingHorizontal: false,
+                    dragStartClient: 0,
+                    dragStartScroll: 0
+                },
+                selection: null,
+                isSelecting: false,
+                jobVersion: 0,
+                activeJob: 0,
+                profiles: {
+                    named: {}
+                },
+                cursor: {
+                    row: 0,
+                    col: 0
+                },
+                pointerSelection: null
+            };
+
+            function updateStatus(message, busy) {
+                elements.statusMessage.innerHTML = "<strong>Status:</strong> " + escapeHtml(message);
+                elements.busyIndicator.textContent = busy || "";
+            }
+
+            function setBusy(message) {
+                elements.busyIndicator.textContent = message || "";
+            }
+
+            function stableStringify(value) {
+                if (Array.isArray(value)) {
+                    return "[" + value.map(stableStringify).join(",") + "]";
+                }
+                if (value && typeof value === "object") {
+                    return "{" + Object.keys(value).sort().map((key) => JSON.stringify(key) + ":" + stableStringify(value[key])).join(",") + "}";
+                }
+                return JSON.stringify(value);
+            }
+
+            function escapeHtml(text) {
+                return String(text)
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;");
+            }
+
+            function escapeAttribute(text) {
+                return escapeHtml(text).replace(/"/g, "&quot;");
+            }
+
+            function formatGrouped(value) {
+                const sign = value < 0 ? "-" : "";
+                const digits = String(Math.abs(Math.trunc(Number(value) || 0)));
+                return sign + digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+            }
+
+            function clamp(value, min, max) {
+                return Math.max(min, Math.min(max, value));
+            }
+
+            function debounceFrame(callback) {
+                let pending = false;
+                return () => {
+                    if (pending) return;
+                    pending = true;
+                    requestAnimationFrame(() => {
+                        pending = false;
+                        callback();
+                    });
+                };
+            }
+
+            const renderSoon = debounceFrame(() => {
+                renderAll().catch((error) => handleError(error));
+            });
+
+            function handleError(error) {
+                if (error && error.message === "Canceled") {
+                    return;
+                }
+                console.error(error);
+                updateStatus(error && error.message ? error.message : "Unexpected error.");
+                setBusy("");
+            }
+
+            function createFilterClause(text) {
+                return { text: text || "", caseSensitive: false };
+            }
+
+            function closeAppMenu() {
+                if (elements.appMenu) {
+                    elements.appMenu.removeAttribute("open");
+                }
+            }
+
+            function createDefaultOperator(type, prefill) {
+                const base = {
+                    id: state.nextOperatorId++,
+                    type,
+                    enabled: true,
+                    name: type
+                };
+                if (type === "filter") {
+                    return {
+                        ...base,
+                        include: prefill && prefill.selectedText ? [createFilterClause(prefill.selectedText)] : [createFilterClause("")],
+                        exclude: []
+                    };
+                }
+                if (type === "replace") {
+                    return {
+                        ...base,
+                        search: prefill && prefill.selectedText ? prefill.selectedText : "",
+                        replacement: ""
+                    };
+                }
+                if (type === "sort") {
+                    return {
+                        ...base,
+                        mode: "positional",
+                        pos: prefill ? prefill.startCol : 0,
+                        len: prefill ? Math.max(1, prefill.width) : 8,
+                        anchor: prefill && prefill.selectedText ? prefill.selectedText : "",
+                        anchorSide: "after",
+                        valueType: "number",
+                        order: "asc"
+                    };
+                }
+                return {
+                    ...base,
+                    pos: prefill ? prefill.startCol : 0,
+                    len: prefill ? Math.max(1, prefill.width) : 8,
+                    valueType: "number",
+                    invert: false
+                };
+            }
+
+            function getCurrentSelectionPrefill() {
+                const stage = state.source.stage ? getCurrentStageSync() : null;
+                const normalized = normalizeSelection(state.selection);
+                if (!stage || !normalized) {
+                    return { selectedText: "", startCol: 0, width: 0 };
+                }
+                return {
+                    selectedText: extractSelectionText(stage, normalized),
+                    startCol: normalized.startCol,
+                    width: normalized.endCol - normalized.startCol
+                };
+            }
+
+            function buildIndexedStage(text, hash, label) {
+                const lineStarts = [0];
+                const lineEnds = [];
+                let maxLineLength = 0;
+                let start = 0;
+                for (let i = 0; i < text.length; i++) {
+                    if (text.charCodeAt(i) === 10) {
+                        lineEnds.push(i);
+                        maxLineLength = Math.max(maxLineLength, i - start);
+                        start = i + 1;
+                        lineStarts.push(start);
+                    }
+                }
+                lineEnds.push(text.length);
+                maxLineLength = Math.max(maxLineLength, text.length - start);
+                return {
+                    kind: "indexed",
+                    hash,
+                    label,
+                    text,
+                    lineStarts,
+                    lineEnds,
+                    lineCount: lineStarts.length,
+                    maxLineLength,
+                    estimatedBytes: text.length * 2 + lineStarts.length * 16
+                };
+            }
+
+            function buildLineStage(lines, hash, label, extra) {
+                let maxLineLength = 0;
+                let estimatedBytes = 0;
+                for (const line of lines) {
+                    maxLineLength = Math.max(maxLineLength, line.length);
+                    estimatedBytes += line.length * 2 + 32;
+                }
+                return {
+                    kind: "lines",
+                    hash,
+                    label,
+                    lines,
+                    lineCount: lines.length,
+                    maxLineLength,
+                    estimatedBytes,
+                    ...extra
+                };
+            }
+
+            function getStageLine(stage, index) {
+                if (!stage || index < 0 || index >= stage.lineCount) return "";
+                if (stage.kind === "lines") {
+                    return stage.lines[index];
+                }
+                return stage.text.slice(stage.lineStarts[index], stage.lineEnds[index]);
+            }
+
+            function materializeStageLines(stage) {
+                if (stage.kind === "lines") {
+                    return stage.lines;
+                }
+                if (stage.lines) {
+                    return stage.lines;
+                }
+                const lines = new Array(stage.lineCount);
+                for (let index = 0; index < stage.lineCount; index++) {
+                    lines[index] = getStageLine(stage, index);
+                }
+                stage.lines = lines;
+                return lines;
+            }
+
+            function ensureStageText(stage) {
+                if (typeof stage.text === "string") {
+                    return stage.text;
+                }
+                stage.text = materializeStageLines(stage).join("\n");
+                return stage.text;
+            }
+
+            function putStageInCache(key, stage) {
+                if (state.stageCache.has(key)) {
+                    return state.stageCache.get(key);
+                }
+                state.stageCache.set(key, stage);
+                state.stageCacheOrder.push(key);
+                state.stageCacheBytes += stage.estimatedBytes || 0;
+                while ((state.stageCacheOrder.length > CACHE_MAX_STAGES || state.stageCacheBytes > CACHE_MAX_BYTES) && state.stageCacheOrder.length > 1) {
+                    const evictKey = state.stageCacheOrder.shift();
+                    if (!evictKey || evictKey === "raw") {
+                        continue;
+                    }
+                    const evicted = state.stageCache.get(evictKey);
+                    state.stageCache.delete(evictKey);
+                    if (evicted) {
+                        state.stageCacheBytes -= evicted.estimatedBytes || 0;
+                    }
+                }
+                updateCacheInfo();
+                return stage;
+            }
+
+            function clearPipelineCache() {
+                const rawStage = state.stageCache.get("raw");
+                state.stageCache.clear();
+                state.stageCacheOrder = [];
+                state.stageCacheBytes = 0;
+                if (rawStage) {
+                    state.stageCache.set("raw", rawStage);
+                    state.stageCacheOrder.push("raw");
+                    state.stageCacheBytes += rawStage.estimatedBytes || 0;
+                }
+                updateCacheInfo();
+            }
+
+            function updateCacheInfo() {
+                elements.cacheInfo.textContent = "Cache: " + state.stageCache.size + " stage" + (state.stageCache.size === 1 ? "" : "s");
+            }
+
+            function serializeOperator(operator) {
+                return stableStringify({
+                    type: operator.type,
+                    enabled: operator.enabled,
+                    include: operator.include,
+                    exclude: operator.exclude,
+                    search: operator.search,
+                    replacement: operator.replacement,
+                    mode: operator.mode,
+                    pos: operator.pos,
+                    len: operator.len,
+                    anchor: operator.anchor,
+                    anchorSide: operator.anchorSide,
+                    valueType: operator.valueType,
+                    order: operator.order,
+                    invert: operator.invert
+                });
+            }
+
+            function getOperatorIndexById(id) {
+                return state.operators.findIndex((operator) => operator.id === id);
+            }
+
+            function getSelectedOperatorIndex() {
+                if (state.selectedOperatorId == null) return -1;
+                return getOperatorIndexById(state.selectedOperatorId);
+            }
+
+            async function computeSelectedStage() {
+                if (!state.source.stage) {
+                    return null;
+                }
+                let stage = state.source.stage;
+                const selectedIndex = getSelectedOperatorIndex();
+                for (let index = 0; index <= selectedIndex; index++) {
+                    const operator = state.operators[index];
+                    if (!operator) continue;
+                    if (!operator.enabled) {
+                        continue;
+                    }
+                    const key = stage.hash + "|" + serializeOperator(operator);
+                    if (state.stageCache.has(key)) {
+                        stage = state.stageCache.get(key);
+                        continue;
+                    }
+                    setBusy("Applying " + operator.type + "...");
+                    const computed = await applyOperator(stage, operator, state.activeJob);
+                    stage = putStageInCache(key, computed);
+                }
+                setBusy("");
+                return stage;
+            }
+
+            function getCurrentStageSync() {
+                if (!state.source.stage) return null;
+                let stage = state.source.stage;
+                const selectedIndex = getSelectedOperatorIndex();
+                for (let index = 0; index <= selectedIndex; index++) {
+                    const operator = state.operators[index];
+                    if (!operator || !operator.enabled) continue;
+                    const key = stage.hash + "|" + serializeOperator(operator);
+                    const cached = state.stageCache.get(key);
+                    if (!cached) {
+                        break;
+                    }
+                    stage = cached;
+                }
+                return stage;
+            }
+
+            async function applyOperator(stage, operator, jobVersion) {
+                if (jobVersion !== state.activeJob) {
+                    throw new Error("Canceled");
+                }
+                if (operator.type === "filter") {
+                    return applyFilter(stage, operator, stage.hash + "|filter");
+                }
+                if (operator.type === "replace") {
+                    return applyReplace(stage, operator, stage.hash + "|replace");
+                }
+                if (operator.type === "sort") {
+                    return applySort(stage, operator, stage.hash + "|sort");
+                }
+                return applyDiff(stage, operator, stage.hash + "|diff");
+            }
+
+            function evaluateFilterLine(line, operator) {
+                const includeClauses = (operator.include || []).filter((item) => item.text);
+                const excludeClauses = (operator.exclude || []).filter((item) => item.text);
+                const lineLower = line.toLowerCase();
+                const clauseMatches = (clause) => {
+                    const variants = String(clause.text || "").split(/\r?\n/).filter((part) => part.length > 0);
+                    return variants.some((variant) => clause.caseSensitive ? line.includes(variant) : lineLower.includes(variant.toLowerCase()));
+                };
+                const includePass = includeClauses.length === 0 || includeClauses.some(clauseMatches);
+                const excludeHit = excludeClauses.some(clauseMatches);
+                return includePass && !excludeHit;
+            }
+
+            function applyFilter(stage, operator, hash) {
+                const sourceLines = materializeStageLines(stage);
+                const filtered = [];
+                for (const line of sourceLines) {
+                    if (evaluateFilterLine(line, operator)) {
+                        filtered.push(line);
+                    }
+                }
+                return buildLineStage(filtered, hash, "Filter");
+            }
+
+            function applyReplace(stage, operator, hash) {
+                if (!operator.search) {
+                    return buildLineStage(materializeStageLines(stage).slice(), hash, "Replace");
+                }
+                const text = ensureStageText(stage);
+                const replaced = text.split(operator.search).join(operator.replacement || "");
+                const indexed = buildIndexedStage(replaced, hash, "Replace");
+                indexed.diffMeta = null;
+                return indexed;
+            }
+
+            function extractSortSlice(line, operator) {
+                if (operator.mode === "anchor") {
+                    const anchorIndex = line.indexOf(operator.anchor || "");
+                    if (anchorIndex === -1) {
+                        return { ok: false, raw: "" };
+                    }
+                    if (operator.anchorSide === "before") {
+                        const prefix = line.slice(0, anchorIndex).trimEnd();
+                        const token = prefix.split(/\s+/).filter(Boolean).pop() || "";
+                        return token ? { ok: true, raw: token } : { ok: false, raw: "" };
+                    }
+                    const suffix = line.slice(anchorIndex + (operator.anchor || "").length).trimStart();
+                    if (operator.valueType === "string") {
+                        return suffix ? { ok: true, raw: suffix } : { ok: false, raw: "" };
+                    }
+                    const token = suffix.split(/\s+/).filter(Boolean)[0] || "";
+                    return token ? { ok: true, raw: token } : { ok: false, raw: "" };
+                }
+                const pos = Math.max(0, Number(operator.pos) || 0);
+                const len = Math.max(1, Number(operator.len) || 1);
+                const raw = line.slice(pos, pos + len);
+                return raw ? { ok: true, raw } : { ok: false, raw: "" };
+            }
+
+            function parseTimeSpan(raw) {
+                const text = raw.trim();
+                if (!text) return null;
+                const match = text.match(/^(-)?(?:(\d+)\.)?(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.(\d{1,3}))?$/);
+                if (!match) {
+                    const numeric = Number(text);
+                    return Number.isFinite(numeric) ? numeric : null;
+                }
+                const sign = match[1] ? -1 : 1;
+                const days = Number(match[2] || 0);
+                const hours = Number(match[3] || 0);
+                const minutes = Number(match[4] || 0);
+                const seconds = Number(match[5] || 0);
+                const millis = Number((match[6] || "0").padEnd(3, "0"));
+                return sign * (((((days * 24) + hours) * 60 + minutes) * 60 + seconds) * 1000 + millis);
+            }
+
+            function formatTimeSpan(milliseconds) {
+                const sign = milliseconds < 0 ? "-" : "";
+                let value = Math.abs(Math.round(milliseconds));
+                const millis = value % 1000;
+                value = Math.floor(value / 1000);
+                const seconds = value % 60;
+                value = Math.floor(value / 60);
+                const minutes = value % 60;
+                value = Math.floor(value / 60);
+                const hours = value % 24;
+                const days = Math.floor(value / 24);
+                const dayPrefix = days ? String(days) + "." : "";
+                return sign + dayPrefix + String(hours).padStart(2, "0") + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0") + "." + String(millis).padStart(3, "0");
+            }
+
+            function parseDateTime(raw) {
+                const text = raw.trim();
+                if (!text) return null;
+                const direct = Date.parse(text);
+                if (!Number.isNaN(direct)) {
+                    return direct;
+                }
+                const match = text.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+                if (!match) return null;
+                const day = Number(match[1]);
+                const month = Number(match[2]) - 1;
+                const year = Number(match[3]);
+                const hours = Number(match[4] || 0);
+                const minutes = Number(match[5] || 0);
+                const seconds = Number(match[6] || 0);
+                return new Date(year, month, day, hours, minutes, seconds).getTime();
+            }
+
+            function parseTypedValue(raw, valueType, forInvertDateTime) {
+                if (valueType === "string") {
+                    return { ok: true, raw, comparable: raw };
+                }
+                if (valueType === "number") {
+                    const numeric = Number(raw.trim().replace(/,/g, "."));
+                    return Number.isFinite(numeric) ? { ok: true, raw, comparable: numeric } : { ok: false, raw, comparable: null };
+                }
+                if (valueType === "time-span") {
+                    const span = parseTimeSpan(raw);
+                    return span == null ? { ok: false, raw, comparable: null } : { ok: true, raw, comparable: span };
+                }
+                if (forInvertDateTime) {
+                    const span = parseTimeSpan(raw);
+                    return span == null ? { ok: false, raw, comparable: null } : { ok: true, raw, comparable: span };
+                }
+                const timestamp = parseDateTime(raw);
+                return timestamp == null ? { ok: false, raw, comparable: null } : { ok: true, raw, comparable: timestamp };
+            }
+
+            function formatTypedValue(value, valueType) {
+                if (valueType === "number") {
+                    return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(6)));
+                }
+                if (valueType === "time-span") {
+                    return formatTimeSpan(value);
+                }
+                return formatTimeSpan(value);
+            }
+
+            function compareValues(left, right, type, order) {
+                let result;
+                if (type === "string") {
+                    result = String(left).localeCompare(String(right));
+                } else {
+                    result = left < right ? -1 : left > right ? 1 : 0;
+                }
+                return order === "desc" ? -result : result;
+            }
+
+            function buildGroupedBlocks(lines, operator, invertDateTimeMode) {
+                const leading = [];
+                const blocks = [];
+                let currentBlock = null;
+                for (const line of lines) {
+                    const slice = extractSortSlice(line, operator);
+                    const parsed = slice.ok ? parseTypedValue(slice.raw, operator.valueType, invertDateTimeMode) : { ok: false };
+                    if (parsed.ok) {
+                        currentBlock = {
+                            key: parsed.comparable,
+                            raw: slice.raw,
+                            anchor: line,
+                            lines: [line],
+                            type: operator.valueType
+                        };
+                        blocks.push(currentBlock);
+                    } else if (currentBlock) {
+                        currentBlock.lines.push(line);
+                    } else {
+                        leading.push(line);
+                    }
+                }
+                return { leading, blocks };
+            }
+
+            function applySort(stage, operator, hash) {
+                const lines = materializeStageLines(stage);
+                const grouped = buildGroupedBlocks(lines, operator, false);
+                const sortedBlocks = grouped.blocks
+                    .map((block, index) => ({ block, index }))
+                    .sort((left, right) => {
+                        const comparison = compareValues(left.block.key, right.block.key, operator.valueType, operator.order);
+                        return comparison || left.index - right.index;
+                    })
+                    .map((entry) => entry.block);
+                const output = grouped.leading.slice();
+                for (const block of sortedBlocks) {
+                    output.push(...block.lines);
+                }
+                return buildLineStage(output, hash, "Sort");
+            }
+
+            function replaceRange(line, pos, len, replacement) {
+                const start = line.slice(0, pos);
+                const end = line.slice(pos + len);
+                return start + replacement + end;
+            }
+
+            function diffSignature(operator) {
+                return stableStringify({ pos: operator.pos, len: operator.len, valueType: operator.valueType });
+            }
+
+            function applyDiff(stage, operator, hash) {
+                if (operator.invert && stage.diffMeta && stage.diffMeta.signature === diffSignature(operator)) {
+                    return buildLineStage(stage.diffMeta.originalLines.slice(), hash, "Diff restore");
+                }
+                const lines = materializeStageLines(stage);
+                const grouped = buildGroupedBlocks(lines, operator, operator.invert && operator.valueType === "date-time");
+                const output = grouped.leading.slice();
+                let previousInputComparable = null;
+                let previousOutputComparable = null;
+                for (const block of grouped.blocks) {
+                    const anchor = block.anchor;
+                    const slice = extractSortSlice(anchor, { ...operator, mode: "positional" });
+                    const parsed = parseTypedValue(slice.raw, operator.valueType, operator.invert && operator.valueType === "date-time");
+                    let replacement = slice.raw;
+                    if (previousInputComparable != null || previousOutputComparable != null) {
+                        if (operator.invert) {
+                            if (stage.diffMeta && stage.diffMeta.signature === diffSignature(operator) && stage.diffMeta.originalLines) {
+                                replacement = slice.raw;
+                            } else if (previousOutputComparable != null) {
+                                const restored = parsed.comparable + previousOutputComparable;
+                                replacement = operator.valueType === "date-time" ? new Date(restored).toISOString() : formatTypedValue(restored, operator.valueType);
+                                previousOutputComparable = restored;
+                            }
+                        } else if (previousInputComparable != null) {
+                            const diff = parsed.comparable - previousInputComparable;
+                            replacement = formatTypedValue(diff, operator.valueType === "date-time" ? "time-span" : operator.valueType);
+                        }
+                    }
+                    if (!operator.invert) {
+                        previousInputComparable = parsed.comparable;
+                        previousOutputComparable = parsed.comparable;
+                    } else if (previousOutputComparable == null) {
+                        previousOutputComparable = operator.valueType === "date-time" ? parseDateTime(slice.raw) : parsed.comparable;
+                    }
+                    const changedAnchor = replaceRange(anchor, Math.max(0, Number(operator.pos) || 0), Math.max(1, Number(operator.len) || 1), replacement);
+                    output.push(changedAnchor);
+                    for (let followerIndex = 1; followerIndex < block.lines.length; followerIndex++) {
+                        output.push(block.lines[followerIndex]);
+                    }
+                }
+                return buildLineStage(output, hash, "Diff", { diffMeta: { signature: diffSignature(operator), originalLines: lines.slice() } });
+            }
+
+            function normalizeSelection(selection) {
+                if (!selection) return null;
+                const startsBefore = selection.startRow < selection.endRow || (selection.startRow === selection.endRow && selection.startCol <= selection.endCol);
+                if (startsBefore) {
+                    return {
+                        startRow: selection.startRow,
+                        startCol: selection.startCol,
+                        endRow: selection.endRow,
+                        endCol: selection.endCol
+                    };
+                }
+                return {
+                    startRow: selection.endRow,
+                    startCol: selection.endCol,
+                    endRow: selection.startRow,
+                    endCol: selection.startCol
+                };
+            }
+
+            function extractSelectionText(stage, normalized) {
+                if (!normalized) return "";
+                const lines = [];
+                for (let row = normalized.startRow; row <= normalized.endRow; row++) {
+                    const line = getStageLine(stage, row);
+                    if (row === normalized.startRow && row === normalized.endRow) {
+                        lines.push(line.slice(normalized.startCol, normalized.endCol));
+                    } else if (row === normalized.startRow) {
+                        lines.push(line.slice(normalized.startCol));
+                    } else if (row === normalized.endRow) {
+                        lines.push(line.slice(0, normalized.endCol));
+                    } else {
+                        lines.push(line);
+                    }
+                }
+                return lines.join("\n");
+            }
+
+            function buildColumnText(stage, normalized) {
+                if (!normalized) return "";
+                const width = normalized.endCol - normalized.startCol;
+                if (width <= 0) return "";
+                const lines = [];
+                for (let row = 0; row < stage.lineCount; row++) {
+                    lines.push(getStageLine(stage, row).slice(normalized.startCol, normalized.startCol + width));
+                }
+                return lines.join("\n");
+            }
+
+            function buildBlockText(stage, normalized) {
+                if (!normalized) return "";
+                const width = normalized.endCol - normalized.startCol;
+                if (width <= 0) return "";
+                const lines = [];
+                for (let row = normalized.startRow; row <= normalized.endRow; row++) {
+                    lines.push(getStageLine(stage, row).slice(normalized.startCol, normalized.startCol + width));
+                }
+                return lines.join("\n");
+            }
+
+            function selectionRangeForRow(normalized, rowIndex) {
+                if (!normalized || rowIndex < normalized.startRow || rowIndex > normalized.endRow) {
+                    return null;
+                }
+                if (normalized.startRow === normalized.endRow) {
+                    return { start: normalized.startCol, end: normalized.endCol };
+                }
+                if (rowIndex === normalized.startRow) {
+                    return { start: normalized.startCol, end: Number.POSITIVE_INFINITY };
+                }
+                if (rowIndex === normalized.endRow) {
+                    return { start: 0, end: normalized.endCol };
+                }
+                return { start: 0, end: Number.POSITIVE_INFINITY };
+            }
+
+            function renderLineText(line, rowIndex, range, previewFiltered) {
+                const startCol = state.view.scrollLeftCols;
+                const endCol = startCol + state.view.viewportCols;
+                const sliceStart = clamp(startCol, 0, line.length);
+                const sliceEnd = clamp(endCol, 0, Math.max(line.length, endCol));
+                const visible = line.slice(sliceStart, sliceEnd);
+                if (!range) {
+                    return "<span class=\"line-fragment\">" + escapeHtml(visible) + "</span>";
+                }
+                const selectionStart = Math.max(range.start, sliceStart);
+                const selectionEnd = Math.min(range.end, sliceEnd);
+                if (selectionStart >= selectionEnd) {
+                    return "<span class=\"line-fragment\">" + escapeHtml(visible) + "</span>";
+                }
+                const localSelectionStart = selectionStart - sliceStart;
+                const localSelectionEnd = selectionEnd - sliceStart;
+                const before = visible.slice(0, localSelectionStart);
+                const selected = visible.slice(localSelectionStart, localSelectionEnd);
+                const after = visible.slice(localSelectionEnd);
+                return [
+                    "<span class=\"line-fragment\">" + escapeHtml(before) + "</span>",
+                    "<span class=\"line-fragment selected\">" + escapeHtml(selected) + "</span>",
+                    "<span class=\"line-fragment\">" + escapeHtml(after) + "</span>"
+                ].join("");
+            }
+
+            function findNextEnabledOperatorIndex(fromIndex) {
+                for (let index = fromIndex + 1; index < state.operators.length; index++) {
+                    if (state.operators[index].enabled) {
+                        return index;
+                    }
+                }
+                return -1;
+            }
+
+            function getPreviewFilterOperator() {
+                const selectedIndex = getSelectedOperatorIndex();
+                const nextIndex = findNextEnabledOperatorIndex(selectedIndex);
+                if (nextIndex === -1) return null;
+                const next = state.operators[nextIndex];
+                return next && next.type === "filter" ? next : null;
+            }
+
+            function measureViewport() {
+                const rulerRect = elements.measureRuler.getBoundingClientRect();
+                state.view.charWidth = Math.max(6, rulerRect.width / 10);
+                const viewportRect = elements.viewerViewport.getBoundingClientRect();
+                state.view.viewportRows = Math.max(1, Math.floor(viewportRect.height / state.view.rowHeight));
+                state.view.viewportCols = Math.max(4, Math.floor((viewportRect.width - state.view.gutterWidth - 16) / state.view.charWidth));
+            }
+
+            async function renderViewer(stage) {
+                elements.emptyState.style.display = stage ? "none" : "flex";
+                if (!stage) {
+                    elements.lineLayer.innerHTML = "";
+                    updateScrollbars(null);
+                    return;
+                }
+                const viewportHeight = elements.viewerViewport.clientHeight;
+                const totalHeight = stage.lineCount * state.view.rowHeight;
+                const maxScrollTop = Math.max(0, totalHeight - viewportHeight);
+                state.view.scrollTop = clamp(state.view.scrollTop, 0, maxScrollTop);
+                const firstVisibleRow = Math.floor(state.view.scrollTop / state.view.rowHeight);
+                const startRow = Math.max(0, firstVisibleRow - BUFFER_ROWS);
+                const endRow = Math.min(stage.lineCount, firstVisibleRow + state.view.viewportRows + BUFFER_ROWS);
+                const offsetY = startRow * state.view.rowHeight - state.view.scrollTop;
+                const selection = normalizeSelection(state.selection);
+                const previewFilter = getPreviewFilterOperator();
+                let html = "";
+                for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
+                    const line = getStageLine(stage, rowIndex);
+                    const previewFiltered = previewFilter ? evaluateFilterLine(line, previewFilter) : false;
+                    const range = selectionRangeForRow(selection, rowIndex);
+                    html += "<div class=\"log-line" + (previewFiltered ? " preview-next-filter" : "") + "\" data-row=\"" + rowIndex + "\" style=\"transform:translateY(" + ((rowIndex - startRow) * state.view.rowHeight + offsetY) + "px);\">" +
+                        "<div class=\"line-number\">" + formatGrouped(rowIndex + 1) + "</div>" +
+                        "<div class=\"line-text\">" + renderLineText(line, rowIndex, range, previewFiltered) + "</div>" +
+                        "</div>";
+                }
+                elements.lineLayer.innerHTML = html;
+                updateScrollbars(stage);
+            }
+
+            function updateScrollbars(stage) {
+                if (!stage) {
+                    elements.verticalThumb.style.top = "0px";
+                    elements.horizontalThumb.style.left = "0px";
+                    return;
+                }
+                const viewportHeight = elements.viewerViewport.clientHeight;
+                const totalHeight = stage.lineCount * state.view.rowHeight;
+                const vTrackHeight = elements.verticalTrack.clientHeight;
+                const vThumbHeight = totalHeight <= viewportHeight ? vTrackHeight : Math.max(22, (viewportHeight / totalHeight) * vTrackHeight);
+                const maxVThumbTop = Math.max(0, vTrackHeight - vThumbHeight);
+                const maxVScroll = Math.max(0, totalHeight - viewportHeight);
+                const vThumbTop = maxVScroll ? (state.view.scrollTop / maxVScroll) * maxVThumbTop : 0;
+                elements.verticalThumb.style.height = vThumbHeight + "px";
+                elements.verticalThumb.style.top = vThumbTop + "px";
+
+                const hTrackWidth = elements.horizontalTrack.clientWidth;
+                const totalCols = Math.max(stage.maxLineLength, state.view.viewportCols);
+                const hThumbWidth = totalCols <= state.view.viewportCols ? hTrackWidth : Math.max(24, (state.view.viewportCols / totalCols) * hTrackWidth);
+                const maxHThumbLeft = Math.max(0, hTrackWidth - hThumbWidth);
+                const maxHScroll = Math.max(0, totalCols - state.view.viewportCols);
+                state.view.scrollLeftCols = clamp(state.view.scrollLeftCols, 0, maxHScroll);
+                const hThumbLeft = maxHScroll ? (state.view.scrollLeftCols / maxHScroll) * maxHThumbLeft : 0;
+                elements.horizontalThumb.style.width = hThumbWidth + "px";
+                elements.horizontalThumb.style.left = hThumbLeft + "px";
+            }
+
+            async function renderAll() {
+                measureViewport();
+                updateButtons();
+                const editorState = captureOperatorEditorState();
+                const stage = await computeSelectedStage();
+                await renderViewer(stage);
+                renderOperatorList();
+                restoreOperatorEditorState(editorState);
+                autoSizeAllTextareas();
+                updateHeader(stage);
+                updateSelectionInfo(stage);
+                updateScrollInfo(stage);
+            }
+
+            function updateHeader(stage) {
+                const selectedIndex = getSelectedOperatorIndex();
+                const label = selectedIndex === -1 ? "raw" : "through #" + (selectedIndex + 1) + " " + state.operators[selectedIndex].type;
+                elements.stageSummary.textContent = "Stage: " + label;
+                elements.viewerStageLabel.textContent = selectedIndex === -1 ? "Previewing raw source" : "Previewing enabled operations through row " + (selectedIndex + 1);
+                if (!state.source.stage) {
+                    elements.fileInfo.textContent = "No source loaded";
+                    elements.encodingInfo.textContent = "Encoding: n/a";
+                    elements.lineInfo.textContent = "Lines: 0";
+                    return;
+                }
+                elements.fileInfo.textContent = state.source.name || "Clipboard";
+                elements.encodingInfo.textContent = "Encoding: " + state.source.originalEncoding + " -> UTF-8";
+                elements.lineInfo.textContent = "Lines: " + formatGrouped(stage.lineCount);
+            }
+
+            function updateScrollInfo(stage) {
+                if (!stage) {
+                    elements.scrollInfo.textContent = "Scroll: row 1, col 1";
+                    return;
+                }
+                const row = Math.floor(state.view.scrollTop / state.view.rowHeight) + 1;
+                const col = state.view.scrollLeftCols + 1;
+                elements.scrollInfo.textContent = "Scroll: row " + formatGrouped(row) + ", col " + formatGrouped(col);
+            }
+
+            function updateSelectionInfo(stage) {
+                const selection = normalizeSelection(state.selection);
+                if (!stage || !selection) {
+                    elements.selectionInfo.textContent = "Selection: none";
+                    return;
+                }
+                const rows = selection.endRow - selection.startRow + 1;
+                const width = selection.endCol - selection.startCol;
+                const charCount = extractSelectionText(stage, selection).length;
+                elements.selectionInfo.textContent = "Selection: rows " + formatGrouped(selection.startRow + 1) + "-" + formatGrouped(selection.endRow + 1) + ", cols " + formatGrouped(selection.startCol + 1) + "-" + formatGrouped(selection.endCol) + " (" + formatGrouped(rows) + "x" + formatGrouped(width) + ", len " + formatGrouped(charCount) + ")";
+            }
+
+            function updateButtons() {
+                const hasSource = !!state.source.stage;
+                const hasSelection = !!normalizeSelection(state.selection);
+                const hasProfiles = Object.keys(state.profiles.named).length > 0;
+                elements.exportViewButton.disabled = !hasSource;
+                elements.copyViewButton.disabled = !hasSource;
+                elements.copySelectionButton.disabled = !hasSelection;
+                elements.copyColumnButton.disabled = !hasSelection || !hasSource;
+                elements.copyBlockButton.disabled = !hasSelection || !hasSource;
+                elements.resetViewButton.disabled = !hasSource;
+                elements.saveProfileButton.disabled = state.operators.length === 0;
+                elements.loadProfileButton.disabled = !hasProfiles;
+                elements.deleteProfileButton.disabled = !hasProfiles;
+            }
+
+            function setDropZoneVisibility(visible) {
+                elements.dropZone.classList.toggle("visible", visible);
+            }
+
+            function renderOperatorList() {
+                if (!state.operators.length) {
+                    elements.operatorList.innerHTML = "<div class=\"operator-card\"><div class=\"operator-meta\">No operations yet. Use the Add buttons to build a pipeline.</div></div>";
+                    return;
+                }
+                elements.operatorList.innerHTML = state.operators.map((operator, index) => renderOperatorCard(operator, index)).join("");
+            }
+
+            function renderOperatorCard(operator, index) {
+                const selected = operator.id === state.selectedOperatorId;
+                const cardClasses = ["operator-card"];
+                if (selected) cardClasses.push("selected");
+                if (!operator.enabled) cardClasses.push("disabled");
+                return "<article class=\"" + cardClasses.join(" ") + "\" data-operator-id=\"" + operator.id + "\">" +
+                    "<div class=\"operator-head\">" +
+                    "<div class=\"operator-title\">" +
+                    "<span class=\"operator-index\">#" + (index + 1) + "</span>" +
+                    "<strong>" + capitalize(operator.type) + "</strong>" +
+                    "<button class=\"ghost\" data-action=\"select\" title=\"Select this stage\">" + (selected ? "●" : "◎") + "</button>" +
+                    "</div>" +
+                    "<div class=\"mini-actions\">" +
+                    "<label><input type=\"checkbox\" data-action=\"toggle-enabled\" " + (operator.enabled ? "checked" : "") + "> enabled</label>" +
+                    "<button data-action=\"move-up\" title=\"Move up\">↑</button>" +
+                    "<button data-action=\"move-down\" title=\"Move down\">↓</button>" +
+                    "<button data-action=\"duplicate\" title=\"Duplicate\">⧉</button>" +
+                    "<button class=\"danger\" data-action=\"delete\" title=\"Delete\">✕</button>" +
+                    "</div>" +
+                    "</div>" +
+                    renderOperatorBody(operator) +
+                    "</article>";
+            }
+
+            function renderOperatorBody(operator) {
+                if (operator.type === "filter") {
+                    return renderFilterBody(operator);
+                }
+                if (operator.type === "replace") {
+                    return "<div class=\"operator-row\"><label class=\"grow\">Search<textarea data-field=\"search\">" + escapeHtml(operator.search || "") + "</textarea></label></div>" +
+                        "<div class=\"operator-row\"><label class=\"grow\">Replacement<textarea data-field=\"replacement\">" + escapeHtml(operator.replacement || "") + "</textarea></label></div>";
+                }
+                if (operator.type === "sort") {
+                    return "<div class=\"operator-row\">" +
+                        "<label>Mode<select data-field=\"mode\"><option value=\"positional\"" + (operator.mode === "positional" ? " selected" : "") + ">Positional</option><option value=\"anchor\"" + (operator.mode === "anchor" ? " selected" : "") + ">By Value</option></select></label>" +
+                        "<label>Order<select data-field=\"order\"><option value=\"asc\"" + (operator.order === "asc" ? " selected" : "") + ">Ascending</option><option value=\"desc\"" + (operator.order === "desc" ? " selected" : "") + ">Descending</option></select></label>" +
+                        "<label>Type<select data-field=\"valueType\">" + valueTypeOptions(operator.valueType, true) + "</select></label>" +
+                        "</div>" +
+                        "<div class=\"operator-row\">" +
+                        "<label>Pos<input type=\"number\" data-field=\"pos\" value=\"" + Number(operator.pos || 0) + "\"></label>" +
+                        "<label>Len<input type=\"number\" data-field=\"len\" value=\"" + Number(operator.len || 1) + "\"></label>" +
+                        "<label class=\"grow\">Anchor<input type=\"text\" data-field=\"anchor\" value=\"" + escapeAttribute(operator.anchor || "") + "\" placeholder=\"Find token near this text\"></label>" +
+                        "<label>Side<select data-field=\"anchorSide\"><option value=\"after\"" + (operator.anchorSide === "after" ? " selected" : "") + ">After</option><option value=\"before\"" + (operator.anchorSide === "before" ? " selected" : "") + ">Before</option></select></label>" +
+                        "</div>" +
+                        "<div class=\"operator-meta\">Non-parsable rows stay attached to the nearest preceding parsable row and move as a block.</div>";
+                }
+                return "<div class=\"operator-row\">" +
+                    "<label>Pos<input type=\"number\" data-field=\"pos\" value=\"" + Number(operator.pos || 0) + "\"></label>" +
+                    "<label>Len<input type=\"number\" data-field=\"len\" value=\"" + Number(operator.len || 1) + "\"></label>" +
+                    "<label>Type<select data-field=\"valueType\">" + valueTypeOptions(operator.valueType, false) + "</select></label>" +
+                    "<label><input type=\"checkbox\" data-field=\"invert\" " + (operator.invert ? "checked" : "") + "> invert</label>" +
+                    "</div>" +
+                    "<div class=\"operator-meta\">Non-parsable rows stay attached to the nearest preceding parsable anchor row. Invert after normal diff restores the cached original stage for matching parameters.</div>";
+            }
+
+            function renderFilterBody(operator) {
+                return "<div class=\"operator-meta\">Include clauses match any line. Exclude clauses remove matching lines. Each clause has its own case-sensitivity flag.</div>" +
+                    "<div class=\"operator-row\"><strong>Include</strong><button data-action=\"add-include\">⊕ Include</button></div>" +
+                    "<div class=\"clause-list\">" + renderFilterClauses(operator.include || [], "include") + "</div>" +
+                    "<div class=\"operator-row\"><strong>Exclude</strong><button data-action=\"add-exclude\">⊖ Exclude</button></div>" +
+                    "<div class=\"clause-list\">" + renderFilterClauses(operator.exclude || [], "exclude") + "</div>";
+            }
+
+            function renderFilterClauses(clauses, kind) {
+                if (!clauses.length) {
+                    return "<div class=\"operator-meta\">No " + kind + " clauses.</div>";
+                }
+                return clauses.map((clause, index) => "<div class=\"clause-item\">" +
+                    "<textarea data-field=\"" + kind + "." + index + ".text\" placeholder=\"one term per line\">" + escapeHtml(clause.text || "") + "</textarea>" +
+                    "<label><input type=\"checkbox\" data-field=\"" + kind + "." + index + ".caseSensitive\" " + (clause.caseSensitive ? "checked" : "") + "> case</label>" +
+                    "<button data-action=\"remove-clause\" data-clause-kind=\"" + kind + "\" data-clause-index=\"" + index + "\" title=\"Remove clause\">✕</button>" +
+                    "</div>").join("");
+            }
+
+            function valueTypeOptions(selected, includeString) {
+                const options = includeString ? ["string", "number", "date-time", "time-span"] : ["number", "date-time", "time-span"];
+                return options.map((value) => "<option value=\"" + value + "\"" + (selected === value ? " selected" : "") + ">" + capitalize(value) + "</option>").join("");
+            }
+
+            function capitalize(text) {
+                return text.charAt(0).toUpperCase() + text.slice(1);
+            }
+
+            function cloneOperator(operator) {
+                return JSON.parse(JSON.stringify(operator));
+            }
+
+            function updateOperatorField(operatorId, fieldPath, rawValue, checked) {
+                const index = getOperatorIndexById(operatorId);
+                if (index === -1) return;
+                const operator = state.operators[index];
+                const segments = fieldPath.split(".");
+                let target = operator;
+                for (let segmentIndex = 0; segmentIndex < segments.length - 1; segmentIndex++) {
+                    target = target[segments[segmentIndex]];
+                }
+                const finalSegment = segments[segments.length - 1];
+                const currentValue = target[finalSegment];
+                if (typeof currentValue === "boolean") {
+                    target[finalSegment] = checked;
+                } else if (typeof currentValue === "number") {
+                    target[finalSegment] = Number(rawValue);
+                } else {
+                    target[finalSegment] = rawValue;
+                }
+                invalidateAfterOperatorChange();
+            }
+
+            function invalidateAfterOperatorChange() {
+                clearPipelineCache();
+                persistWorkingSet();
+                state.activeJob = ++state.jobVersion;
+                renderSoon();
+            }
+
+            function addOperator(type) {
+                const operator = createDefaultOperator(type, getCurrentSelectionPrefill());
+                state.operators.push(operator);
+                state.selectedOperatorId = operator.id;
+                invalidateAfterOperatorChange();
+            }
+
+            function deleteOperator(operatorId) {
+                const index = getOperatorIndexById(operatorId);
+                if (index === -1) return;
+                state.operators.splice(index, 1);
+                if (state.selectedOperatorId === operatorId) {
+                    const fallback = state.operators[Math.max(0, index - 1)] || state.operators[index] || null;
+                    state.selectedOperatorId = fallback ? fallback.id : null;
+                }
+                invalidateAfterOperatorChange();
+            }
+
+            function duplicateOperator(operatorId) {
+                const index = getOperatorIndexById(operatorId);
+                if (index === -1) return;
+                const duplicate = cloneOperator(state.operators[index]);
+                duplicate.id = state.nextOperatorId++;
+                state.operators.splice(index + 1, 0, duplicate);
+                state.selectedOperatorId = duplicate.id;
+                invalidateAfterOperatorChange();
+            }
+
+            function moveOperator(operatorId, delta) {
+                const index = getOperatorIndexById(operatorId);
+                const targetIndex = index + delta;
+                if (index === -1 || targetIndex < 0 || targetIndex >= state.operators.length) return;
+                const [operator] = state.operators.splice(index, 1);
+                state.operators.splice(targetIndex, 0, operator);
+                invalidateAfterOperatorChange();
+            }
+
+            function toggleOperatorEnabled(operatorId, enabled) {
+                const index = getOperatorIndexById(operatorId);
+                if (index === -1) return;
+                state.operators[index].enabled = enabled;
+                invalidateAfterOperatorChange();
+            }
+
+            function selectOperator(operatorId) {
+                state.selectedOperatorId = operatorId;
+                persistWorkingSet();
+                state.activeJob = ++state.jobVersion;
+                renderSoon();
+            }
+
+            function addFilterClause(operatorId, kind) {
+                const index = getOperatorIndexById(operatorId);
+                if (index === -1) return;
+                const prefill = getCurrentSelectionPrefill();
+                state.operators[index][kind].push(createFilterClause(prefill.selectedText));
+                invalidateAfterOperatorChange();
+            }
+
+            function removeFilterClause(operatorId, kind, clauseIndex) {
+                const index = getOperatorIndexById(operatorId);
+                if (index === -1) return;
+                state.operators[index][kind].splice(clauseIndex, 1);
+                invalidateAfterOperatorChange();
+            }
+
+            function exportView() {
+                const stage = getCurrentStageSync();
+                if (!stage) return;
+                const blob = new Blob([ensureStageText(stage)], { type: "text/plain;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = (state.source.name || "log") + ".view.txt";
+                link.click();
+                URL.revokeObjectURL(url);
+            }
+
+            async function copyText(text, successMessage) {
+                if (!text) {
+                    updateStatus("Nothing to copy.");
+                    return;
+                }
+                await navigator.clipboard.writeText(text);
+                updateStatus(successMessage);
+            }
+
+            async function copyCurrentView() {
+                const stage = getCurrentStageSync();
+                if (!stage) return;
+                await copyText(ensureStageText(stage), "Copied current view.");
+            }
+
+            async function copySelection() {
+                const stage = getCurrentStageSync();
+                const selection = normalizeSelection(state.selection);
+                if (!stage || !selection) return;
+                await copyText(extractSelectionText(stage, selection), "Copied selection.");
+            }
+
+            async function copyColumn() {
+                const stage = getCurrentStageSync();
+                const selection = normalizeSelection(state.selection);
+                if (!stage || !selection) return;
+                await copyText(buildColumnText(stage, selection), "Copied column across view.");
+            }
+
+            async function copyBlock() {
+                const stage = getCurrentStageSync();
+                const selection = normalizeSelection(state.selection);
+                if (!stage || !selection) return;
+                await copyText(buildBlockText(stage, selection), "Copied selected block.");
+            }
+
+            function clearSelection() {
+                state.selection = null;
+                state.pointerSelection = null;
+                renderSoon();
+            }
+
+            function resetView() {
+                state.selectedOperatorId = state.operators.length ? state.operators[state.operators.length - 1].id : null;
+                state.view.scrollTop = 0;
+                state.view.scrollLeftCols = 0;
+                state.cursor.row = 0;
+                state.cursor.col = 0;
+                clearSelection();
+                persistWorkingSet();
+            }
+
+            function getRowAndColumnFromPointer(event, stage) {
+                const rect = elements.viewerViewport.getBoundingClientRect();
+                const y = event.clientY - rect.top + state.view.scrollTop;
+                const row = clamp(Math.floor(y / state.view.rowHeight), 0, Math.max(0, stage.lineCount - 1));
+                const x = event.clientX - rect.left - state.view.gutterWidth - 10;
+                const baseCol = Math.max(0, Math.floor(Math.max(0, x) / state.view.charWidth));
+                const col = state.view.scrollLeftCols + baseCol;
+                return { row, col };
+            }
+
+            function comparePoints(left, right) {
+                if (left.row !== right.row) {
+                    return left.row - right.row;
+                }
+                return left.col - right.col;
+            }
+
+            function selectionAnchorPoint() {
+                const normalized = normalizeSelection(state.selection);
+                if (normalized) {
+                    return { row: normalized.startRow, col: normalized.startCol };
+                }
+                return { row: state.cursor.row, col: state.cursor.col };
+            }
+
+            function setCursor(point, stage) {
+                if (!stage) return;
+                const row = clamp(point.row, 0, Math.max(0, stage.lineCount - 1));
+                const col = clamp(point.col, 0, getStageLine(stage, row).length);
+                state.cursor.row = row;
+                state.cursor.col = col;
+            }
+
+            function applySelectionFromPoints(anchor, point) {
+                state.selection = {
+                    startRow: anchor.row,
+                    startCol: anchor.col,
+                    endRow: point.row,
+                    endCol: point.col
+                };
+            }
+
+            function addRegexCandidates(candidates, line, regex, type, col) {
+                regex.lastIndex = 0;
+                let match;
+                while ((match = regex.exec(line))) {
+                    if (!match[0]) {
+                        regex.lastIndex++;
+                        continue;
+                    }
+                    const start = match.index;
+                    const end = start + match[0].length;
+                    if ((col >= start && col < end) || (col === end && end > start)) {
+                        candidates.push({ start, end, type });
+                    }
+                }
+            }
+
+            function addBracketCandidates(candidates, line, col) {
+                const pairs = {
+                    "(": ")",
+                    "[": "]",
+                    "{": "}",
+                    "<": ">"
+                };
+                const stacks = {
+                    "(": [],
+                    "[": [],
+                    "{": [],
+                    "<": []
+                };
+                for (let index = 0; index < line.length; index++) {
+                    const char = line[index];
+                    if (pairs[char]) {
+                        stacks[char].push(index);
+                        continue;
+                    }
+                    const openChar = Object.keys(pairs).find((key) => pairs[key] === char);
+                    if (!openChar || !stacks[openChar].length) {
+                        continue;
+                    }
+                    const start = stacks[openChar].pop();
+                    const end = index + 1;
+                    if ((col >= start && col < end) || (col === end && end > start)) {
+                        let type = "bracket";
+                        if ((openChar === "{" || openChar === "[") && /[:,\[\]\{\}"]/.test(line.slice(start, end))) {
+                            type = "json";
+                        } else if (openChar === "<" && /^<\/?[A-Za-z_]/.test(line.slice(start, end))) {
+                            type = "xml";
+                        }
+                        candidates.push({ start, end, type });
+                    }
+                }
+            }
+
+            function selectionCandidatePriority(type) {
+                const priorities = {
+                    word: 10,
+                    number: 20,
+                    "time-span": 30,
+                    "date-time": 40,
+                    identifier: 50,
+                    path: 60,
+                    url: 70,
+                    quoted: 80,
+                    bracket: 90,
+                    json: 100,
+                    xml: 110
+                };
+                return priorities[type] || 0;
+            }
+
+            function chooseStructuralRange(line, col, preferMinimal) {
+                const candidates = [];
+                addRegexCandidates(candidates, line, /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, "quoted", col);
+                addRegexCandidates(candidates, line, /\b(?:https?|ftp):\/\/[^\s"'<>]+/g, "url", col);
+                addRegexCandidates(candidates, line, /(?:[A-Za-z]:\\[^\s"'<>|]+|\\\\[^\s"'<>|]+|(?:\.{1,2}[\\/])?[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+)/g, "path", col);
+                addRegexCandidates(candidates, line, /\b\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})?)?\b|\b\d{1,2}\.\d{1,2}\.\d{4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?\b/g, "date-time", col);
+                addRegexCandidates(candidates, line, /\b-?(?:(?:\d+)\.)?\d{1,2}:\d{2}(?::\d{2})?(?:\.\d{1,3})?\b/g, "time-span", col);
+                addRegexCandidates(candidates, line, /\b-?\d+(?:[.,]\d+)?(?:e[+-]?\d+)?\b/ig, "number", col);
+                addRegexCandidates(candidates, line, /\b[A-Za-z_][\w]*(?:(?:\.|::)[A-Za-z_][\w-]*)+\b/g, "identifier", col);
+                addRegexCandidates(candidates, line, /\b[A-Za-z_][\w-]*\b/g, "word", col);
+                addRegexCandidates(candidates, line, /<\/?[A-Za-z_:][^>]*>/g, "xml", col);
+                addBracketCandidates(candidates, line, col);
+                if (!candidates.length) {
+                    return null;
+                }
+                candidates.sort((left, right) => {
+                    const leftLength = left.end - left.start;
+                    const rightLength = right.end - right.start;
+                    if (preferMinimal) {
+                        return leftLength - rightLength || selectionCandidatePriority(left.type) - selectionCandidatePriority(right.type) || left.start - right.start;
+                    }
+                    return selectionCandidatePriority(right.type) - selectionCandidatePriority(left.type) || rightLength - leftLength || left.start - right.start;
+                });
+                return candidates[0];
+            }
+
+            function beginSelection(event) {
+                const stage = getCurrentStageSync();
+                if (!stage) return;
+                if (event.target.closest("button") || event.target.closest("input") || event.target.closest("textarea") || event.target.closest("select")) {
+                    return;
+                }
+                event.preventDefault();
+                const point = getRowAndColumnFromPointer(event, stage);
+                const line = getStageLine(stage, point.row);
+                const structuralRange = chooseStructuralRange(line, point.col, event.ctrlKey);
+                const anchor = event.shiftKey ? selectionAnchorPoint() : { row: point.row, col: point.col };
+                state.pointerSelection = {
+                    anchor,
+                    startPoint: point,
+                    moved: false
+                };
+                if (event.shiftKey) {
+                    const targetPoint = structuralRange && comparePoints(anchor, { row: point.row, col: structuralRange.start }) <= 0
+                        ? { row: point.row, col: structuralRange.end }
+                        : structuralRange
+                            ? { row: point.row, col: structuralRange.start }
+                            : point;
+                    applySelectionFromPoints(anchor, targetPoint);
+                    setCursor(targetPoint, stage);
+                } else if (structuralRange) {
+                    state.selection = { startRow: point.row, startCol: structuralRange.start, endRow: point.row, endCol: structuralRange.end };
+                    setCursor({ row: point.row, col: structuralRange.end }, stage);
+                } else {
+                    state.selection = { startRow: point.row, startCol: point.col, endRow: point.row, endCol: point.col };
+                    setCursor(point, stage);
+                }
+                state.isSelecting = true;
+                renderSoon();
+            }
+
+            function continueSelection(event) {
+                if (!state.isSelecting || !state.pointerSelection) return;
+                const stage = getCurrentStageSync();
+                if (!stage) return;
+                const point = getRowAndColumnFromPointer(event, stage);
+                if (point.row === state.pointerSelection.startPoint.row && point.col === state.pointerSelection.startPoint.col) {
+                    return;
+                }
+                state.pointerSelection.moved = true;
+                applySelectionFromPoints(state.pointerSelection.anchor, point);
+                setCursor(point, stage);
+                renderSoon();
+            }
+
+            function endSelection() {
+                state.isSelecting = false;
+                state.pointerSelection = null;
+            }
+
+            function ensureVisible(stage, row, col) {
+                const viewportHeight = elements.viewerViewport.clientHeight;
+                const top = row * state.view.rowHeight;
+                const bottom = top + state.view.rowHeight;
+                if (top < state.view.scrollTop) {
+                    state.view.scrollTop = top;
+                } else if (bottom > state.view.scrollTop + viewportHeight) {
+                    state.view.scrollTop = Math.max(0, bottom - viewportHeight);
+                }
+                if (col < state.view.scrollLeftCols) {
+                    state.view.scrollLeftCols = col;
+                } else if (col > state.view.scrollLeftCols + state.view.viewportCols - 1) {
+                    state.view.scrollLeftCols = Math.max(0, col - state.view.viewportCols + 1);
+                }
+            }
+
+            function moveCursor(deltaRow, deltaCol, extendSelection) {
+                const stage = getCurrentStageSync();
+                if (!stage) return;
+                const nextRow = clamp(state.cursor.row + deltaRow, 0, Math.max(0, stage.lineCount - 1));
+                const nextCol = clamp(state.cursor.col + deltaCol, 0, getStageLine(stage, nextRow).length);
+                if (extendSelection) {
+                    const anchor = selectionAnchorPoint();
+                    applySelectionFromPoints(anchor, { row: nextRow, col: nextCol });
+                }
+                setCursor({ row: nextRow, col: nextCol }, stage);
+                ensureVisible(stage, nextRow, nextCol);
+                renderSoon();
+            }
+
+            function moveCursorTo(target, extendSelection) {
+                const stage = getCurrentStageSync();
+                if (!stage) return;
+                const nextRow = clamp(target.row, 0, Math.max(0, stage.lineCount - 1));
+                const nextCol = clamp(target.col, 0, getStageLine(stage, nextRow).length);
+                if (extendSelection) {
+                    const anchor = selectionAnchorPoint();
+                    applySelectionFromPoints(anchor, { row: nextRow, col: nextCol });
+                }
+                setCursor({ row: nextRow, col: nextCol }, stage);
+                ensureVisible(stage, nextRow, nextCol);
+                renderSoon();
+            }
+
+            function selectWholeStage() {
+                const stage = getCurrentStageSync();
+                if (!stage || stage.lineCount === 0) return;
+                const lastRow = stage.lineCount - 1;
+                const lastCol = getStageLine(stage, lastRow).length;
+                state.selection = { startRow: 0, startCol: 0, endRow: lastRow, endCol: lastCol };
+                setCursor({ row: lastRow, col: lastCol }, stage);
+                renderSoon();
+            }
+
+            function addSelectionFilter(mode) {
+                const prefill = getCurrentSelectionPrefill();
+                if (!prefill.selectedText) return false;
+                const operator = createDefaultOperator("filter", prefill);
+                if (mode === "exclude") {
+                    operator.include = [];
+                    operator.exclude = [createFilterClause(prefill.selectedText)];
+                }
+                state.operators.push(operator);
+                state.selectedOperatorId = operator.id;
+                invalidateAfterOperatorChange();
+                return true;
+            }
+
+            function addDeleteReplaceFromSelection() {
+                const prefill = getCurrentSelectionPrefill();
+                if (!prefill.selectedText) return false;
+                const operator = createDefaultOperator("replace", prefill);
+                operator.search = prefill.selectedText;
+                operator.replacement = "";
+                state.operators.push(operator);
+                state.selectedOperatorId = operator.id;
+                invalidateAfterOperatorChange();
+                return true;
+            }
+
+            function isFormEditingTarget(target) {
+                return !!(target && (target.closest("input") || target.closest("textarea") || target.closest("select") || target.closest("button") || target.closest("summary") || target.isContentEditable));
+            }
+
+            function autoSizeTextarea(textarea) {
+                if (!textarea || textarea.tagName !== "TEXTAREA") return;
+                textarea.style.height = "auto";
+                textarea.style.height = Math.max(42, textarea.scrollHeight) + "px";
+            }
+
+            function autoSizeAllTextareas() {
+                elements.operatorList.querySelectorAll("textarea").forEach(autoSizeTextarea);
+            }
+
+            function captureOperatorEditorState() {
+                const active = document.activeElement;
+                if (!active || !elements.operatorList.contains(active)) {
+                    return null;
+                }
+                const card = active.closest("[data-operator-id]");
+                const field = active.getAttribute("data-field");
+                if (!card || !field) {
+                    return null;
+                }
+                return {
+                    operatorId: Number(card.getAttribute("data-operator-id")),
+                    field,
+                    selectionStart: typeof active.selectionStart === "number" ? active.selectionStart : null,
+                    selectionEnd: typeof active.selectionEnd === "number" ? active.selectionEnd : null,
+                    selectionDirection: active.selectionDirection || "none",
+                    scrollTop: typeof active.scrollTop === "number" ? active.scrollTop : 0
+                };
+            }
+
+            function selectorForField(field) {
+                if (window.CSS && typeof window.CSS.escape === "function") {
+                    return "[data-field=\"" + window.CSS.escape(field) + "\"]";
+                }
+                return "[data-field=\"" + field.replace(/\\/g, "\\\\").replace(/\"/g, "\\\"") + "\"]";
+            }
+
+            function restoreOperatorEditorState(snapshot) {
+                if (!snapshot) return;
+                const card = elements.operatorList.querySelector("[data-operator-id=\"" + snapshot.operatorId + "\"]");
+                if (!card) return;
+                const field = card.querySelector(selectorForField(snapshot.field));
+                if (!field) return;
+                field.focus({ preventScroll: true });
+                if (typeof snapshot.selectionStart === "number" && typeof field.setSelectionRange === "function") {
+                    field.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd == null ? snapshot.selectionStart : snapshot.selectionEnd, snapshot.selectionDirection);
+                }
+                if (typeof snapshot.scrollTop === "number") {
+                    field.scrollTop = snapshot.scrollTop;
+                }
+            }
+
+            function setScrollTop(scrollTop) {
+                const stage = getCurrentStageSync();
+                if (!stage) return;
+                const maxScroll = Math.max(0, stage.lineCount * state.view.rowHeight - elements.viewerViewport.clientHeight);
+                state.view.scrollTop = clamp(scrollTop, 0, maxScroll);
+                renderSoon();
+            }
+
+            function setScrollLeftCols(scrollLeftCols) {
+                const stage = getCurrentStageSync();
+                if (!stage) return;
+                const maxScroll = Math.max(0, stage.maxLineLength - state.view.viewportCols);
+                state.view.scrollLeftCols = clamp(scrollLeftCols, 0, maxScroll);
+                renderSoon();
+            }
+
+            function handleWheel(event) {
+                const stage = getCurrentStageSync();
+                if (!stage) return;
+                event.preventDefault();
+                if (event.ctrlKey) {
+                    const deltaCols = Math.sign(event.deltaY || event.deltaX) * Math.max(1, Math.round(Math.abs(event.deltaY || event.deltaX) / 60));
+                    setScrollLeftCols(state.view.scrollLeftCols + deltaCols * 4);
+                } else {
+                    setScrollTop(state.view.scrollTop + event.deltaY);
+                }
+            }
+
+            function startVerticalDrag(event) {
+                event.preventDefault();
+                state.view.draggingVertical = true;
+                state.view.dragStartClient = event.clientY;
+                state.view.dragStartScroll = state.view.scrollTop;
+            }
+
+            function startHorizontalDrag(event) {
+                event.preventDefault();
+                state.view.draggingHorizontal = true;
+                state.view.dragStartClient = event.clientX;
+                state.view.dragStartScroll = state.view.scrollLeftCols;
+            }
+
+            function handlePointerMove(event) {
+                const stage = getCurrentStageSync();
+                if (!stage) return;
+                if (state.view.draggingVertical) {
+                    const trackHeight = elements.verticalTrack.clientHeight;
+                    const thumbHeight = elements.verticalThumb.offsetHeight;
+                    const maxThumbTop = Math.max(1, trackHeight - thumbHeight);
+                    const totalHeight = Math.max(0, stage.lineCount * state.view.rowHeight - elements.viewerViewport.clientHeight);
+                    const delta = event.clientY - state.view.dragStartClient;
+                    setScrollTop(state.view.dragStartScroll + (delta / maxThumbTop) * totalHeight);
+                    return;
+                }
+                if (state.view.draggingHorizontal) {
+                    const trackWidth = elements.horizontalTrack.clientWidth;
+                    const thumbWidth = elements.horizontalThumb.offsetWidth;
+                    const maxThumbLeft = Math.max(1, trackWidth - thumbWidth);
+                    const totalWidth = Math.max(0, stage.maxLineLength - state.view.viewportCols);
+                    const delta = event.clientX - state.view.dragStartClient;
+                    setScrollLeftCols(state.view.dragStartScroll + (delta / maxThumbLeft) * totalWidth);
+                    return;
+                }
+                continueSelection(event);
+            }
+
+            function handlePointerUp() {
+                state.view.draggingVertical = false;
+                state.view.draggingHorizontal = false;
+                endSelection();
+            }
+
+            function handleTrackJump(event, axis) {
+                const stage = getCurrentStageSync();
+                if (!stage) return;
+                if (axis === "vertical") {
+                    const rect = elements.verticalTrack.getBoundingClientRect();
+                    const percent = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+                    const totalHeight = Math.max(0, stage.lineCount * state.view.rowHeight - elements.viewerViewport.clientHeight);
+                    setScrollTop(totalHeight * percent);
+                    return;
+                }
+                const rect = elements.horizontalTrack.getBoundingClientRect();
+                const percent = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+                const totalWidth = Math.max(0, stage.maxLineLength - state.view.viewportCols);
+                setScrollLeftCols(totalWidth * percent);
+            }
+
+            function createProfilesPayload() {
+                return {
+                    kind: PROFILE_KIND,
+                    version: PROFILE_VERSION,
+                    profiles: state.profiles.named,
+                    workingSet: {
+                        operators: state.operators,
+                        selectedOperatorId: state.selectedOperatorId,
+                        nextOperatorId: state.nextOperatorId
+                    }
+                };
+            }
+
+            function persistWorkingSet() {
+                localStorage.setItem(STORAGE_WORKING_SET, JSON.stringify({
+                    operators: state.operators,
+                    selectedOperatorId: state.selectedOperatorId,
+                    nextOperatorId: state.nextOperatorId
+                }));
+            }
+
+            function persistProfiles() {
+                localStorage.setItem(STORAGE_PROFILES, JSON.stringify(state.profiles.named));
+                renderProfileControls();
+            }
+
+            function loadPersistedState() {
+                try {
+                    const workingSetRaw = localStorage.getItem(STORAGE_WORKING_SET);
+                    if (workingSetRaw) {
+                        const workingSet = JSON.parse(workingSetRaw);
+                        state.operators = Array.isArray(workingSet.operators) ? workingSet.operators : [];
+                        state.selectedOperatorId = workingSet.selectedOperatorId ?? null;
+                        state.nextOperatorId = Number(workingSet.nextOperatorId || 1);
+                    }
+                    const profilesRaw = localStorage.getItem(STORAGE_PROFILES);
+                    if (profilesRaw) {
+                        const profiles = JSON.parse(profilesRaw);
+                        if (profiles && typeof profiles === "object") {
+                            state.profiles.named = profiles;
+                        }
+                    }
+                } catch (error) {
+                    console.warn("Failed to load persisted state", error);
+                }
+                renderProfileControls();
+            }
+
+            function renderProfileControls() {
+                const names = Object.keys(state.profiles.named).sort();
+                elements.profileSelect.innerHTML = names.length
+                    ? names.map((name) => "<option value=\"" + escapeHtml(name) + "\">" + escapeHtml(name) + "</option>").join("")
+                    : "<option value=\"\">No saved profiles</option>";
+                updateButtons();
+            }
+
+            function saveProfile() {
+                const name = elements.profileNameInput.value.trim();
+                if (!name) {
+                    updateStatus("Enter a profile name first.");
+                    return;
+                }
+                state.profiles.named[name] = {
+                    operators: JSON.parse(JSON.stringify(state.operators)),
+                    selectedOperatorId: state.selectedOperatorId,
+                    nextOperatorId: state.nextOperatorId
+                };
+                persistProfiles();
+                updateStatus("Saved profile '" + name + "'.");
+            }
+
+            function loadProfile() {
+                const name = elements.profileSelect.value;
+                const profile = state.profiles.named[name];
+                if (!profile) return;
+                state.operators = JSON.parse(JSON.stringify(profile.operators || []));
+                state.selectedOperatorId = profile.selectedOperatorId ?? null;
+                state.nextOperatorId = Number(profile.nextOperatorId || 1);
+                invalidateAfterOperatorChange();
+                updateStatus("Loaded profile '" + name + "'.");
+            }
+
+            function deleteProfile() {
+                const name = elements.profileSelect.value;
+                if (!name || !state.profiles.named[name]) return;
+                delete state.profiles.named[name];
+                persistProfiles();
+                updateStatus("Deleted profile '" + name + "'.");
+            }
+
+            function exportProfiles() {
+                const blob = new Blob([JSON.stringify(createProfilesPayload(), null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = "log-explorer-profiles.json";
+                link.click();
+                URL.revokeObjectURL(url);
+            }
+
+            function importProfilesFromPayload(payload) {
+                if (!payload || payload.kind !== PROFILE_KIND || payload.version !== PROFILE_VERSION) {
+                    throw new Error("Unsupported profile bundle.");
+                }
+                if (payload.profiles && typeof payload.profiles === "object") {
+                    state.profiles.named = { ...state.profiles.named, ...payload.profiles };
+                }
+                if (payload.workingSet) {
+                    state.operators = Array.isArray(payload.workingSet.operators) ? payload.workingSet.operators : state.operators;
+                    state.selectedOperatorId = payload.workingSet.selectedOperatorId ?? state.selectedOperatorId;
+                    state.nextOperatorId = Number(payload.workingSet.nextOperatorId || state.nextOperatorId || 1);
+                }
+                persistProfiles();
+                invalidateAfterOperatorChange();
+                updateStatus("Imported profile bundle.");
+            }
+
+            function detectEncoding(bytes) {
+                if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+                    return { encoding: "utf-8-bom", offset: 3 };
+                }
+                if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+                    return { encoding: "utf-16le", offset: 2 };
+                }
+                if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+                    return { encoding: "utf-16be", offset: 2 };
+                }
+                let evenZeroes = 0;
+                let oddZeroes = 0;
+                const sample = Math.min(bytes.length, 4000);
+                for (let index = 0; index < sample; index++) {
+                    if (bytes[index] === 0) {
+                        if (index % 2 === 0) {
+                            evenZeroes++;
+                        } else {
+                            oddZeroes++;
+                        }
+                    }
+                }
+                if (evenZeroes > sample * 0.15 && oddZeroes < sample * 0.02) {
+                    return { encoding: "utf-16be", offset: 0 };
+                }
+                if (oddZeroes > sample * 0.15 && evenZeroes < sample * 0.02) {
+                    return { encoding: "utf-16le", offset: 0 };
+                }
+                return { encoding: "utf-8", offset: 0 };
+            }
+
+            function decodeBytes(bytes) {
+                const detection = detectEncoding(bytes);
+                const sliced = bytes.slice(detection.offset);
+                let decoded;
+                if (detection.encoding === "utf-16be") {
+                    const swapped = new Uint8Array(sliced.length);
+                    for (let index = 0; index < sliced.length - 1; index += 2) {
+                        swapped[index] = sliced[index + 1];
+                        swapped[index + 1] = sliced[index];
+                    }
+                    if (sliced.length % 2 === 1) {
+                        swapped[swapped.length - 1] = sliced[sliced.length - 1];
+                    }
+                    decoded = new TextDecoder("utf-16le", { fatal: false }).decode(swapped);
+                } else {
+                    decoded = new TextDecoder(detection.encoding.replace("-bom", ""), { fatal: false }).decode(sliced);
+                }
+                decoded = decoded.replace(/\r\n?/g, "\n");
+                return { decoded, encoding: detection.encoding };
+            }
+
+            async function loadTextSource(text, sourceName, originalEncoding) {
+                const normalizedText = String(text).replace(/\r\n?/g, "\n");
+                state.source.name = sourceName || "Clipboard";
+                state.source.originalEncoding = originalEncoding || "clipboard";
+                state.source.normalizedEncoding = "utf-8";
+                state.source.stage = buildIndexedStage(normalizedText, "raw", "Raw");
+                state.stageCache.clear();
+                state.stageCacheOrder = [];
+                state.stageCacheBytes = 0;
+                putStageInCache("raw", state.source.stage);
+                state.view.scrollTop = 0;
+                state.view.scrollLeftCols = 0;
+                state.selection = null;
+                state.cursor.row = 0;
+                state.cursor.col = 0;
+                state.activeJob = ++state.jobVersion;
+                setDropZoneVisibility(false);
+                updateStatus("Loaded source '" + state.source.name + "'.");
+                await renderAll();
+            }
+
+            async function loadFile(file) {
+                if (file.name.toLowerCase().endsWith(".json")) {
+                    try {
+                        const text = await file.text();
+                        const payload = JSON.parse(text);
+                        if (payload && payload.kind === PROFILE_KIND) {
+                            importProfilesFromPayload(payload);
+                            setDropZoneVisibility(false);
+                            return;
+                        }
+                    } catch (error) {
+                        // Not a profile bundle. Fall through to text decode.
+                    }
+                }
+                const bytes = new Uint8Array(await file.arrayBuffer());
+                const decoded = decodeBytes(bytes);
+                await loadTextSource(decoded.decoded, file.name, decoded.encoding);
+            }
+
+            async function pasteClipboard() {
+                if (navigator.clipboard.read) {
+                    try {
+                        const items = await navigator.clipboard.read();
+                        for (const item of items) {
+                            const textType = item.types.find((type) => type === "text/plain");
+                            if (textType) {
+                                const blob = await item.getType(textType);
+                                const text = await blob.text();
+                                await loadTextSource(text, "Clipboard", "clipboard");
+                                return;
+                            }
+                        }
+                    } catch (error) {
+                        console.warn("Clipboard read() unavailable", error);
+                    }
+                }
+                const text = await navigator.clipboard.readText();
+                if (!text) {
+                    updateStatus("Clipboard did not contain text.");
+                    return;
+                }
+                try {
+                    const payload = JSON.parse(text);
+                    if (payload && payload.kind === PROFILE_KIND) {
+                        importProfilesFromPayload(payload);
+                        return;
+                    }
+                } catch (error) {
+                    // Clipboard text is log content.
+                }
+                await loadTextSource(text, "Clipboard", "clipboard");
+            }
+
+            function handlePasteEvent(event) {
+                const items = Array.from(event.clipboardData ? event.clipboardData.items : []);
+                const fileItem = items.find((item) => item.kind === "file");
+                if (fileItem) {
+                    const file = fileItem.getAsFile();
+                    if (file) {
+                        event.preventDefault();
+                        loadFile(file).catch(handleError);
+                        return;
+                    }
+                }
+                const text = event.clipboardData ? event.clipboardData.getData("text/plain") : "";
+                if (text) {
+                    event.preventDefault();
+                    try {
+                        const payload = JSON.parse(text);
+                        if (payload && payload.kind === PROFILE_KIND) {
+                            importProfilesFromPayload(payload);
+                            return;
+                        }
+                    } catch (error) {
+                        // Not profile bundle.
+                    }
+                    loadTextSource(text, "Clipboard", "clipboard").catch(handleError);
+                }
+            }
+
+            function handleCopyEvent(event) {
+                const stage = getCurrentStageSync();
+                const selection = normalizeSelection(state.selection);
+                if (!stage || !selection) return;
+                const active = document.activeElement;
+                if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
+                    return;
+                }
+                event.preventDefault();
+                event.clipboardData.setData("text/plain", extractSelectionText(stage, selection));
+                updateStatus("Copied selection.");
+            }
+
+            function handleDrop(event) {
+                event.preventDefault();
+                elements.dropZone.classList.remove("drag-over");
+                const file = event.dataTransfer.files[0];
+                if (file) {
+                    loadFile(file).catch(handleError);
+                }
+            }
+
+            function handleOperatorListClick(event) {
+                const card = event.target.closest("[data-operator-id]");
+                if (!card) return;
+                const operatorId = Number(card.getAttribute("data-operator-id"));
+                const action = event.target.getAttribute("data-action");
+                if (!action) return;
+                if (action === "select") {
+                    selectOperator(operatorId);
+                } else if (action === "move-up") {
+                    moveOperator(operatorId, -1);
+                } else if (action === "move-down") {
+                    moveOperator(operatorId, 1);
+                } else if (action === "duplicate") {
+                    duplicateOperator(operatorId);
+                } else if (action === "delete") {
+                    deleteOperator(operatorId);
+                } else if (action === "toggle-enabled") {
+                    toggleOperatorEnabled(operatorId, event.target.checked);
+                } else if (action === "add-include") {
+                    addFilterClause(operatorId, "include");
+                } else if (action === "add-exclude") {
+                    addFilterClause(operatorId, "exclude");
+                } else if (action === "remove-clause") {
+                    removeFilterClause(operatorId, event.target.getAttribute("data-clause-kind"), Number(event.target.getAttribute("data-clause-index")));
+                }
+            }
+
+            function handleOperatorInput(event) {
+                const card = event.target.closest("[data-operator-id]");
+                if (!card) return;
+                const field = event.target.getAttribute("data-field");
+                if (!field) return;
+                if (event.target.tagName === "TEXTAREA") {
+                    autoSizeTextarea(event.target);
+                }
+                updateOperatorField(Number(card.getAttribute("data-operator-id")), field, event.target.value, event.target.checked);
+            }
+
+            function handleGlobalKeydown(event) {
+                const stage = getCurrentStageSync();
+                if (elements.helpModal.classList.contains("visible") && event.key === "Escape") {
+                    elements.helpModal.classList.remove("visible");
+                    event.preventDefault();
+                    return;
+                }
+                if (event.key === "F1") {
+                    event.preventDefault();
+                    elements.helpModal.classList.add("visible");
+                    return;
+                }
+                if (isFormEditingTarget(event.target)) {
+                    return;
+                }
+                if (!stage) {
+                    return;
+                }
+                if (event.ctrlKey && event.key.toLowerCase() === "a") {
+                    event.preventDefault();
+                    selectWholeStage();
+                    return;
+                }
+                if (event.ctrlKey && event.key.toLowerCase() === "c") {
+                    const selection = normalizeSelection(state.selection);
+                    if (!selection) return;
+                    event.preventDefault();
+                    copySelection().catch(handleError);
+                    return;
+                }
+                if (!event.ctrlKey && !event.altKey && event.key === "Enter") {
+                    if (addSelectionFilter("include")) {
+                        event.preventDefault();
+                    }
+                    return;
+                }
+                if (!event.ctrlKey && !event.altKey && event.key === "Escape") {
+                    if (addSelectionFilter("exclude")) {
+                        event.preventDefault();
+                        return;
+                    }
+                    if (state.selection) {
+                        event.preventDefault();
+                        clearSelection();
+                    }
+                    return;
+                }
+                if (!event.ctrlKey && !event.altKey && event.key === "Delete") {
+                    if (addDeleteReplaceFromSelection()) {
+                        event.preventDefault();
+                    }
+                    return;
+                }
+                const verticalPage = Math.max(1, state.view.viewportRows - 1);
+                if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    moveCursor(-1, 0, event.shiftKey);
+                } else if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    moveCursor(1, 0, event.shiftKey);
+                } else if (event.key === "ArrowLeft") {
+                    event.preventDefault();
+                    moveCursor(0, -1, event.shiftKey);
+                } else if (event.key === "ArrowRight") {
+                    event.preventDefault();
+                    moveCursor(0, 1, event.shiftKey);
+                } else if (event.key === "PageUp") {
+                    event.preventDefault();
+                    moveCursor(-verticalPage, 0, event.shiftKey);
+                } else if (event.key === "PageDown") {
+                    event.preventDefault();
+                    moveCursor(verticalPage, 0, event.shiftKey);
+                } else if (event.key === "Home") {
+                    event.preventDefault();
+                    moveCursorTo({ row: 0, col: 0 }, event.shiftKey);
+                } else if (event.key === "End") {
+                    event.preventDefault();
+                    moveCursorTo({ row: stage.lineCount - 1, col: getStageLine(stage, stage.lineCount - 1).length }, event.shiftKey);
+                }
+            }
+
+            function bindEvents() {
+                elements.openFileButton.addEventListener("click", () => elements.fileInput.click());
+                elements.fileInput.addEventListener("change", () => {
+                    const file = elements.fileInput.files[0];
+                    if (file) {
+                        loadFile(file).catch(handleError);
+                    }
+                    elements.fileInput.value = "";
+                    closeAppMenu();
+                });
+                elements.pasteClipboardButton.addEventListener("click", () => pasteClipboard().catch(handleError));
+                elements.exportViewButton.addEventListener("click", () => {
+                    exportView();
+                    closeAppMenu();
+                });
+                elements.copyViewButton.addEventListener("click", () => {
+                    copyCurrentView().catch(handleError);
+                    closeAppMenu();
+                });
+                elements.copySelectionButton.addEventListener("click", () => copySelection().catch(handleError));
+                elements.copyColumnButton.addEventListener("click", () => {
+                    copyColumn().catch(handleError);
+                    closeAppMenu();
+                });
+                elements.copyBlockButton.addEventListener("click", () => {
+                    copyBlock().catch(handleError);
+                    closeAppMenu();
+                });
+                elements.resetViewButton.addEventListener("click", () => {
+                    resetView();
+                    closeAppMenu();
+                });
+                elements.helpButton.addEventListener("click", () => elements.helpModal.classList.add("visible"));
+                elements.closeHelpButton.addEventListener("click", () => elements.helpModal.classList.remove("visible"));
+                elements.helpModal.addEventListener("click", (event) => {
+                    if (event.target === elements.helpModal) {
+                        elements.helpModal.classList.remove("visible");
+                    }
+                });
+                elements.addFilterButton.addEventListener("click", () => addOperator("filter"));
+                elements.addReplaceButton.addEventListener("click", () => addOperator("replace"));
+                elements.addSortButton.addEventListener("click", () => addOperator("sort"));
+                elements.addDiffButton.addEventListener("click", () => addOperator("diff"));
+                elements.operatorList.addEventListener("click", handleOperatorListClick);
+                elements.operatorList.addEventListener("change", handleOperatorInput);
+                elements.operatorList.addEventListener("input", handleOperatorInput);
+                elements.saveProfileButton.addEventListener("click", () => {
+                    saveProfile();
+                    closeAppMenu();
+                });
+                elements.loadProfileButton.addEventListener("click", () => {
+                    loadProfile();
+                    closeAppMenu();
+                });
+                elements.deleteProfileButton.addEventListener("click", () => {
+                    deleteProfile();
+                    closeAppMenu();
+                });
+                elements.exportProfilesButton.addEventListener("click", () => {
+                    exportProfiles();
+                    closeAppMenu();
+                });
+                elements.importProfilesButton.addEventListener("click", () => elements.profileImportInput.click());
+                elements.profileImportInput.addEventListener("change", async () => {
+                    const file = elements.profileImportInput.files[0];
+                    if (!file) return;
+                    const payload = JSON.parse(await file.text());
+                    importProfilesFromPayload(payload);
+                    elements.profileImportInput.value = "";
+                    closeAppMenu();
+                });
+                elements.viewerViewport.addEventListener("wheel", handleWheel, { passive: false });
+                elements.viewerViewport.addEventListener("mousedown", beginSelection);
+                document.addEventListener("mousemove", handlePointerMove);
+                document.addEventListener("mouseup", handlePointerUp);
+                elements.verticalThumb.addEventListener("mousedown", startVerticalDrag);
+                elements.horizontalThumb.addEventListener("mousedown", startHorizontalDrag);
+                elements.verticalTrack.addEventListener("mousedown", (event) => {
+                    if (event.target !== elements.verticalThumb) {
+                        handleTrackJump(event, "vertical");
+                    }
+                });
+                elements.horizontalTrack.addEventListener("mousedown", (event) => {
+                    if (event.target !== elements.horizontalThumb) {
+                        handleTrackJump(event, "horizontal");
+                    }
+                });
+                ["dragenter", "dragover"].forEach((type) => {
+                    document.addEventListener(type, (event) => {
+                        event.preventDefault();
+                        elements.dropZone.classList.add("visible", "drag-over");
+                    });
+                });
+                ["dragleave", "dragend"].forEach((type) => {
+                    document.addEventListener(type, (event) => {
+                        if (event.target === document.documentElement || event.target === document.body) {
+                            elements.dropZone.classList.remove("drag-over");
+                        }
+                    });
+                });
+                document.addEventListener("drop", handleDrop);
+                document.addEventListener("paste", handlePasteEvent);
+                document.addEventListener("copy", handleCopyEvent);
+                window.addEventListener("resize", renderSoon);
+                document.addEventListener("click", (event) => {
+                    if (elements.appMenu && elements.appMenu.hasAttribute("open") && !elements.appMenu.contains(event.target)) {
+                        closeAppMenu();
+                    }
+                });
+                document.addEventListener("keydown", handleGlobalKeydown);
+            }
+
+            loadPersistedState();
+            bindEvents();
+            updateCacheInfo();
+            renderAll().catch(handleError);
+        });
+    </script>
+</body>
+
+</html>
