@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hex Viewer</title>
+    <style>
+        body {
+            font-family: monospace;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            margin: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #drop-zone {
+            width: 80%;
+            height: 100px;
+            border: 2px dashed #666;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+        }
+        #drop-zone.dragover {
+            background-color: #333;
+            border-color: #007acc;
+        }
+        #viewer-container {
+            width: 80%;
+            height: 70vh;
+            background-color: #252526;
+            border-radius: 4px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            position: relative;
+            outline: none;
+        }
+        #viewer-content {
+            position: relative;
+            width: 100%;
+        }
+        .hex-row {
+            display: flex;
+            padding: 0 10px;
+            line-height: 1.4;
+            height: 20px;
+            box-sizing: border-box;
+            position: absolute;
+            width: 100%;
+        }
+        .offset {
+            color: #858585;
+            margin-right: 20px;
+            display: inline-block;
+            width: 80px;
+            flex-shrink: 0;
+        }
+        .hex-bytes {
+            margin-right: 20px;
+            color: #b5cea8;
+            min-width: 160px;
+            flex-shrink: 0;
+        }
+        .ascii {
+            color: #ce9178;
+            white-space: nowrap;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        #file-info {
+            margin-top: 0;
+            margin-bottom: 10px;
+            color: #858585;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+
+    <h1 id="viewer-title" style="margin-top: 0;">Hex Viewer</h1>
+    <div id="file-info">Drop a file to begin</div>
+    <div id="drop-zone">Drop a file here to view hex content</div>
+    <div id="viewer-container" tabindex="0">
+        <div id="viewer-content"></div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const container = document.getElementById('viewer-container');
+        const content = document.getElementById('viewer-content');
+        const title = document.getElementById('viewer-title');
+        const fileInfo = document.getElementById('file-info');
+
+        const BYTES_PER_ROW = 16;
+        const ROW_HEIGHT = 20; 
+        let fileBytes = null;
+        let totalRows = 0;
+
+        function formatBytes(bytes, format = 'auto') {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, e => { 
+                e.preventDefault(); 
+                e.stopPropagation(); 
+            }, false);
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
+        });
+
+        dropZone.addEventListener('drop', e => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) readFile(files[0]);
+        }, false);
+
+        async function readFile(file) {
+            content.innerHTML = '<div style="padding: 20px;">Loading file into memory...</div>';
+            title.textContent = file.name;
+            fileInfo.textContent = `Size: ${formatBytes(file.size)}`;
+            
+            try {
+                const buffer = await file.arrayBuffer();
+                fileBytes = new Uint8Array(buffer);
+                totalRows = Math.ceil(fileBytes.length / BYTES_PER_ROW);
+                
+                content.style.height = `${totalRows * ROW_HEIGHT}px`;
+                container.scrollTop = 0;
+                renderVisibleRows();
+                container.focus();
+            } catch (err) {
+                content.innerHTML = `<div style="padding: 20px; color: #f44747;">Error: ${err.message}</div>`;
+            }
+        }
+
+        function renderVisibleRows() {
+            if (!fileBytes) return;
+
+            const scrollTop = container.scrollTop;
+            const viewportHeight = container.clientHeight;
+            
+            const startRow = Math.floor(scrollTop / ROW_HEIGHT);
+            const endRow = Math.min(totalRows, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + 1);
+
+            const fragment = document.createDocumentFragment();
+            
+            for (let i = startRow; i < endRow; i++) {
+                const rowIdx = i * BYTES_PER_ROW;
+                const rowOffset = rowIdx.toString(16).padStart(8, '0');
+                
+                let hexPart = '';
+                let asciiPart = '';
+                
+                for (let j = 0; j < BYTES_PER_ROW; j++) {
+                    const byteIdx = rowIdx + j;
+                    if (byteIdx < fileBytes.length) {
+                        const byte = fileBytes[byteIdx];
+                        hexPart += byte.toString(16).padStart(2, '0') + ' ';
+                        asciiPart += (byte >= 32 && byte <= 126) ? String.fromCharCode(byte) : '.';
+                    } else {
+                        hexPart += '   ';
+                    }
+                    if ((j + 1) % 2 === 0 && (j + 1) < BYTES_PER_ROW) hexPart += ' ';
+                }
+
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'hex-row';
+                rowDiv.style.top = `${i * ROW_HEIGHT}px`;
+                rowDiv.innerHTML = `<span class="offset">${rowOffset}</span><span class="hex-bytes">${hexPart}</span><span class="ascii">${asciiPart}</span>`;
+                fragment.appendChild(rowDiv);
+            }
+
+            content.replaceChildren(fragment);
+        }
+
+        container.addEventListener('scroll', () => {
+            requestAnimationFrame(renderVisibleRows);
+        });
+
+        container.addEventListener('keydown', (e) => {
+            const step = ROW_HEIGHT;
+            const pageStep = container.clientHeight;
+
+            switch(e.key) {
+                case 'ArrowUp':
+                    e.preventDefault();
+                    container.scrollTop -= step;
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    container.scrollTop += step;
+                    break;
+                case 'PageUp':
+                    e.preventDefault();
+                    container.scrollTop -= pageStep;
+                    break;
+                case 'PageDown':
+                    e.preventDefault();
+                    container.scrollTop += pageStep;
+                    break;
+                case 'Home':
+                    e.preventDefault();
+                    container.scrollTop = 0;
+                    break;
+                case 'End':
+                    e.preventDefault();
+                    container.scrollTop = container.scrollHeight;
+                    break;
+            }
+        });
+    </script>
+</body>
+</html>
