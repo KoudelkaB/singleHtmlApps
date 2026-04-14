@@ -977,8 +977,8 @@
                 <button id="addDiffButton" title="Add diff">≠ Diff</button>
             </div>
             <div class="toolbar-section">
-                <span class="toolbar-hint">Shortcuts: Enter include, Esc exclude, Delete remove, Ctrl+A select all,
-                    Ctrl+C copy.</span>
+                <span class="toolbar-hint">Shortcuts: Enter include, Esc exclude, Delete remove, F filter, R replace,
+                    S sort, D diff, Ctrl+A select all, Ctrl+C copy.</span>
             </div>
         </section>
 
@@ -1080,7 +1080,8 @@
             <p>Keyboard actions outside editors: <code>Ctrl+A</code> selects the current stage, <code>Ctrl+C</code>
                 copies selection, <code>Enter</code> adds the selection to the current Filter or inserts a new include
                 Filter after the selected stage, <code>Esc</code> does the same for exclude clauses or clears
-                selection, and <code>Delete</code> creates a delete-style Replace.
+                selection, <code>Delete</code> creates a delete-style Replace, and <code>F</code>, <code>R</code>,
+                <code>S</code>, <code>D</code> create Filter, Replace, Sort, and Diff stages.
             </p>
             <p>Mouse selection is copyable. <code>Copy Column</code> uses the current selection width across the whole
                 preview. <code>Copy Block</code> copies the current rectangular selection across its selected line span.
@@ -1757,6 +1758,47 @@
                 return "string";
             }
 
+            function diffUsesExpandedOutputSelection(valueType) {
+                return valueType === "number" || valueType === "time-span";
+            }
+
+            function canExpandDiffSelectionLeft(stage, normalized) {
+                if (!stage || !normalized || normalized.startCol <= 0) {
+                    return false;
+                }
+                for (let row = normalized.startRow; row <= normalized.endRow; row++) {
+                    const line = getStageLine(stage, row);
+                    const charBefore = line[normalized.startCol - 1] || "";
+                    if (charBefore && !/\s/.test(charBefore)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            function expandSelectionForDiffOutput(stage) {
+                const normalized = normalizeSelection(state.selection);
+                if (!normalized) {
+                    return "right";
+                }
+                if (canExpandDiffSelectionLeft(stage, normalized)) {
+                    state.selection = {
+                        startRow: normalized.startRow,
+                        startCol: normalized.startCol - 1,
+                        endRow: normalized.endRow,
+                        endCol: normalized.endCol
+                    };
+                    return "left";
+                }
+                state.selection = {
+                    startRow: normalized.startRow,
+                    startCol: normalized.startCol,
+                    endRow: normalized.endRow,
+                    endCol: normalized.endCol + 1
+                };
+                return "right";
+            }
+
             function getCurrentSelectionPrefill() {
                 const stage = state.source.stage ? getCurrentStageSync() : null;
                 const normalized = normalizeSelection(state.selection);
@@ -2281,6 +2323,243 @@
                 return formatTimeSpan(value);
             }
 
+            function formatNumberLikeSample(value, sample) {
+                const trimmed = String(sample || "").trim();
+                const match = trimmed.match(/^[+-]?\d+(?:([.,])(\d+))?$/);
+                if (!match) {
+                    return formatTypedValue(value, "number");
+                }
+                const decimals = match[2] ? match[2].length : 0;
+                const separator = match[1] || ".";
+                const numericValue = Number(value);
+                const formatted = decimals > 0
+                    ? numericValue.toFixed(decimals)
+                    : String(Math.round(numericValue));
+                return separator === "," ? formatted.replace(".", ",") : formatted;
+            }
+
+            function formatTimeSpanLikeSample(milliseconds, sample) {
+                const trimmed = String(sample || "").trim();
+                const match = trimmed.match(/^(-)?(?:(\d+)\.)?(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.(\d{1,3}))?$/);
+                if (!match) {
+                    return formatTimeSpan(milliseconds);
+                }
+                const absolute = Math.abs(Number(milliseconds) || 0);
+                const hasDays = Boolean(match[2]);
+                const hasSeconds = match[5] != null;
+                const fractionDigits = match[6] ? match[6].length : 0;
+                const roundingStep = fractionDigits > 0
+                    ? Math.pow(10, 3 - fractionDigits)
+                    : hasSeconds
+                        ? 1000
+                        : 60000;
+                let rounded = Math.round(absolute / roundingStep) * roundingStep;
+                let totalMilliseconds = rounded;
+                const days = Math.floor(totalMilliseconds / 86400000);
+                totalMilliseconds -= days * 86400000;
+                const hours = Math.floor(totalMilliseconds / 3600000);
+                totalMilliseconds -= hours * 3600000;
+                const minutes = Math.floor(totalMilliseconds / 60000);
+                totalMilliseconds -= minutes * 60000;
+                const seconds = Math.floor(totalMilliseconds / 1000);
+                const millis = totalMilliseconds - seconds * 1000;
+                if (!hasDays && days > 0) {
+                    return formatTimeSpan(milliseconds);
+                }
+                let output = (Number(milliseconds) || 0) < 0 ? "-" : "";
+                if (hasDays) {
+                    output += String(days) + ".";
+                }
+                output += String(hours).padStart(2, "0") + ":" + String(minutes).padStart(2, "0");
+                if (hasSeconds) {
+                    output += ":" + String(seconds).padStart(2, "0");
+                }
+                if (fractionDigits > 0) {
+                    output += "." + String(millis).padStart(3, "0").slice(0, fractionDigits);
+                }
+                return output;
+            }
+
+            function alignFormattedValueToSlice(formatted, slice, valueType) {
+                const text = String(formatted);
+                const template = String(slice || "");
+                if (!template || text.length >= template.length) {
+                    return text;
+                }
+                const leading = (template.match(/^\s*/) || [""])[0].length;
+                const trailing = (template.match(/\s*$/) || [""])[0].length;
+                const padding = template.length - text.length;
+                let leftPadding = 0;
+                if (leading > 0 && trailing === 0) {
+                    leftPadding = padding;
+                } else if (trailing > 0 && leading === 0) {
+                    leftPadding = 0;
+                } else if (leading > 0 || trailing > 0) {
+                    const totalOuterWhitespace = leading + trailing;
+                    leftPadding = Math.round(padding * (leading / totalOuterWhitespace));
+                } else if (valueType !== "string") {
+                    leftPadding = padding;
+                }
+                const rightPadding = padding - leftPadding;
+                return " ".repeat(leftPadding) + text + " ".repeat(rightPadding);
+            }
+
+            function alignFormattedValueToWidth(formatted, width, alignRight) {
+                const text = String(formatted);
+                const targetWidth = Math.max(0, Number(width) || 0);
+                if (targetWidth <= 0 || text.length >= targetWidth) {
+                    return text;
+                }
+                const padding = " ".repeat(targetWidth - text.length);
+                return alignRight ? padding + text : text + padding;
+            }
+
+            function buildNumberDiffProfile(blocks, width) {
+                let separator = ".";
+                let fractionDigits = 0;
+                let matched = false;
+                for (const block of blocks) {
+                    const match = String(block.raw || "").trim().match(/^([+-]?)(\d+)(?:([.,])(\d+))?$/);
+                    if (!match) {
+                        continue;
+                    }
+                    matched = true;
+                    if (match[4]) {
+                        if (!fractionDigits) {
+                            separator = match[3] || ".";
+                        }
+                        fractionDigits = Math.max(fractionDigits, match[4].length);
+                    }
+                }
+                return matched
+                    ? {
+                        kind: "number",
+                        separator,
+                        fractionDigits,
+                        width: Math.max(1, Number(width) || 1)
+                    }
+                    : null;
+            }
+
+            function buildTimeSpanDiffProfile(blocks, width) {
+                let matched = false;
+                let hasDays = false;
+                let dayDigits = 1;
+                let hourDigits = 2;
+                let hasSeconds = false;
+                let fractionDigits = 0;
+                for (const block of blocks) {
+                    const match = String(block.raw || "").trim().match(/^(-)?(?:(\d+)\.)?(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.(\d{1,3}))?$/);
+                    if (!match) {
+                        continue;
+                    }
+                    matched = true;
+                    hasDays = hasDays || Boolean(match[2]);
+                    if (match[2]) {
+                        dayDigits = Math.max(dayDigits, match[2].length);
+                    }
+                    hourDigits = Math.max(hourDigits, match[3].length);
+                    hasSeconds = hasSeconds || match[5] != null;
+                    if (match[6]) {
+                        fractionDigits = Math.max(fractionDigits, match[6].length);
+                    }
+                }
+                return matched
+                    ? {
+                        kind: "time-span",
+                        hasDays,
+                        dayDigits,
+                        hourDigits,
+                        hasSeconds,
+                        fractionDigits,
+                        width: Math.max(1, Number(width) || 1)
+                    }
+                    : null;
+            }
+
+            function buildDiffFormatProfile(blocks, valueType, width) {
+                if (valueType === "number") {
+                    return buildNumberDiffProfile(blocks, width);
+                }
+                if (valueType === "time-span") {
+                    return buildTimeSpanDiffProfile(blocks, width);
+                }
+                return null;
+            }
+
+            function formatNumberForDiffProfile(value, profile, slice) {
+                if (!profile) {
+                    return alignFormattedValueToWidth(formatNumberLikeSample(value, slice), Math.max(1, String(slice || "").trim().length + 1), true);
+                }
+                const numericValue = Number(value) || 0;
+                const absolute = Math.abs(numericValue);
+                const formatted = profile.fractionDigits > 0
+                    ? absolute.toFixed(profile.fractionDigits)
+                    : String(Math.round(absolute));
+                const signedText = (numericValue < 0 ? "-" : "") + (profile.separator === "." ? formatted : formatted.replace(".", profile.separator));
+                return alignFormattedValueToWidth(signedText, profile.width, true);
+            }
+
+            function formatTimeSpanForDiffProfile(milliseconds, profile, slice) {
+                if (!profile) {
+                    return alignFormattedValueToWidth(formatTimeSpanLikeSample(milliseconds, slice), Math.max(1, String(slice || "").trim().length + 1), true);
+                }
+                const absolute = Math.abs(Number(milliseconds) || 0);
+                const roundingStep = profile.fractionDigits > 0
+                    ? Math.pow(10, 3 - profile.fractionDigits)
+                    : profile.hasSeconds
+                        ? 1000
+                        : 60000;
+                let rounded = Math.round(absolute / roundingStep) * roundingStep;
+                let remaining = rounded;
+                const days = Math.floor(remaining / 86400000);
+                remaining -= days * 86400000;
+                const hours = Math.floor(remaining / 3600000);
+                remaining -= hours * 3600000;
+                const minutes = Math.floor(remaining / 60000);
+                remaining -= minutes * 60000;
+                const seconds = Math.floor(remaining / 1000);
+                const millis = remaining - seconds * 1000;
+                if (!profile.hasDays && days > 0) {
+                    return formatTimeSpan(milliseconds);
+                }
+                let output = (Number(milliseconds) || 0) < 0 ? "-" : "";
+                if (profile.hasDays) {
+                    output += String(days).padStart(profile.dayDigits, "0") + ".";
+                }
+                output += String(hours).padStart(profile.hourDigits, "0") + ":" + String(minutes).padStart(2, "0");
+                if (profile.hasSeconds) {
+                    output += ":" + String(seconds).padStart(2, "0");
+                }
+                if (profile.fractionDigits > 0) {
+                    output += "." + String(millis).padStart(3, "0").slice(0, profile.fractionDigits);
+                }
+                return alignFormattedValueToWidth(output, profile.width, true);
+            }
+
+            function formatDiffValueForSlice(value, valueType, slice, profile) {
+                if (valueType === "number") {
+                    return formatNumberForDiffProfile(value, profile, slice);
+                }
+                if (valueType === "time-span") {
+                    return formatTimeSpanForDiffProfile(value, profile, slice);
+                }
+                const formatted = formatTypedValue(value, valueType);
+                return alignFormattedValueToSlice(formatted, slice, valueType);
+            }
+
+            function getDiffOutputRange(operator) {
+                const pos = Math.max(0, Number(operator.pos) || 0);
+                const len = Math.max(1, Number(operator.len) || 1);
+                if (!diffUsesExpandedOutputSelection(operator.valueType)) {
+                    return { pos, len };
+                }
+                if (operator.outputExtend === "left" && pos > 0) {
+                    return { pos: pos - 1, len: len + 1 };
+                }
+                return { pos, len: len + 1 };
+            }
+
             function compareValues(left, right, type, order) {
                 let result;
                 if (type === "string") {
@@ -2372,7 +2651,7 @@
             }
 
             function diffSignature(operator) {
-                return stableStringify({ pos: operator.pos, len: operator.len, valueType: operator.valueType });
+                return stableStringify({ pos: operator.pos, len: operator.len, valueType: operator.valueType, outputExtend: operator.outputExtend || "" });
             }
 
             function applyDiff(stage, operator, hash) {
@@ -2390,6 +2669,8 @@
                 let outputIndex = appendLineRange(output, outputSourceIds, 0, lines, sourceIds, 0, grouped.leadingCount);
                 let previousInputComparable = null;
                 let previousOutputComparable = null;
+                const diffOutputRange = getDiffOutputRange(operator);
+                const diffFormatProfile = buildDiffFormatProfile(grouped.blocks, operator.valueType === "date-time" ? "time-span" : operator.valueType, diffOutputRange.len);
                 for (const block of grouped.blocks) {
                     const anchor = lines[block.startIndex];
                     const slice = extractSortSlice(anchor, { ...operator, mode: "positional" });
@@ -2412,13 +2693,17 @@
                                 replacement = slice.raw;
                             } else if (previousOutputComparable != null) {
                                 const restored = parsed.comparable + previousOutputComparable;
-                                replacement = operator.valueType === "date-time" ? new Date(restored).toISOString() : formatTypedValue(restored, operator.valueType);
+                                replacement = operator.valueType === "date-time"
+                                    ? alignFormattedValueToSlice(new Date(restored).toISOString(), slice.raw, operator.valueType)
+                                    : formatDiffValueForSlice(restored, operator.valueType, slice.raw, diffFormatProfile);
                                 previousOutputComparable = restored;
                             }
                         } else if (previousInputComparable != null) {
                             const diff = parsed.comparable - previousInputComparable;
-                            replacement = formatTypedValue(diff, operator.valueType === "date-time" ? "time-span" : operator.valueType);
+                            replacement = formatDiffValueForSlice(diff, operator.valueType === "date-time" ? "time-span" : operator.valueType, slice.raw, diffFormatProfile);
                         }
+                    } else if (!operator.invert && (operator.valueType === "number" || operator.valueType === "time-span")) {
+                        replacement = formatDiffValueForSlice(parsed.comparable, operator.valueType, slice.raw, diffFormatProfile);
                     }
                     if (!operator.invert) {
                         previousInputComparable = parsed.comparable;
@@ -2428,7 +2713,7 @@
                             ? parseDateTime(slice.raw)
                             : parsed.comparable;
                     }
-                    const changedAnchor = replaceRange(anchor, Math.max(0, Number(operator.pos) || 0), Math.max(1, Number(operator.len) || 1), replacement);
+                    const changedAnchor = replaceRange(anchor, diffOutputRange.pos, diffOutputRange.len, replacement);
                     output[outputIndex] = changedAnchor;
                     outputSourceIds[outputIndex] = sourceIds[block.startIndex] ?? -1;
                     outputIndex += 1;
@@ -2924,11 +3209,16 @@
             }
 
             function addOperator(type) {
-                const operator = createDefaultOperator(type, getCurrentSelectionPrefill());
+                const prefill = getCurrentSelectionPrefill();
+                const operator = createDefaultOperator(type, prefill);
+                const stage = state.source.stage ? getCurrentStageSync() : null;
                 const selectedIndex = getSelectedOperatorIndex();
                 const insertIndex = selectedIndex === -1 ? state.operators.length : selectedIndex + 1;
                 state.operators.splice(insertIndex, 0, operator);
                 state.selectedOperatorId = operator.id;
+                if (type === "diff" && prefill.hasSelection && diffUsesExpandedOutputSelection(operator.valueType)) {
+                    operator.outputExtend = expandSelectionForDiffOutput(stage);
+                }
                 invalidateAfterOperatorChange();
             }
 
@@ -3946,6 +4236,33 @@
                 if (!stage) {
                     return;
                 }
+                const textEditingTarget = !!(event.target && (event.target.closest("input") || event.target.closest("textarea") || event.target.closest("select") || event.target.isContentEditable));
+                if (!event.ctrlKey && !event.altKey && !event.metaKey) {
+                    const shortcutKey = event.key.toLowerCase();
+                    if (!textEditingTarget && shortcutKey === "f") {
+                        event.preventDefault();
+                        addOperator("filter");
+                        return;
+                    }
+                    if (!textEditingTarget && shortcutKey === "r") {
+                        event.preventDefault();
+                        addOperator("replace");
+                        return;
+                    }
+                    if (!textEditingTarget && shortcutKey === "s") {
+                        event.preventDefault();
+                        addOperator("sort");
+                        return;
+                    }
+                    if (!textEditingTarget && shortcutKey === "d") {
+                        event.preventDefault();
+                        addOperator("diff");
+                        return;
+                    }
+                }
+                if (isFormEditingTarget(event.target)) {
+                    return;
+                }
                 if (event.ctrlKey && event.key.toLowerCase() === "a") {
                     event.preventDefault();
                     selectWholeStage();
@@ -3975,7 +4292,7 @@
                     }
                     return;
                 }
-                if (!event.ctrlKey && !event.altKey && event.key === "Delete") {
+                if (!event.ctrlKey && !event.altKey && !event.metaKey && event.key === "Delete") {
                     if (addDeleteReplaceFromSelection()) {
                         event.preventDefault();
                     }
