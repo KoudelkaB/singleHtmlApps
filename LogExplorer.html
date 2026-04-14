@@ -775,6 +775,19 @@
             margin-top: 20px;
         }
 
+        .choice-modal-actions {
+            justify-content: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .choice-button {
+            min-width: 140px;
+        }
+
+        .modal-summary {
+            margin-bottom: 0;
+        }
+
         .visually-hidden,
         #fileInput,
         #profileImportInput {
@@ -991,6 +1004,22 @@
         </div>
     </div>
 
+    <div class="modal-backdrop" id="loadActionModal">
+        <div class="modal-card">
+            <button id="cancelLoadActionButton" class="modal-close" title="Cancel load"
+                aria-label="Cancel load">✕</button>
+            <h3 id="loadActionTitle">How should the new input be loaded?</h3>
+            <p class="modal-summary" id="loadActionSummary"></p>
+            <div class="modal-actions choice-modal-actions">
+                <button class="primary choice-button" id="loadActionNewButton">New</button>
+                <button class="choice-button" id="loadActionAppendButton">Append</button>
+                <button class="choice-button" id="loadActionZipButton">Zip</button>
+            </div>
+            <p class="toolbar-hint">Zip interleaves rows and inserts empty lines when a source has no row at that
+                position. Press Esc to cancel.</p>
+        </div>
+    </div>
+
     <div id="measureRuler">0000000000</div>
 
     <script>
@@ -1047,6 +1076,13 @@
                 horizontalThumb: document.getElementById("horizontalThumb"),
                 dropZone: document.getElementById("dropZone"),
                 helpModal: document.getElementById("helpModal"),
+                loadActionModal: document.getElementById("loadActionModal"),
+                cancelLoadActionButton: document.getElementById("cancelLoadActionButton"),
+                loadActionTitle: document.getElementById("loadActionTitle"),
+                loadActionSummary: document.getElementById("loadActionSummary"),
+                loadActionNewButton: document.getElementById("loadActionNewButton"),
+                loadActionAppendButton: document.getElementById("loadActionAppendButton"),
+                loadActionZipButton: document.getElementById("loadActionZipButton"),
                 measureRuler: document.getElementById("measureRuler")
             };
 
@@ -1093,6 +1129,8 @@
                 pointerSelection: null
             };
 
+            let pendingLoadAction = null;
+
             function updateStatus(message, busy) {
                 elements.statusMessage.innerHTML = "<strong>Status:</strong> " + escapeHtml(message);
                 elements.busyIndicator.textContent = busy || "";
@@ -1121,6 +1159,198 @@
 
             function escapeAttribute(text) {
                 return escapeHtml(text).replace(/"/g, "&quot;");
+            }
+
+            function buildTextInputSource(text, sourceName, originalEncoding) {
+                return {
+                    text: String(text).replace(/\r\n?/g, "\n"),
+                    name: sourceName || "Clipboard",
+                    encoding: originalEncoding || "clipboard"
+                };
+            }
+
+            function getLoadedSourceSnapshot() {
+                if (!state.source.stage) {
+                    return null;
+                }
+                return buildTextInputSource(
+                    ensureStageText(state.source.stage),
+                    state.source.name || "Clipboard",
+                    state.source.originalEncoding || "clipboard"
+                );
+            }
+
+            function summarizeSourceNames(sources) {
+                if (!sources.length) {
+                    return "Clipboard";
+                }
+                if (sources.length === 1) {
+                    return sources[0].name;
+                }
+                return sources[0].name + " + " + (sources.length - 1) + " more";
+            }
+
+            function summarizeEncodings(sources) {
+                const encodings = Array.from(new Set(sources.map((source) => source.encoding || "clipboard")));
+                if (!encodings.length) {
+                    return "clipboard";
+                }
+                return encodings.length === 1 ? encodings[0] : "mixed";
+            }
+
+            function composeAppendedText(sources) {
+                let combined = "";
+                for (const source of sources) {
+                    const text = source.text || "";
+                    if (!combined) {
+                        combined = text;
+                        continue;
+                    }
+                    combined += combined.endsWith("\n") || !text ? text : "\n" + text;
+                }
+                return combined;
+            }
+
+            function composeZippedText(sources) {
+                const lineSets = sources.map((source) => String(source.text || "").split("\n"));
+                const maxLines = lineSets.reduce((largest, lines) => Math.max(largest, lines.length), 0);
+                const combined = [];
+                for (let rowIndex = 0; rowIndex < maxLines; rowIndex++) {
+                    for (const lines of lineSets) {
+                        combined.push(rowIndex < lines.length ? lines[rowIndex] : "");
+                    }
+                }
+                return combined.join("\n");
+            }
+
+            function buildCombinedSourceName(action, existingSource, incomingSources) {
+                const incomingLabel = summarizeSourceNames(incomingSources);
+                if (action === "replace") {
+                    return incomingSources.length > 1 ? "New appended: " + incomingLabel : incomingLabel;
+                }
+                if (action === "append") {
+                    return existingSource ? "Append: " + summarizeSourceNames([existingSource].concat(incomingSources)) : "Append: " + incomingLabel;
+                }
+                return "Zip: " + summarizeSourceNames(existingSource ? [existingSource].concat(incomingSources) : incomingSources);
+            }
+
+            function closeLoadActionModal() {
+                elements.loadActionModal.classList.remove("visible");
+            }
+
+            function resolvePendingLoadAction(action) {
+                if (!pendingLoadAction) {
+                    return;
+                }
+                const resolver = pendingLoadAction.resolve;
+                pendingLoadAction = null;
+                closeLoadActionModal();
+                resolver(action);
+            }
+
+            function requestLoadAction(existingSource, incomingSources) {
+                const hasExisting = !!existingSource;
+                const hasMultipleIncoming = incomingSources.length > 1;
+                if (!hasExisting && !hasMultipleIncoming) {
+                    return Promise.resolve("replace");
+                }
+                if (pendingLoadAction) {
+                    resolvePendingLoadAction(null);
+                }
+                elements.loadActionTitle.textContent = "How should the new input be loaded?";
+                elements.loadActionSummary.textContent = hasExisting
+                    ? "Current source: " + existingSource.name + ". Incoming: " + summarizeSourceNames(incomingSources) + "."
+                    : "Incoming sources: " + summarizeSourceNames(incomingSources) + ".";
+                elements.loadActionNewButton.hidden = !hasExisting;
+                elements.loadActionNewButton.textContent = incomingSources.length > 1 ? "New appended" : "New";
+                elements.loadActionModal.classList.add("visible");
+                return new Promise((resolve) => {
+                    pendingLoadAction = { resolve };
+                    requestAnimationFrame(() => {
+                        const focusTarget = hasExisting ? elements.loadActionNewButton : elements.loadActionAppendButton;
+                        focusTarget.focus();
+                    });
+                });
+            }
+
+            async function applyIncomingTextSources(incomingSources) {
+                if (!incomingSources.length) {
+                    return;
+                }
+                const existingSource = getLoadedSourceSnapshot();
+                const action = await requestLoadAction(existingSource, incomingSources);
+                if (!action) {
+                    updateStatus("Load canceled.");
+                    return;
+                }
+                const sourcesForLoad = action === "replace"
+                    ? incomingSources
+                    : existingSource
+                        ? [existingSource].concat(incomingSources)
+                        : incomingSources;
+                const combinedText = action === "zip"
+                    ? composeZippedText(sourcesForLoad)
+                    : composeAppendedText(sourcesForLoad);
+                await loadTextSource(
+                    combinedText,
+                    buildCombinedSourceName(action, existingSource, incomingSources),
+                    summarizeEncodings(sourcesForLoad)
+                );
+            }
+
+            async function readFileAsInput(file) {
+                if (file.name.toLowerCase().endsWith(".json")) {
+                    try {
+                        const text = await file.text();
+                        const payload = JSON.parse(text);
+                        if (payload && payload.kind === PROFILE_KIND) {
+                            return { kind: "profile", payload };
+                        }
+                    } catch (error) {
+                        // Not a profile bundle or not valid JSON. Fall through to byte decode.
+                    }
+                }
+                const bytes = new Uint8Array(await file.arrayBuffer());
+                const decoded = decodeBytes(bytes);
+                return { kind: "text", source: buildTextInputSource(decoded.decoded, file.name, decoded.encoding) };
+            }
+
+            function readClipboardTextAsInput(text, sourceName) {
+                try {
+                    const payload = JSON.parse(text);
+                    if (payload && payload.kind === PROFILE_KIND) {
+                        return { kind: "profile", payload };
+                    }
+                } catch (error) {
+                    // Clipboard text is log content.
+                }
+                return { kind: "text", source: buildTextInputSource(text, sourceName || "Clipboard", "clipboard") };
+            }
+
+            async function processLoadInputs(results) {
+                const textSources = [];
+                let importedProfiles = 0;
+                for (const result of results) {
+                    if (!result) {
+                        continue;
+                    }
+                    if (result.kind === "profile") {
+                        importProfilesFromPayload(result.payload);
+                        importedProfiles += 1;
+                    } else if (result.kind === "text") {
+                        textSources.push(result.source);
+                    }
+                }
+                if (importedProfiles) {
+                    setDropZoneVisibility(false);
+                }
+                if (textSources.length) {
+                    await applyIncomingTextSources(textSources);
+                    return;
+                }
+                if (importedProfiles) {
+                    updateStatus(importedProfiles === 1 ? "Imported profile bundle." : "Imported " + importedProfiles + " profile bundles.");
+                }
             }
 
             function formatGrouped(value) {
@@ -2836,22 +3066,7 @@
             }
 
             async function loadFile(file) {
-                if (file.name.toLowerCase().endsWith(".json")) {
-                    try {
-                        const text = await file.text();
-                        const payload = JSON.parse(text);
-                        if (payload && payload.kind === PROFILE_KIND) {
-                            importProfilesFromPayload(payload);
-                            setDropZoneVisibility(false);
-                            return;
-                        }
-                    } catch (error) {
-                        // Not a profile bundle. Fall through to text decode.
-                    }
-                }
-                const bytes = new Uint8Array(await file.arrayBuffer());
-                const decoded = decodeBytes(bytes);
-                await loadTextSource(decoded.decoded, file.name, decoded.encoding);
+                await processLoadInputs([await readFileAsInput(file)]);
             }
 
             async function pasteClipboard() {
@@ -2863,9 +3078,21 @@
                             if (textType) {
                                 const blob = await item.getType(textType);
                                 const text = await blob.text();
-                                await loadTextSource(text, "Clipboard", "clipboard");
+                                await processLoadInputs([readClipboardTextAsInput(text, "Clipboard")]);
                                 return;
                             }
+                        }
+                        const files = [];
+                        for (const item of items) {
+                            const binaryType = item.types.find((type) => !type.startsWith("text/"));
+                            if (binaryType) {
+                                const blob = await item.getType(binaryType);
+                                files.push(new File([blob], "Clipboard " + (files.length + 1), { type: blob.type }));
+                            }
+                        }
+                        if (files.length) {
+                            await processLoadInputs(await Promise.all(files.map((file) => readFileAsInput(file))));
+                            return;
                         }
                     } catch (error) {
                         console.warn("Clipboard read() unavailable", error);
@@ -2876,42 +3103,26 @@
                     updateStatus("Clipboard did not contain text.");
                     return;
                 }
-                try {
-                    const payload = JSON.parse(text);
-                    if (payload && payload.kind === PROFILE_KIND) {
-                        importProfilesFromPayload(payload);
-                        return;
-                    }
-                } catch (error) {
-                    // Clipboard text is log content.
-                }
-                await loadTextSource(text, "Clipboard", "clipboard");
+                await processLoadInputs([readClipboardTextAsInput(text, "Clipboard")]);
             }
 
             function handlePasteEvent(event) {
                 const items = Array.from(event.clipboardData ? event.clipboardData.items : []);
-                const fileItem = items.find((item) => item.kind === "file");
-                if (fileItem) {
-                    const file = fileItem.getAsFile();
-                    if (file) {
-                        event.preventDefault();
-                        loadFile(file).catch(handleError);
-                        return;
-                    }
+                const files = items
+                    .filter((item) => item.kind === "file")
+                    .map((item) => item.getAsFile())
+                    .filter(Boolean);
+                if (files.length) {
+                    event.preventDefault();
+                    Promise.all(files.map((file) => readFileAsInput(file)))
+                        .then((results) => processLoadInputs(results))
+                        .catch(handleError);
+                    return;
                 }
                 const text = event.clipboardData ? event.clipboardData.getData("text/plain") : "";
                 if (text) {
                     event.preventDefault();
-                    try {
-                        const payload = JSON.parse(text);
-                        if (payload && payload.kind === PROFILE_KIND) {
-                            importProfilesFromPayload(payload);
-                            return;
-                        }
-                    } catch (error) {
-                        // Not profile bundle.
-                    }
-                    loadTextSource(text, "Clipboard", "clipboard").catch(handleError);
+                    processLoadInputs([readClipboardTextAsInput(text, "Clipboard")]).catch(handleError);
                 }
             }
 
@@ -2931,9 +3142,11 @@
             function handleDrop(event) {
                 event.preventDefault();
                 elements.dropZone.classList.remove("drag-over");
-                const file = event.dataTransfer.files[0];
-                if (file) {
-                    loadFile(file).catch(handleError);
+                const files = Array.from(event.dataTransfer ? event.dataTransfer.files : []);
+                if (files.length) {
+                    Promise.all(files.map((file) => readFileAsInput(file)))
+                        .then((results) => processLoadInputs(results))
+                        .catch(handleError);
                 }
             }
 
@@ -2980,9 +3193,17 @@
 
             function handleGlobalKeydown(event) {
                 const stage = getCurrentStageSync();
+                if (elements.loadActionModal.classList.contains("visible") && event.key === "Escape") {
+                    event.preventDefault();
+                    resolvePendingLoadAction(null);
+                    return;
+                }
                 if (elements.helpModal.classList.contains("visible") && event.key === "Escape") {
                     elements.helpModal.classList.remove("visible");
                     event.preventDefault();
+                    return;
+                }
+                if (elements.loadActionModal.classList.contains("visible")) {
                     return;
                 }
                 if (event.key === "F1") {
@@ -3113,6 +3334,15 @@
                         elements.helpModal.classList.remove("visible");
                     }
                 });
+                elements.cancelLoadActionButton.addEventListener("click", () => resolvePendingLoadAction(null));
+                elements.loadActionModal.addEventListener("click", (event) => {
+                    if (event.target === elements.loadActionModal) {
+                        resolvePendingLoadAction(null);
+                    }
+                });
+                elements.loadActionNewButton.addEventListener("click", () => resolvePendingLoadAction("replace"));
+                elements.loadActionAppendButton.addEventListener("click", () => resolvePendingLoadAction("append"));
+                elements.loadActionZipButton.addEventListener("click", () => resolvePendingLoadAction("zip"));
                 elements.addFilterButton.addEventListener("click", () => addOperator("filter"));
                 elements.addReplaceButton.addEventListener("click", () => addOperator("replace"));
                 elements.addSortButton.addEventListener("click", () => addOperator("sort"));

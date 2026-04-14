@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gnome Calculator Clone</title>
+    <style>
+        :root {
+            --bg-color: #f6f5f4;
+            --calculator-bg: #ffffff;
+            --text-color: #2e3436;
+            --button-bg: #ffffff;
+            --button-hover: #e9e9e9;
+            --operator-bg: #ebebeb;
+            --accent-color: #3584e4;
+            --display-bg: #f6f5f4;
+            --border-color: #dcdcdc;
+        }
+
+        body {
+            font-family: 'Cantarell', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .calculator {
+            width: 350px;
+            background-color: var(--calculator-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        .display {
+            padding: 20px;
+            background-color: var(--display-bg);
+            text-align: right;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        #expression {
+            font-size: 14px;
+            color: #777;
+            min-height: 1.2em;
+            margin-bottom: 5px;
+            word-wrap: break-word;
+        }
+
+        #history {
+            font-size: 12px;
+            color: #999;
+            max-height: 60px;
+            overflow-y: auto;
+            margin-bottom: 5px;
+            text-align: right;
+        }
+
+        #current-value {
+            font-size: 32px;
+            color: var(--text-color);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .buttons-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            padding: 10px;
+            gap: 8px;
+        }
+
+        button {
+            padding: 15px 5px;
+            font-size: 18px;
+            border: none;
+            border-radius: 4px;
+            background-color: var(--button-bg);
+            color: var(--text-color);
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: var(--button-hover);
+        }
+
+        button:active {
+            background-color: var(--button-hover);
+        }
+
+        .operator {
+            background-color: var(--operator-bg);
+            font-weight: bold;
+        }
+
+        .equals {
+            background-color: var(--accent-color);
+            color: white;
+        }
+
+        .equals:hover {
+            background-color: #2a6dbd;
+        }
+
+        .scientific-controls {
+            display: none;
+            /* Hidden by default, can be toggled */
+            grid-template-columns: repeat(4, 1fr);
+            padding: 10px;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .mode-toggle {
+            padding: 5px 10px;
+            font-size: 12px;
+            background: none;
+            border: none;
+            text-align: left;
+            cursor: pointer;
+            color: var(--accent-color);
+        }
+
+        /* Scientific mode layout adjustment */
+        .calculator.scientific .scientific-controls {
+            display: grid;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="calculator" id="calculator">
+        <div class="mode-toggle" onclick="toggleMode()">Basic / Scientific</div>
+        <div class="display">
+            <div id="history"></div>
+            <div id="expression"></div>
+            <div id="current-value">0</div>
+        </div>
+
+        <div class="scientific-controls" id="sci-controls">
+            <button onclick="appendFunction('sin')">sin</button>
+            <button onclick="appendFunction('cos')">cos</button>
+            <button onclick="appendFunction('tan')">tan</button>
+            <button onclick="appendFunction('log')">log</button>
+            <button onclick="appendFunction('ln')">ln</button>
+            <button onclick="appendFunction('sqrt')">√</button>
+            <button onclick="appendFunction('pow')">xʸ</button>
+            <button onclick="appendFunction('pi')">π</button>
+            <button onclick="appendFunction('e')">e</button>
+            <button onclick="appendNumber('(')">(</button>
+            <button onclick="appendNumber(')')">)</button>
+        </div>
+
+        <div class="buttons-container">
+            <button class="operator" onclick="clearDisplay()">C</button>
+            <button class="operator" onclick="deleteLast()">DEL</button>
+            <button class="operator" onclick="appendOperator('%')">%</button>
+            <button class="operator" onclick="appendOperator('/')">/</button>
+
+            <button onclick="appendNumber('7')">7</button>
+            <button onclick="appendNumber('8')">8</button>
+            <button onclick="appendNumber('9')">9</button>
+            <button class="operator" onclick="appendOperator('*')">×</button>
+
+            <button onclick="appendNumber('4')">4</button>
+            <button onclick="appendNumber('5')">5</button>
+            <button onclick="appendNumber('6')">6</button>
+            <button class="operator" onclick="appendOperator('-')">-</button>
+
+            <button onclick="appendNumber('1')">1</button>
+            <button onclick="appendNumber('2')">2</button>
+            <button onclick="appendNumber('3')">3</button>
+            <button class="operator" onclick="appendOperator('+')">+</button>
+
+            <button onclick="appendNumber('0')" style="grid-column: span 2;">0</button>
+            <button onclick="appendNumber('.')">.</button>
+            <button class="equals" onclick="calculate()">=</button>
+        </div>
+    </div>
+
+    <script>
+        let currentInput = '0';
+        let expression = '';
+        let isScientificMode = false;
+
+        const displayValue = document.getElementById('current-value');
+        const displayExpression = document.getElementById('expression');
+        const calculator = document.getElementById('calculator');
+
+        function updateDisplay() {
+            displayValue.innerText = currentInput;
+            displayExpression.innerText = expression;
+        }
+
+        function toggleMode() {
+            isScientificMode = !isScientificMode;
+            if (isScientificMode) {
+                calculator.classList.add('scientific');
+            } else {
+                calculator.classList.remove('scientific');
+            }
+        }
+
+        function appendNumber(number) {
+            if (currentInput === '0' && number !== '.') {
+                currentInput = number;
+            } else {
+                if (number === '.' && currentInput.includes('.')) return;
+                currentInput += number;
+            }
+            updateDisplay();
+        }
+
+        function appendOperator(op) {
+            if (currentInput === '0' && expression === '') {
+                // Do nothing if we are just starting
+            } else {
+                expression += currentInput + ' ' + op + ' ';
+            }
+            currentInput = '0';
+            updateDisplay();
+        }
+
+        function appendFunction(func) {
+            try {
+                let val = parseFloat(currentInput);
+                let result = 0;
+                switch (func) {
+                    case 'sin': result = Math.sin(val); break;
+                    case 'cos': result = Math.cos(val); break;
+                    case 'tan': result = Math.tan(val); break;
+                    case 'log': result = Math.log10(val); break;
+                    case 'ln': result = Math.log(val); break;
+                    case 'sqrt': result = Math.sqrt(val); break;
+                    case 'pi': result = Math.PI; break;
+                    case 'e': result = Math.E; break;
+                    case 'pow':
+                        expression += currentInput + ' ** ';
+                        currentInput = '0';
+                        updateDisplay();
+                        return;
+                }
+                currentInput = result.toString();
+                expression = '';
+                updateDisplay();
+            } catch (e) {
+                currentInput = 'Error';
+                updateDisplay();
+            }
+        }
+
+        function clearDisplay() {
+            currentInput = '0';
+            expression = '';
+            updateDisplay();
+        }
+
+        function deleteLast() {
+            if (currentInput.length > 1) {
+                currentInput = currentInput.slice(0, -1);
+            } else {
+                currentInput = '0';
+            }
+            updateDisplay();
+        }
+
+        function calculate() {
+            if (expression === '' && currentInput === '0') return;
+
+            let fullExpression = expression + currentInput;
+            let jsExpression = fullExpression.replace(/×/g, '*').replace(/÷/g, '/').replace(/%/g, '/100');
+
+            try {
+                let result = eval(jsExpression);
+                let historyEntry = fullExpression + ' = ' + result;
+
+                const historyDiv = document.getElementById('history');
+                const entry = document.createElement('div');
+                entry.innerText = historyEntry;
+                historyDiv.prepend(entry);
+
+                expression = '';
+                currentInput = result.toString();
+                updateDisplay();
+            } catch (e) {
+                currentInput = 'Error';
+                updateDisplay();
+            }
+        }
+
+        // Keyboard Support
+        document.addEventListener('keydown', (event) => {
+            const key = event.key;
+            if (/[0-9.]/.test(key)) {
+                appendNumber(key);
+            } else if (['+', '-', '*', '/', '%', '(', ')'].includes(key)) {
+                let op = key;
+                if (key === '*') op = '*';
+                if (key === '/') op = '/';
+                if (key === '*') appendOperator('*');
+                else if (key === '/') appendOperator('/');
+                else appendOperator(key);
+            } else if (key === 'Enter' || key === '=') {
+                event.preventDefault();
+                calculate();
+            } else if (key === 'Backspace') {
+                deleteLast();
+            } else if (key === 'Escape') {
+                clearDisplay();
+            }
+        });
+
+        function appendNumber(number) {
+            if (currentInput === '0' && number !== '.') {
+                currentInput = number;
+            } else {
+                if (number === '.' && currentInput.includes('.')) return;
+                currentInput += number;
+            }
+            updateDisplay();
+        }
+
+        function appendOperator(op) {
+            if (currentInput === '0' && expression === '') {
+                // Do nothing if we are just starting
+            } else {
+                expression += currentInput + ' ' + op + ' ';
+            }
+            currentInput = '0';
+            updateDisplay();
+        }
+
+        function clearDisplay() {
+            currentInput = '0';
+            expression = '';
+            updateDisplay();
+        }
+
+        function deleteLast() {
+            if (currentInput.length > 1) {
+                currentInput = currentInput.slice(0, -1);
+            } else {
+                currentInput = '0';
+            }
+            updateDisplay();
+        }
+
+        function appendFunction(func) {
+            try {
+                let val = parseFloat(currentInput);
+                let result = 0;
+                switch (func) {
+                    case 'sin': result = Math.sin(val); break;
+                    case 'cos': result = Math.cos(val); break;
+                    case 'tan': result = Math.tan(val); break;
+                    case 'log': result = Math.log10(val); break;
+                    case 'ln': result = Math.log(val); break;
+                    case 'sqrt': result = Math.sqrt(val); break;
+                    case 'pi': result = Math.PI; break;
+                    case 'e': result = Math.E; break;
+                    case 'pow':
+                        expression += currentInput + ' ** ';
+                        currentInput = '0';
+                        updateDisplay();
+                        return;
+                }
+                currentInput = result.toString();
+                updateDisplay();
+            } catch (e) {
+                currentInput = 'Error';
+                updateDisplay();
+            }
+        }
+
+        function calculate() {
+            if (expression === '' || currentInput === '0') return;
+
+            let fullExpression = expression + currentInput;
+            // Replace visual operators with JS operators
+            let jsExpression = fullExpression.replace(/×/g, '*').replace(/÷/g, '/').replace(/%/g, '/100');
+
+            try {
+                let result = eval(jsExpression);
+                expression = fullExpression + ' =';
+                currentInput = result.toString();
+                updateDisplay();
+                expression = ''; // Reset expression after calculation
+            } catch (e) {
+                currentInput = 'Error';
+                updateDisplay();
+            }
+        }
+    </script>
+</body>
+
+</html>
