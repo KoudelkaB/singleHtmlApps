@@ -488,6 +488,65 @@
             align-items: start;
         }
 
+        .source-filter-list {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            padding-bottom: 2px;
+        }
+
+        .source-filter-toggle {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            cursor: pointer;
+        }
+
+        .source-filter-toggle input {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            margin: 0;
+            cursor: pointer;
+        }
+
+        .source-filter-swatch {
+            width: 18px;
+            height: 18px;
+            border-radius: 6px;
+            border: 1px solid rgba(27, 36, 48, 0.22);
+            background: var(--source-filter-bg, var(--surface-2));
+            opacity: 0.45;
+            transition: opacity 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.52);
+        }
+
+        .source-filter-toggle input:checked+.source-filter-swatch {
+            opacity: 1;
+            transform: translateY(-1px);
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65), 0 0 0 2px rgba(47, 128, 237, 0.16);
+        }
+
+        .source-filter-toggle input:checked+.source-filter-swatch::after {
+            content: "";
+            display: block;
+            width: 5px;
+            height: 9px;
+            margin: 2px auto 0;
+            border-right: 2px solid rgba(27, 36, 48, 0.88);
+            border-bottom: 2px solid rgba(27, 36, 48, 0.88);
+            transform: rotate(45deg);
+        }
+
+        .source-filter-toggle input:focus-visible+.source-filter-swatch {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
         .operator-hint {
             margin-bottom: 12px;
             color: var(--muted);
@@ -1004,8 +1063,9 @@
                 the preview. Disabled rows stay visible but do not contribute. If the next enabled row after the
                 selected stage is a Filter, lines that would stay after that Filter are previewed in blue.</p>
             <ul>
-                <li><strong>Filter:</strong> include and exclude lists, with per-clause case sensitivity. Clause editors
-                    are multiline; each non-empty line acts as an alternative match for that clause.</li>
+                <li><strong>Filter:</strong> include and exclude lists, with per-clause case sensitivity, plus source
+                    toggles colored the same way as source lines. Clause editors are multiline; each non-empty line
+                    acts as an alternative match for that clause.</li>
                 <li><strong>Replace:</strong> whole-stage text replacement, including multi-line search and replacement.
                 </li>
                 <li><strong>Sort:</strong> positional and anchor-based extraction. Non-parsable rows stay attached to
@@ -1024,8 +1084,9 @@
             </p>
             <p>Mouse selection is copyable. <code>Copy Column</code> uses the current selection width across the whole
                 preview. <code>Copy Block</code> copies the current rectangular selection across its selected line span.
-                Hovering a row highlights it and shows its source path or source label in the status bar. Profiles
-                persist locally, can be saved by name, exported as JSON, and imported by button or file drop.
+                Hovering a row highlights it and shows its source path or source label in the status bar. Double-click
+                a row to add a new filter that keeps only that source. Profiles persist locally, can be saved by name,
+                exported as JSON, and imported by button or file drop.
             </p>
         </div>
     </div>
@@ -1581,6 +1642,52 @@
                 return { text: text || "", caseSensitive: false };
             }
 
+            function getSourceFilterKey(sourceDescriptor) {
+                if (!sourceDescriptor) {
+                    return "";
+                }
+                return String(sourceDescriptor.path || "") + "\u241f" + String(sourceDescriptor.label || "");
+            }
+
+            function getSourceFilterLabel(sourceDescriptor) {
+                if (!sourceDescriptor) {
+                    return "Source";
+                }
+                return sourceDescriptor.path || sourceDescriptor.label || "Source";
+            }
+
+            function normalizeFilterSources(sources) {
+                if (!Array.isArray(sources)) {
+                    return [];
+                }
+                return Array.from(new Set(sources
+                    .map((entry) => typeof entry === "string" ? entry : "")
+                    .filter(Boolean)));
+            }
+
+            function getOperatorSourceFilters(operator) {
+                return operator && operator.type === "filter" ? normalizeFilterSources(operator.sources) : [];
+            }
+
+            function normalizeOperator(operator) {
+                if (!operator || typeof operator !== "object") {
+                    return operator;
+                }
+                if (operator.type === "filter") {
+                    return {
+                        ...operator,
+                        include: Array.isArray(operator.include) ? operator.include : [],
+                        exclude: Array.isArray(operator.exclude) ? operator.exclude : [],
+                        sources: normalizeFilterSources(operator.sources)
+                    };
+                }
+                return { ...operator };
+            }
+
+            function normalizeOperatorList(operators) {
+                return Array.isArray(operators) ? operators.map(normalizeOperator) : [];
+            }
+
             function closeAppMenu() {
                 if (elements.appMenu) {
                     elements.appMenu.removeAttribute("open");
@@ -1601,7 +1708,8 @@
                     return {
                         ...base,
                         include: prefill && prefill.selectedText ? [createFilterClause(prefill.selectedText)] : [createFilterClause("")],
-                        exclude: []
+                        exclude: [],
+                        sources: []
                     };
                 }
                 if (type === "replace") {
@@ -1914,6 +2022,7 @@
                     enabled: operator.enabled,
                     include: operator.include,
                     exclude: operator.exclude,
+                    sources: getOperatorSourceFilters(operator),
                     search: operator.search,
                     replacement: operator.replacement,
                     mode: operator.mode,
@@ -1994,9 +2103,10 @@
                 return applyDiff(stage, operator, stage.hash + "|diff");
             }
 
-            function evaluateFilterLine(line, operator) {
+            function evaluateFilterLine(stage, rowIndex, line, operator) {
                 const includeClauses = (operator.include || []).filter((item) => item.text);
                 const excludeClauses = (operator.exclude || []).filter((item) => item.text);
+                const allowedSources = getOperatorSourceFilters(operator);
                 const lineLower = line.toLowerCase();
                 const clauseMatches = (clause) => {
                     const variants = String(clause.text || "").split(/\r?\n/).filter((part) => part.length > 0);
@@ -2004,7 +2114,14 @@
                 };
                 const includePass = includeClauses.length === 0 || includeClauses.some(clauseMatches);
                 const excludeHit = excludeClauses.some(clauseMatches);
-                return includePass && !excludeHit;
+                if (!includePass || excludeHit) {
+                    return false;
+                }
+                if (!allowedSources.length) {
+                    return true;
+                }
+                const sourceDescriptor = getLineSourceDescriptor(stage, rowIndex);
+                return allowedSources.includes(getSourceFilterKey(sourceDescriptor));
             }
 
             function applyFilter(stage, operator, hash) {
@@ -2014,7 +2131,7 @@
                 const filteredSourceIds = [];
                 for (let index = 0; index < sourceLines.length; index++) {
                     const line = sourceLines[index];
-                    if (evaluateFilterLine(line, operator)) {
+                    if (evaluateFilterLine(stage, index, line, operator)) {
                         filtered.push(line);
                         filteredSourceIds.push(sourceIds[index] ?? -1);
                     }
@@ -2479,7 +2596,7 @@
                 let html = "";
                 for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
                     const line = getStageLine(stage, rowIndex);
-                    const previewFiltered = previewFilter ? evaluateFilterLine(line, previewFilter) : false;
+                    const previewFiltered = previewFilter ? evaluateFilterLine(stage, rowIndex, line, previewFilter) : false;
                     const range = selectionRangeForRow(selection, rowIndex);
                     const sourceDescriptor = getLineSourceDescriptor(stage, rowIndex);
                     const lineClasses = ["log-line"];
@@ -2729,11 +2846,29 @@
             }
 
             function renderFilterBody(operator) {
+                const sourceCatalog = state.source.stage ? getStageSourceCatalog(state.source.stage) : [];
                 return "<div class=\"operator-meta\">Include clauses match any line. Exclude clauses remove matching lines. Each clause has its own case-sensitivity flag.</div>" +
                     "<div class=\"operator-row\"><strong>Include</strong><button data-action=\"add-include\">⊕ Include</button></div>" +
                     "<div class=\"clause-list\">" + renderFilterClauses(operator.include || [], "include") + "</div>" +
                     "<div class=\"operator-row\"><strong>Exclude</strong><button data-action=\"add-exclude\">⊖ Exclude</button></div>" +
-                    "<div class=\"clause-list\">" + renderFilterClauses(operator.exclude || [], "exclude") + "</div>";
+                    "<div class=\"clause-list\">" + renderFilterClauses(operator.exclude || [], "exclude") + "</div>" +
+                    "<div class=\"operator-row\"><strong>Sources</strong></div>" +
+                    renderSourceFilterOptions(operator, sourceCatalog);
+            }
+
+            function renderSourceFilterOptions(operator, sourceCatalog) {
+                if (!sourceCatalog.length) {
+                    return "<div class=\"operator-meta\">No source list available.</div>";
+                }
+                const selectedSources = getOperatorSourceFilters(operator);
+                return "<div class=\"source-filter-list\">" + sourceCatalog.map((sourceDescriptor) => {
+                    const sourceKey = getSourceFilterKey(sourceDescriptor);
+                    const sourceTitle = getSourceFilterLabel(sourceDescriptor);
+                    return "<label class=\"source-filter-toggle\" title=\"" + escapeAttribute(sourceTitle) + "\">" +
+                        "<input type=\"checkbox\" data-action=\"toggle-source\" data-source-key=\"" + escapeAttribute(sourceKey) + "\" aria-label=\"" + escapeAttribute(sourceTitle) + "\" " + (selectedSources.includes(sourceKey) ? "checked" : "") + ">" +
+                        "<span class=\"source-filter-swatch\" style=\"--source-filter-bg:" + escapeAttribute(sourceDescriptor.lineBg) + "\"></span>" +
+                        "</label>";
+                }).join("") + "</div>";
             }
 
             function renderFilterClauses(clauses, kind) {
@@ -2889,6 +3024,48 @@
                 const prefill = getCurrentSelectionPrefill();
                 state.operators[index][kind].push(createFilterClause(prefill.selectedText));
                 invalidateAfterOperatorChange();
+            }
+
+            function toggleFilterSource(operatorId, sourceKey, enabled) {
+                const index = getOperatorIndexById(operatorId);
+                if (index === -1) {
+                    return;
+                }
+                const operator = state.operators[index];
+                if (operator.type !== "filter") {
+                    return;
+                }
+                const selectedSources = new Set(getOperatorSourceFilters(operator));
+                if (enabled) {
+                    selectedSources.add(sourceKey);
+                } else {
+                    selectedSources.delete(sourceKey);
+                }
+                operator.sources = Array.from(selectedSources);
+                invalidateAfterOperatorChange();
+            }
+
+            function addSourceFilterForRow(rowIndex) {
+                const stage = getCurrentStageSync();
+                if (!stage || getStageSourceCatalog(stage).length <= 1) {
+                    return false;
+                }
+                if (rowIndex == null || rowIndex < 0 || rowIndex >= stage.lineCount) {
+                    return false;
+                }
+                const sourceDescriptor = getLineSourceDescriptor(stage, rowIndex);
+                const sourceKey = getSourceFilterKey(sourceDescriptor);
+                if (!sourceKey) {
+                    return false;
+                }
+                const operator = createDefaultOperator("filter", null);
+                operator.include = [];
+                operator.exclude = [];
+                operator.sources = [sourceKey];
+                insertOperatorAfterSelected(operator);
+                invalidateAfterOperatorChange();
+                updateStatus("Added source filter for '" + getSourceFilterLabel(sourceDescriptor) + "'.");
+                return true;
             }
 
             function removeFilterClause(operatorId, kind, clauseIndex) {
@@ -3104,6 +3281,13 @@
                 const stage = getCurrentStageSync();
                 if (!stage) return;
                 if (event.target.closest("button") || event.target.closest("input") || event.target.closest("textarea") || event.target.closest("select")) {
+                    return;
+                }
+                if (event.button === 0 && event.detail > 1) {
+                    event.preventDefault();
+                    endSelection();
+                    const point = getRowAndColumnFromPointer(event, stage);
+                    addSourceFilterForRow(point.row);
                     return;
                 }
                 event.preventDefault();
@@ -3410,7 +3594,7 @@
                     const workingSetRaw = localStorage.getItem(STORAGE_WORKING_SET);
                     if (workingSetRaw) {
                         const workingSet = JSON.parse(workingSetRaw);
-                        state.operators = Array.isArray(workingSet.operators) ? workingSet.operators : [];
+                        state.operators = normalizeOperatorList(workingSet.operators);
                         state.selectedOperatorId = workingSet.selectedOperatorId ?? null;
                         state.nextOperatorId = Number(workingSet.nextOperatorId || 1);
                     }
@@ -3462,7 +3646,7 @@
                 const name = elements.profileSelect.value;
                 const profile = state.profiles.named[name];
                 if (!profile) return;
-                state.operators = JSON.parse(JSON.stringify(profile.operators || []));
+                state.operators = normalizeOperatorList(JSON.parse(JSON.stringify(profile.operators || [])));
                 state.selectedOperatorId = profile.selectedOperatorId ?? null;
                 state.nextOperatorId = Number(profile.nextOperatorId || 1);
                 setLoadedProfileName(name);
@@ -3496,10 +3680,13 @@
                     throw new Error("Unsupported profile bundle.");
                 }
                 if (payload.profiles && typeof payload.profiles === "object") {
-                    state.profiles.named = { ...state.profiles.named, ...payload.profiles };
+                    state.profiles.named = Object.fromEntries(Object.entries({ ...state.profiles.named, ...payload.profiles }).map(([name, profile]) => [name, {
+                        ...profile,
+                        operators: normalizeOperatorList(profile && profile.operators)
+                    }]));
                 }
                 if (payload.workingSet) {
-                    state.operators = Array.isArray(payload.workingSet.operators) ? payload.workingSet.operators : state.operators;
+                    state.operators = normalizeOperatorList(payload.workingSet.operators || state.operators);
                     state.selectedOperatorId = payload.workingSet.selectedOperatorId ?? state.selectedOperatorId;
                     state.nextOperatorId = Number(payload.workingSet.nextOperatorId || state.nextOperatorId || 1);
                 }
@@ -3720,6 +3907,11 @@
                 const card = event.target.closest("[data-operator-id]");
                 if (!card) return;
                 setSelectedOperator(Number(card.getAttribute("data-operator-id")), false);
+                const action = event.target.getAttribute("data-action");
+                if (action === "toggle-source") {
+                    toggleFilterSource(Number(card.getAttribute("data-operator-id")), event.target.getAttribute("data-source-key"), event.target.checked);
+                    return;
+                }
                 const field = event.target.getAttribute("data-field");
                 if (!field) return;
                 if (event.target.tagName === "TEXTAREA") {
