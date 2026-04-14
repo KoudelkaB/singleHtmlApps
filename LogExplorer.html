@@ -1588,6 +1588,9 @@
             }
 
             function createDefaultOperator(type, prefill) {
+                const hasSelection = !!(prefill && prefill.hasSelection);
+                const defaultLength = Math.max(1, hasSelection ? prefill.width : (prefill && prefill.maxWidth) || 1);
+                const defaultValueType = hasSelection ? inferSelectionValueType(prefill.selectedText) : "string";
                 const base = {
                     id: state.nextOperatorId++,
                     type,
@@ -1613,32 +1616,55 @@
                         ...base,
                         mode: "positional",
                         pos: prefill ? prefill.startCol : 0,
-                        len: prefill ? Math.max(1, prefill.width) : 8,
+                        len: defaultLength,
                         anchor: prefill && prefill.selectedText ? prefill.selectedText : "",
                         anchorSide: "after",
-                        valueType: "number",
+                        valueType: defaultValueType,
                         order: "asc"
                     };
                 }
                 return {
                     ...base,
                     pos: prefill ? prefill.startCol : 0,
-                    len: prefill ? Math.max(1, prefill.width) : 8,
-                    valueType: "number",
+                    len: defaultLength,
+                    valueType: defaultValueType,
                     invert: false
                 };
+            }
+
+            function inferSelectionValueType(selectedText) {
+                const text = typeof selectedText === "string" ? selectedText : "";
+                if (!text || text.includes("\n")) {
+                    return "string";
+                }
+                if (parseTypedValue(text, "number", false).ok) {
+                    return "number";
+                }
+                if (parseTypedValue(text, "date-time", false).ok) {
+                    return "date-time";
+                }
+                if (parseTypedValue(text, "time-span", false).ok) {
+                    return "time-span";
+                }
+                return "string";
             }
 
             function getCurrentSelectionPrefill() {
                 const stage = state.source.stage ? getCurrentStageSync() : null;
                 const normalized = normalizeSelection(state.selection);
+                const maxWidth = stage ? Math.max(1, stage.maxLineLength) : 1;
                 if (!stage || !normalized) {
-                    return { selectedText: "", startCol: 0, width: 0 };
+                    return { selectedText: "", startCol: 0, width: 0, maxWidth, hasSelection: false };
                 }
+                const selectedText = extractSelectionText(stage, normalized);
+                const width = normalized.endCol - normalized.startCol;
+                const hasSelection = !!selectedText.length;
                 return {
-                    selectedText: extractSelectionText(stage, normalized),
-                    startCol: normalized.startCol,
-                    width: normalized.endCol - normalized.startCol
+                    selectedText,
+                    startCol: hasSelection ? normalized.startCol : 0,
+                    width,
+                    maxWidth,
+                    hasSelection
                 };
             }
 
@@ -2149,34 +2175,38 @@
             }
 
             function buildGroupedBlocks(lines, lineSourceIds, operator, invertDateTimeMode) {
-                const leading = [];
-                const leadingSourceIds = [];
                 const blocks = [];
+                let leadingCount = 0;
                 let currentBlock = null;
                 for (let index = 0; index < lines.length; index++) {
                     const line = lines[index];
-                    const lineSourceId = lineSourceIds[index] ?? -1;
                     const slice = extractSortSlice(line, operator);
                     const parsed = slice.ok ? parseTypedValue(slice.raw, operator.valueType, invertDateTimeMode) : { ok: false };
                     if (parsed.ok) {
                         currentBlock = {
                             key: parsed.comparable,
                             raw: slice.raw,
-                            anchor: line,
-                            lines: [line],
-                            lineSourceIds: [lineSourceId],
+                            startIndex: index,
+                            endIndex: index + 1,
                             type: operator.valueType
                         };
                         blocks.push(currentBlock);
                     } else if (currentBlock) {
-                        currentBlock.lines.push(line);
-                        currentBlock.lineSourceIds.push(lineSourceId);
+                        currentBlock.endIndex = index + 1;
                     } else {
-                        leading.push(line);
-                        leadingSourceIds.push(lineSourceId);
+                        leadingCount = index + 1;
                     }
                 }
-                return { leading, leadingSourceIds, blocks };
+                return { leadingCount, blocks };
+            }
+
+            function appendLineRange(output, outputSourceIds, outputIndex, lines, lineSourceIds, startIndex, endIndex) {
+                for (let index = startIndex; index < endIndex; index++) {
+                    output[outputIndex] = lines[index];
+                    outputSourceIds[outputIndex] = lineSourceIds[index] ?? -1;
+                    outputIndex += 1;
+                }
+                return outputIndex;
             }
 
             function applySort(stage, operator, hash) {
@@ -2190,11 +2220,11 @@
                         return comparison || left.index - right.index;
                     })
                     .map((entry) => entry.block);
-                const output = grouped.leading.slice();
-                const outputSourceIds = grouped.leadingSourceIds.slice();
+                const output = new Array(lines.length);
+                const outputSourceIds = new Array(sourceIds.length);
+                let outputIndex = appendLineRange(output, outputSourceIds, 0, lines, sourceIds, 0, grouped.leadingCount);
                 for (const block of sortedBlocks) {
-                    output.push(...block.lines);
-                    outputSourceIds.push(...block.lineSourceIds);
+                    outputIndex = appendLineRange(output, outputSourceIds, outputIndex, lines, sourceIds, block.startIndex, block.endIndex);
                 }
                 return buildLineStage(output, hash, "Sort", {
                     lineSourceIds: outputSourceIds,
@@ -2206,6 +2236,22 @@
                 const start = line.slice(0, pos);
                 const end = line.slice(pos + len);
                 return start + replacement + end;
+            }
+
+            function diffStrings(current, previous) {
+                let output = "";
+                for (let index = 0; index < current.length; index++) {
+                    output += current[index] === previous[index] ? " " : current[index];
+                }
+                return output;
+            }
+
+            function invertStringDiff(diffText, previous) {
+                let output = "";
+                for (let index = 0; index < diffText.length; index++) {
+                    output += diffText[index] === " " ? (previous[index] || " ") : diffText[index];
+                }
+                return output;
             }
 
             function diffSignature(operator) {
@@ -2222,17 +2268,29 @@
                 const lines = materializeStageLines(stage);
                 const sourceIds = getStageLineSourceIds(stage);
                 const grouped = buildGroupedBlocks(lines, sourceIds, operator, operator.invert && operator.valueType === "date-time");
-                const output = grouped.leading.slice();
-                const outputSourceIds = grouped.leadingSourceIds.slice();
+                const output = new Array(lines.length);
+                const outputSourceIds = new Array(sourceIds.length);
+                let outputIndex = appendLineRange(output, outputSourceIds, 0, lines, sourceIds, 0, grouped.leadingCount);
                 let previousInputComparable = null;
                 let previousOutputComparable = null;
                 for (const block of grouped.blocks) {
-                    const anchor = block.anchor;
+                    const anchor = lines[block.startIndex];
                     const slice = extractSortSlice(anchor, { ...operator, mode: "positional" });
                     const parsed = parseTypedValue(slice.raw, operator.valueType, operator.invert && operator.valueType === "date-time");
                     let replacement = slice.raw;
                     if (previousInputComparable != null || previousOutputComparable != null) {
-                        if (operator.invert) {
+                        if (operator.valueType === "string") {
+                            if (operator.invert) {
+                                if (stage.diffMeta && stage.diffMeta.signature === diffSignature(operator) && stage.diffMeta.originalLines) {
+                                    replacement = slice.raw;
+                                } else if (typeof previousOutputComparable === "string") {
+                                    replacement = invertStringDiff(slice.raw, previousOutputComparable);
+                                    previousOutputComparable = replacement;
+                                }
+                            } else if (typeof previousInputComparable === "string") {
+                                replacement = diffStrings(slice.raw, previousInputComparable);
+                            }
+                        } else if (operator.invert) {
                             if (stage.diffMeta && stage.diffMeta.signature === diffSignature(operator) && stage.diffMeta.originalLines) {
                                 replacement = slice.raw;
                             } else if (previousOutputComparable != null) {
@@ -2249,14 +2307,18 @@
                         previousInputComparable = parsed.comparable;
                         previousOutputComparable = parsed.comparable;
                     } else if (previousOutputComparable == null) {
-                        previousOutputComparable = operator.valueType === "date-time" ? parseDateTime(slice.raw) : parsed.comparable;
+                        previousOutputComparable = operator.valueType === "date-time"
+                            ? parseDateTime(slice.raw)
+                            : parsed.comparable;
                     }
                     const changedAnchor = replaceRange(anchor, Math.max(0, Number(operator.pos) || 0), Math.max(1, Number(operator.len) || 1), replacement);
-                    output.push(changedAnchor);
-                    outputSourceIds.push(block.lineSourceIds[0] ?? -1);
-                    for (let followerIndex = 1; followerIndex < block.lines.length; followerIndex++) {
-                        output.push(block.lines[followerIndex]);
-                        outputSourceIds.push(block.lineSourceIds[followerIndex] ?? -1);
+                    output[outputIndex] = changedAnchor;
+                    outputSourceIds[outputIndex] = sourceIds[block.startIndex] ?? -1;
+                    outputIndex += 1;
+                    for (let followerIndex = block.startIndex + 1; followerIndex < block.endIndex; followerIndex++) {
+                        output[outputIndex] = lines[followerIndex];
+                        outputSourceIds[outputIndex] = sourceIds[followerIndex] ?? -1;
+                        outputIndex += 1;
                     }
                 }
                 return buildLineStage(output, hash, "Diff", {
@@ -2660,10 +2722,10 @@
                 return "<div class=\"operator-row\">" +
                     "<label>Pos<input type=\"number\" data-field=\"pos\" value=\"" + Number(operator.pos || 0) + "\"></label>" +
                     "<label>Len<input type=\"number\" data-field=\"len\" value=\"" + Number(operator.len || 1) + "\"></label>" +
-                    "<label>Type<select data-field=\"valueType\">" + valueTypeOptions(operator.valueType, false) + "</select></label>" +
+                    "<label>Type<select data-field=\"valueType\">" + valueTypeOptions(operator.valueType, true) + "</select></label>" +
                     "<label><input type=\"checkbox\" data-field=\"invert\" " + (operator.invert ? "checked" : "") + "> invert</label>" +
                     "</div>" +
-                    "<div class=\"operator-meta\">Non-parsable rows stay attached to the nearest preceding parsable anchor row. Invert after normal diff restores the cached original stage for matching parameters.</div>";
+                    "<div class=\"operator-meta\">Non-parsable rows stay attached to the nearest preceding parsable anchor row. String diff keeps only changed characters; invert after normal diff restores the cached original stage for matching parameters.</div>";
             }
 
             function renderFilterBody(operator) {
