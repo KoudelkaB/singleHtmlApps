@@ -568,14 +568,21 @@
             grid-template-columns: var(--gutter-width) minmax(0, 1fr);
             align-items: center;
             font-size: 13px;
+            background: var(--line-bg, transparent);
+            transition: background 0.12s ease, box-shadow 0.12s ease;
         }
 
-        .log-line:nth-child(even) {
-            background: rgba(230, 239, 251, 0.35);
+        .log-line:hover {
+            background: var(--line-hover-bg, rgba(77, 119, 181, 0.12));
+            box-shadow: inset 0 0 0 1px rgba(47, 128, 237, 0.18);
         }
 
         .log-line.preview-next-filter .line-text {
             color: var(--preview);
+        }
+
+        .log-line:hover .line-number {
+            color: var(--accent-strong);
         }
 
         .line-number {
@@ -708,6 +715,13 @@
 
         .busy-indicator {
             color: var(--accent-strong);
+        }
+
+        .status-detail {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .modal-backdrop {
@@ -868,6 +882,8 @@
                                     <button class="menu-button" id="copyBlockButton" disabled>▦ Copy block</button>
                                 </div>
                                 <button class="menu-button" id="resetViewButton" disabled>↺ Reset view</button>
+                                <button class="menu-button" id="flattenSourcesButton" disabled>≡ Flatten
+                                    sources</button>
                             </div>
                             <div class="menu-group">
                                 <span class="menu-label">Profiles</span>
@@ -954,6 +970,7 @@
 
         <section class="statusbar">
             <span id="statusMessage"><strong>Status:</strong> Ready.</span>
+            <span class="status-detail" id="hoveredSourceInfo">Source: -</span>
             <span class="busy-indicator" id="busyIndicator"></span>
         </section>
     </div>
@@ -972,9 +989,17 @@
             <h3>How to use Log Explorer</h3>
             <p>Load content by drop, file picker, or clipboard. Inputs are normalized to UTF-8 before indexing. Rows
                 stay unwrapped; use the custom scrollbars, arrow keys, Page Up, Page Down, Home, End, or Ctrl + wheel
-                for horizontal movement.</p>
+                for horizontal movement. When content is already loaded, or when multiple new inputs arrive together,
+                Log Explorer asks whether to load the new input as <code>New</code>, <code>Append</code>, or
+                <code>Zip</code>. Press <code>Esc</code> in that dialog to cancel the load.
+            </p>
             <p>The top bar keeps the most common actions visible and moves secondary commands into the app menu.
-                Profiles live in that menu together with export, import, and alternate copy commands.</p>
+                Profiles live in that menu together with export, import, and alternate copy commands. When multiple
+                sources are combined, each source keeps its own background tint across all stages so appended and
+                zipped rows remain traceable after filtering, sorting, replacing, or diffing. Use
+                <code>Flatten sources</code> from the menu when you want the current loaded content to behave like a
+                single source again.
+            </p>
             <p>Each operation row is selectable. Only enabled operations from the top down to the selected row affect
                 the preview. Disabled rows stay visible but do not contribute. If the next enabled row after the
                 selected stage is a Filter, lines that would stay after that Filter are previewed in blue.</p>
@@ -999,7 +1024,8 @@
             </p>
             <p>Mouse selection is copyable. <code>Copy Column</code> uses the current selection width across the whole
                 preview. <code>Copy Block</code> copies the current rectangular selection across its selected line span.
-                Profiles persist locally, can be saved by name, exported as JSON, and imported by button or file drop.
+                Hovering a row highlights it and shows its source path or source label in the status bar. Profiles
+                persist locally, can be saved by name, exported as JSON, and imported by button or file drop.
             </p>
         </div>
     </div>
@@ -1031,6 +1057,16 @@
             const CACHE_MAX_STAGES = 18;
             const CACHE_MAX_BYTES = 220 * 1024 * 1024;
             const BUFFER_ROWS = 10;
+            const SOURCE_TONES = [
+                { lineBg: "rgba(211, 83, 70, 0.14)", lineHoverBg: "rgba(211, 83, 70, 0.22)" },
+                { lineBg: "rgba(28, 125, 108, 0.14)", lineHoverBg: "rgba(28, 125, 108, 0.22)" },
+                { lineBg: "rgba(45, 116, 209, 0.14)", lineHoverBg: "rgba(45, 116, 209, 0.22)" },
+                { lineBg: "rgba(181, 123, 16, 0.14)", lineHoverBg: "rgba(181, 123, 16, 0.22)" },
+                { lineBg: "rgba(122, 79, 179, 0.14)", lineHoverBg: "rgba(122, 79, 179, 0.22)" },
+                { lineBg: "rgba(0, 137, 173, 0.14)", lineHoverBg: "rgba(0, 137, 173, 0.22)" },
+                { lineBg: "rgba(156, 79, 124, 0.14)", lineHoverBg: "rgba(156, 79, 124, 0.22)" },
+                { lineBg: "rgba(98, 119, 42, 0.14)", lineHoverBg: "rgba(98, 119, 42, 0.22)" }
+            ];
 
             const elements = {
                 fileInfo: document.getElementById("fileInfo"),
@@ -1043,6 +1079,7 @@
                 scrollInfo: document.getElementById("scrollInfo"),
                 cacheInfo: document.getElementById("cacheInfo"),
                 statusMessage: document.getElementById("statusMessage"),
+                hoveredSourceInfo: document.getElementById("hoveredSourceInfo"),
                 busyIndicator: document.getElementById("busyIndicator"),
                 openFileButton: document.getElementById("openFileButton"),
                 exportViewButton: document.getElementById("exportViewButton"),
@@ -1051,6 +1088,7 @@
                 copyColumnButton: document.getElementById("copyColumnButton"),
                 copyBlockButton: document.getElementById("copyBlockButton"),
                 resetViewButton: document.getElementById("resetViewButton"),
+                flattenSourcesButton: document.getElementById("flattenSourcesButton"),
                 helpButton: document.getElementById("helpButton"),
                 closeHelpButton: document.getElementById("closeHelpButton"),
                 fileInput: document.getElementById("fileInput"),
@@ -1092,6 +1130,7 @@
                     originalEncoding: "",
                     normalizedEncoding: "utf-8",
                     stage: null,
+                    sourceCatalog: [],
                     byteLength: 0,
                     charLength: 0
                 },
@@ -1112,7 +1151,10 @@
                     draggingVertical: false,
                     draggingHorizontal: false,
                     dragStartClient: 0,
-                    dragStartScroll: 0
+                    dragStartScroll: 0,
+                    hoveredRow: null,
+                    hoverClientX: null,
+                    hoverClientY: null
                 },
                 selection: null,
                 isSelecting: false,
@@ -1161,23 +1203,116 @@
                 return escapeHtml(text).replace(/"/g, "&quot;");
             }
 
-            function buildTextInputSource(text, sourceName, originalEncoding) {
+            function buildTextInputSource(text, sourceName, originalEncoding, sourcePath) {
                 return {
                     text: String(text).replace(/\r\n?/g, "\n"),
                     name: sourceName || "Clipboard",
-                    encoding: originalEncoding || "clipboard"
+                    encoding: originalEncoding || "clipboard",
+                    path: sourcePath || sourceName || "Clipboard"
                 };
+            }
+
+            function cloneSourceCatalog(catalog) {
+                return Array.isArray(catalog) ? catalog.map((entry) => ({ ...entry })) : [];
+            }
+
+            function getSourceTone(toneIndex) {
+                return SOURCE_TONES[((toneIndex % SOURCE_TONES.length) + SOURCE_TONES.length) % SOURCE_TONES.length];
+            }
+
+            function normalizeSourceDescriptor(entry, globalIndex) {
+                const toneIndex = typeof entry.toneIndex === "number" ? entry.toneIndex : globalIndex % SOURCE_TONES.length;
+                const tone = getSourceTone(toneIndex);
+                return {
+                    label: entry.label || entry.name || entry.path || "Clipboard",
+                    path: entry.path || entry.label || entry.name || "Clipboard",
+                    toneIndex,
+                    lineBg: tone.lineBg,
+                    lineHoverBg: tone.lineHoverBg
+                };
+            }
+
+            function createSourceDescriptor(source, globalIndex) {
+                return normalizeSourceDescriptor({
+                    label: source.name || source.path || "Clipboard",
+                    path: source.path || source.name || "Clipboard"
+                }, globalIndex);
+            }
+
+            function splitTextLines(text) {
+                return String(text || "").split("\n");
+            }
+
+            function createBundleFromInputSource(source) {
+                const lines = splitTextLines(source.text);
+                return {
+                    lines,
+                    lineSourceIds: new Array(lines.length).fill(0),
+                    sourceCatalog: [createSourceDescriptor(source, 0)],
+                    fallbackSourceId: 0
+                };
+            }
+
+            function getDefaultSourceCatalog(sourceName) {
+                if (!sourceName) {
+                    return [];
+                }
+                return [createSourceDescriptor({ name: sourceName, path: sourceName }, 0)];
+            }
+
+            function getStageSourceCatalog(stage) {
+                if (stage && Array.isArray(stage.sourceCatalog) && stage.sourceCatalog.length) {
+                    return stage.sourceCatalog;
+                }
+                if (Array.isArray(state.source.sourceCatalog) && state.source.sourceCatalog.length) {
+                    return state.source.sourceCatalog;
+                }
+                const fallback = getDefaultSourceCatalog(state.source.name || "Clipboard");
+                if (stage) {
+                    stage.sourceCatalog = fallback;
+                }
+                return fallback;
+            }
+
+            function getStageLineSourceIds(stage) {
+                if (!stage) {
+                    return [];
+                }
+                if (!Array.isArray(stage.lineSourceIds) || stage.lineSourceIds.length !== stage.lineCount) {
+                    const fallbackSourceId = getStageSourceCatalog(stage).length ? 0 : -1;
+                    stage.lineSourceIds = new Array(stage.lineCount).fill(fallbackSourceId);
+                }
+                return stage.lineSourceIds;
+            }
+
+            function getStageLineSourceId(stage, rowIndex) {
+                const sourceIds = getStageLineSourceIds(stage);
+                return rowIndex >= 0 && rowIndex < sourceIds.length ? sourceIds[rowIndex] : -1;
+            }
+
+            function getLineSourceDescriptor(stage, rowIndex) {
+                const sourceId = getStageLineSourceId(stage, rowIndex);
+                const catalog = getStageSourceCatalog(stage);
+                return sourceId >= 0 && sourceId < catalog.length ? catalog[sourceId] : null;
             }
 
             function getLoadedSourceSnapshot() {
                 if (!state.source.stage) {
                     return null;
                 }
-                return buildTextInputSource(
-                    ensureStageText(state.source.stage),
-                    state.source.name || "Clipboard",
-                    state.source.originalEncoding || "clipboard"
-                );
+                const sourceCatalog = cloneSourceCatalog(getStageSourceCatalog(state.source.stage));
+                return {
+                    text: ensureStageText(state.source.stage),
+                    name: state.source.name || "Clipboard",
+                    encoding: state.source.originalEncoding || "clipboard",
+                    path: state.source.name || "Clipboard",
+                    bundle: {
+                        lines: materializeStageLines(state.source.stage).slice(),
+                        lineSourceIds: getStageLineSourceIds(state.source.stage).slice(),
+                        sourceCatalog,
+                        fallbackSourceId: sourceCatalog.length === 1 ? 0 : -1
+                    }
+                };
             }
 
             function summarizeSourceNames(sources) {
@@ -1198,29 +1333,52 @@
                 return encodings.length === 1 ? encodings[0] : "mixed";
             }
 
-            function composeAppendedText(sources) {
-                let combined = "";
-                for (const source of sources) {
-                    const text = source.text || "";
-                    if (!combined) {
-                        combined = text;
-                        continue;
-                    }
-                    combined += combined.endsWith("\n") || !text ? text : "\n" + text;
-                }
-                return combined;
+            function prepareBundlesForMerge(bundles) {
+                const sourceCatalog = [];
+                const preparedBundles = bundles.map((bundle) => {
+                    const offset = sourceCatalog.length;
+                    const remappedCatalog = (bundle.sourceCatalog || []).map((entry, index) => normalizeSourceDescriptor({
+                        ...entry,
+                        toneIndex: offset + index
+                    }, offset + index));
+                    sourceCatalog.push(...remappedCatalog);
+                    return {
+                        lines: bundle.lines.slice(),
+                        lineSourceIds: bundle.lineSourceIds.map((sourceId) => sourceId >= 0 ? sourceId + offset : -1),
+                        fallbackSourceId: bundle.fallbackSourceId >= 0 ? bundle.fallbackSourceId + offset : -1
+                    };
+                });
+                return { preparedBundles, sourceCatalog };
             }
 
-            function composeZippedText(sources) {
-                const lineSets = sources.map((source) => String(source.text || "").split("\n"));
-                const maxLines = lineSets.reduce((largest, lines) => Math.max(largest, lines.length), 0);
-                const combined = [];
+            function mergeBundlesAppend(bundles) {
+                const { preparedBundles, sourceCatalog } = prepareBundlesForMerge(bundles);
+                const lines = [];
+                const lineSourceIds = [];
+                for (const bundle of preparedBundles) {
+                    lines.push(...bundle.lines);
+                    lineSourceIds.push(...bundle.lineSourceIds);
+                }
+                return { text: lines.join("\n"), lineSourceIds, sourceCatalog };
+            }
+
+            function mergeBundlesZip(bundles) {
+                const { preparedBundles, sourceCatalog } = prepareBundlesForMerge(bundles);
+                const maxLines = preparedBundles.reduce((largest, bundle) => Math.max(largest, bundle.lines.length), 0);
+                const lines = [];
+                const lineSourceIds = [];
                 for (let rowIndex = 0; rowIndex < maxLines; rowIndex++) {
-                    for (const lines of lineSets) {
-                        combined.push(rowIndex < lines.length ? lines[rowIndex] : "");
+                    for (const bundle of preparedBundles) {
+                        if (rowIndex < bundle.lines.length) {
+                            lines.push(bundle.lines[rowIndex]);
+                            lineSourceIds.push(bundle.lineSourceIds[rowIndex]);
+                        } else {
+                            lines.push("");
+                            lineSourceIds.push(bundle.fallbackSourceId);
+                        }
                     }
                 }
-                return combined.join("\n");
+                return { text: lines.join("\n"), lineSourceIds, sourceCatalog };
             }
 
             function buildCombinedSourceName(action, existingSource, incomingSources) {
@@ -1283,18 +1441,43 @@
                     updateStatus("Load canceled.");
                     return;
                 }
+                if (action === "replace" && incomingSources.length === 1) {
+                    const singleSource = incomingSources[0];
+                    const singleBundle = createBundleFromInputSource(singleSource);
+                    await loadTextSource(
+                        singleSource.text,
+                        buildCombinedSourceName(action, existingSource, incomingSources),
+                        singleSource.encoding,
+                        {
+                            lines: singleBundle.lines,
+                            lineSourceIds: singleBundle.lineSourceIds,
+                            sourceCatalog: singleBundle.sourceCatalog
+                        }
+                    );
+                    return;
+                }
+                const incomingBundles = incomingSources.map(createBundleFromInputSource);
+                const bundlesForLoad = action === "replace"
+                    ? incomingBundles
+                    : existingSource
+                        ? [existingSource.bundle].concat(incomingBundles)
+                        : incomingBundles;
+                const merged = action === "zip"
+                    ? mergeBundlesZip(bundlesForLoad)
+                    : mergeBundlesAppend(bundlesForLoad);
                 const sourcesForLoad = action === "replace"
                     ? incomingSources
                     : existingSource
                         ? [existingSource].concat(incomingSources)
                         : incomingSources;
-                const combinedText = action === "zip"
-                    ? composeZippedText(sourcesForLoad)
-                    : composeAppendedText(sourcesForLoad);
                 await loadTextSource(
-                    combinedText,
+                    merged.text,
                     buildCombinedSourceName(action, existingSource, incomingSources),
-                    summarizeEncodings(sourcesForLoad)
+                    summarizeEncodings(sourcesForLoad),
+                    {
+                        lineSourceIds: merged.lineSourceIds,
+                        sourceCatalog: merged.sourceCatalog
+                    }
                 );
             }
 
@@ -1312,7 +1495,10 @@
                 }
                 const bytes = new Uint8Array(await file.arrayBuffer());
                 const decoded = decodeBytes(bytes);
-                return { kind: "text", source: buildTextInputSource(decoded.decoded, file.name, decoded.encoding) };
+                return {
+                    kind: "text",
+                    source: buildTextInputSource(decoded.decoded, file.name, decoded.encoding, file.path || file.webkitRelativePath || file.name)
+                };
             }
 
             function readClipboardTextAsInput(text, sourceName) {
@@ -1324,7 +1510,10 @@
                 } catch (error) {
                     // Clipboard text is log content.
                 }
-                return { kind: "text", source: buildTextInputSource(text, sourceName || "Clipboard", "clipboard") };
+                return {
+                    kind: "text",
+                    source: buildTextInputSource(text, sourceName || "Clipboard", "clipboard", sourceName || "Clipboard")
+                };
             }
 
             async function processLoadInputs(results) {
@@ -1453,7 +1642,7 @@
                 };
             }
 
-            function buildIndexedStage(text, hash, label) {
+            function buildIndexedStage(text, hash, label, extra) {
                 const lineStarts = [0];
                 const lineEnds = [];
                 let maxLineLength = 0;
@@ -1468,6 +1657,12 @@
                 }
                 lineEnds.push(text.length);
                 maxLineLength = Math.max(maxLineLength, text.length - start);
+                const stageExtra = extra || {};
+                const sourceCatalog = cloneSourceCatalog(stageExtra.sourceCatalog || []);
+                const lineCount = lineStarts.length;
+                const lineSourceIds = Array.isArray(stageExtra.lineSourceIds) && stageExtra.lineSourceIds.length === lineCount
+                    ? stageExtra.lineSourceIds.slice()
+                    : new Array(lineCount).fill(sourceCatalog.length ? 0 : -1);
                 return {
                     kind: "indexed",
                     hash,
@@ -1475,9 +1670,12 @@
                     text,
                     lineStarts,
                     lineEnds,
-                    lineCount: lineStarts.length,
+                    lineCount,
                     maxLineLength,
-                    estimatedBytes: text.length * 2 + lineStarts.length * 16
+                    estimatedBytes: text.length * 2 + lineStarts.length * 16,
+                    lineSourceIds,
+                    sourceCatalog,
+                    ...stageExtra
                 };
             }
 
@@ -1488,6 +1686,11 @@
                     maxLineLength = Math.max(maxLineLength, line.length);
                     estimatedBytes += line.length * 2 + 32;
                 }
+                const stageExtra = extra || {};
+                const sourceCatalog = cloneSourceCatalog(stageExtra.sourceCatalog || []);
+                const lineSourceIds = Array.isArray(stageExtra.lineSourceIds) && stageExtra.lineSourceIds.length === lines.length
+                    ? stageExtra.lineSourceIds.slice()
+                    : new Array(lines.length).fill(sourceCatalog.length ? 0 : -1);
                 return {
                     kind: "lines",
                     hash,
@@ -1496,7 +1699,9 @@
                     lineCount: lines.length,
                     maxLineLength,
                     estimatedBytes,
-                    ...extra
+                    lineSourceIds,
+                    sourceCatalog,
+                    ...stageExtra
                 };
             }
 
@@ -1529,6 +1734,113 @@
                 }
                 stage.text = materializeStageLines(stage).join("\n");
                 return stage.text;
+            }
+
+            function ensureStageIndex(stage) {
+                if (!stage) {
+                    return null;
+                }
+                if (Array.isArray(stage.lineStarts) && Array.isArray(stage.lineEnds) && typeof stage.text === "string") {
+                    return stage;
+                }
+                const lines = materializeStageLines(stage);
+                const lineStarts = [0];
+                const lineEnds = [];
+                let offset = 0;
+                for (let index = 0; index < lines.length; index++) {
+                    offset += lines[index].length;
+                    lineEnds.push(offset);
+                    if (index < lines.length - 1) {
+                        offset += 1;
+                        lineStarts.push(offset);
+                    }
+                }
+                stage.text = typeof stage.text === "string" ? stage.text : lines.join("\n");
+                stage.lineStarts = lineStarts;
+                stage.lineEnds = lineEnds;
+                return stage;
+            }
+
+            function findLineIndexForOffset(lineStarts, offset) {
+                let low = 0;
+                let high = lineStarts.length - 1;
+                while (low <= high) {
+                    const mid = Math.floor((low + high) / 2);
+                    if (lineStarts[mid] <= offset) {
+                        if (mid === lineStarts.length - 1 || lineStarts[mid + 1] > offset) {
+                            return mid;
+                        }
+                        low = mid + 1;
+                    } else {
+                        high = mid - 1;
+                    }
+                }
+                return Math.max(0, Math.min(lineStarts.length - 1, low));
+            }
+
+            function getSourceIdAtTextOffset(stage, lineSourceIds, offset) {
+                const indexedStage = ensureStageIndex(stage);
+                const clampedOffset = clamp(offset, 0, Math.max(0, indexedStage.text.length - 1));
+                return lineSourceIds[findLineIndexForOffset(indexedStage.lineStarts, clampedOffset)] ?? -1;
+            }
+
+            function appendStageSliceFragments(stage, startOffset, endOffset, lineSourceIds, fragments) {
+                if (endOffset <= startOffset) {
+                    return;
+                }
+                const indexedStage = ensureStageIndex(stage);
+                let currentOffset = startOffset;
+                let lineIndex = findLineIndexForOffset(indexedStage.lineStarts, currentOffset);
+                while (currentOffset < endOffset) {
+                    const lineLimit = lineIndex < indexedStage.lineCount - 1 ? indexedStage.lineEnds[lineIndex] + 1 : indexedStage.lineEnds[lineIndex];
+                    const sliceEnd = Math.min(endOffset, lineLimit);
+                    fragments.push({
+                        text: indexedStage.text.slice(currentOffset, sliceEnd),
+                        sourceId: lineSourceIds[lineIndex] ?? -1
+                    });
+                    currentOffset = sliceEnd;
+                    if (currentOffset >= lineLimit) {
+                        lineIndex += 1;
+                    }
+                }
+            }
+
+            function materializeFragmentsToLines(fragments) {
+                const lines = [];
+                const lineSourceIds = [];
+                let currentLine = "";
+                let currentSourceId = -1;
+
+                const flushLine = (fallbackSourceId) => {
+                    if (currentSourceId === -1 && typeof fallbackSourceId === "number") {
+                        currentSourceId = fallbackSourceId;
+                    }
+                    lines.push(currentLine);
+                    lineSourceIds.push(currentSourceId);
+                    currentLine = "";
+                    currentSourceId = -1;
+                };
+
+                for (const fragment of fragments) {
+                    const sourceId = typeof fragment.sourceId === "number" ? fragment.sourceId : -1;
+                    for (let index = 0; index < fragment.text.length; index++) {
+                        const char = fragment.text[index];
+                        if (char === "\n") {
+                            flushLine(sourceId);
+                            continue;
+                        }
+                        if (currentSourceId === -1 && sourceId !== -1) {
+                            currentSourceId = sourceId;
+                        }
+                        currentLine += char;
+                    }
+                }
+
+                const trailingSourceId = fragments.length && typeof fragments[fragments.length - 1].sourceId === "number"
+                    ? fragments[fragments.length - 1].sourceId
+                    : -1;
+                flushLine(trailingSourceId);
+                return { lines, lineSourceIds };
             }
 
             function putStageInCache(key, stage) {
@@ -1671,22 +1983,53 @@
 
             function applyFilter(stage, operator, hash) {
                 const sourceLines = materializeStageLines(stage);
+                const sourceIds = getStageLineSourceIds(stage);
                 const filtered = [];
-                for (const line of sourceLines) {
+                const filteredSourceIds = [];
+                for (let index = 0; index < sourceLines.length; index++) {
+                    const line = sourceLines[index];
                     if (evaluateFilterLine(line, operator)) {
                         filtered.push(line);
+                        filteredSourceIds.push(sourceIds[index] ?? -1);
                     }
                 }
-                return buildLineStage(filtered, hash, "Filter");
+                return buildLineStage(filtered, hash, "Filter", {
+                    lineSourceIds: filteredSourceIds,
+                    sourceCatalog: getStageSourceCatalog(stage)
+                });
             }
 
             function applyReplace(stage, operator, hash) {
+                const sourceCatalog = getStageSourceCatalog(stage);
+                const lineSourceIds = getStageLineSourceIds(stage);
                 if (!operator.search) {
-                    return buildLineStage(materializeStageLines(stage).slice(), hash, "Replace");
+                    return buildLineStage(materializeStageLines(stage).slice(), hash, "Replace", {
+                        lineSourceIds,
+                        sourceCatalog
+                    });
                 }
-                const text = ensureStageText(stage);
-                const replaced = text.split(operator.search).join(operator.replacement || "");
-                const indexed = buildIndexedStage(replaced, hash, "Replace");
+                const indexedStage = ensureStageIndex(stage);
+                const replacementText = operator.replacement || "";
+                const fragments = [];
+                let cursor = 0;
+                let matchIndex = indexedStage.text.indexOf(operator.search, cursor);
+                while (matchIndex !== -1) {
+                    appendStageSliceFragments(indexedStage, cursor, matchIndex, lineSourceIds, fragments);
+                    fragments.push({
+                        text: replacementText,
+                        sourceId: getSourceIdAtTextOffset(indexedStage, lineSourceIds, matchIndex)
+                    });
+                    cursor = matchIndex + operator.search.length;
+                    matchIndex = indexedStage.text.indexOf(operator.search, cursor);
+                }
+                appendStageSliceFragments(indexedStage, cursor, indexedStage.text.length, lineSourceIds, fragments);
+                const replaced = fragments.map((fragment) => fragment.text).join("");
+                const replacedLines = materializeFragmentsToLines(fragments);
+                const indexed = buildIndexedStage(replaced, hash, "Replace", {
+                    lines: replacedLines.lines,
+                    lineSourceIds: replacedLines.lineSourceIds,
+                    sourceCatalog
+                });
                 indexed.diffMeta = null;
                 return indexed;
             }
@@ -1805,11 +2148,14 @@
                 return order === "desc" ? -result : result;
             }
 
-            function buildGroupedBlocks(lines, operator, invertDateTimeMode) {
+            function buildGroupedBlocks(lines, lineSourceIds, operator, invertDateTimeMode) {
                 const leading = [];
+                const leadingSourceIds = [];
                 const blocks = [];
                 let currentBlock = null;
-                for (const line of lines) {
+                for (let index = 0; index < lines.length; index++) {
+                    const line = lines[index];
+                    const lineSourceId = lineSourceIds[index] ?? -1;
                     const slice = extractSortSlice(line, operator);
                     const parsed = slice.ok ? parseTypedValue(slice.raw, operator.valueType, invertDateTimeMode) : { ok: false };
                     if (parsed.ok) {
@@ -1818,21 +2164,25 @@
                             raw: slice.raw,
                             anchor: line,
                             lines: [line],
+                            lineSourceIds: [lineSourceId],
                             type: operator.valueType
                         };
                         blocks.push(currentBlock);
                     } else if (currentBlock) {
                         currentBlock.lines.push(line);
+                        currentBlock.lineSourceIds.push(lineSourceId);
                     } else {
                         leading.push(line);
+                        leadingSourceIds.push(lineSourceId);
                     }
                 }
-                return { leading, blocks };
+                return { leading, leadingSourceIds, blocks };
             }
 
             function applySort(stage, operator, hash) {
                 const lines = materializeStageLines(stage);
-                const grouped = buildGroupedBlocks(lines, operator, false);
+                const sourceIds = getStageLineSourceIds(stage);
+                const grouped = buildGroupedBlocks(lines, sourceIds, operator, false);
                 const sortedBlocks = grouped.blocks
                     .map((block, index) => ({ block, index }))
                     .sort((left, right) => {
@@ -1841,10 +2191,15 @@
                     })
                     .map((entry) => entry.block);
                 const output = grouped.leading.slice();
+                const outputSourceIds = grouped.leadingSourceIds.slice();
                 for (const block of sortedBlocks) {
                     output.push(...block.lines);
+                    outputSourceIds.push(...block.lineSourceIds);
                 }
-                return buildLineStage(output, hash, "Sort");
+                return buildLineStage(output, hash, "Sort", {
+                    lineSourceIds: outputSourceIds,
+                    sourceCatalog: getStageSourceCatalog(stage)
+                });
             }
 
             function replaceRange(line, pos, len, replacement) {
@@ -1859,11 +2214,16 @@
 
             function applyDiff(stage, operator, hash) {
                 if (operator.invert && stage.diffMeta && stage.diffMeta.signature === diffSignature(operator)) {
-                    return buildLineStage(stage.diffMeta.originalLines.slice(), hash, "Diff restore");
+                    return buildLineStage(stage.diffMeta.originalLines.slice(), hash, "Diff restore", {
+                        lineSourceIds: (stage.diffMeta.originalLineSourceIds || []).slice(),
+                        sourceCatalog: getStageSourceCatalog(stage)
+                    });
                 }
                 const lines = materializeStageLines(stage);
-                const grouped = buildGroupedBlocks(lines, operator, operator.invert && operator.valueType === "date-time");
+                const sourceIds = getStageLineSourceIds(stage);
+                const grouped = buildGroupedBlocks(lines, sourceIds, operator, operator.invert && operator.valueType === "date-time");
                 const output = grouped.leading.slice();
+                const outputSourceIds = grouped.leadingSourceIds.slice();
                 let previousInputComparable = null;
                 let previousOutputComparable = null;
                 for (const block of grouped.blocks) {
@@ -1893,11 +2253,21 @@
                     }
                     const changedAnchor = replaceRange(anchor, Math.max(0, Number(operator.pos) || 0), Math.max(1, Number(operator.len) || 1), replacement);
                     output.push(changedAnchor);
+                    outputSourceIds.push(block.lineSourceIds[0] ?? -1);
                     for (let followerIndex = 1; followerIndex < block.lines.length; followerIndex++) {
                         output.push(block.lines[followerIndex]);
+                        outputSourceIds.push(block.lineSourceIds[followerIndex] ?? -1);
                     }
                 }
-                return buildLineStage(output, hash, "Diff", { diffMeta: { signature: diffSignature(operator), originalLines: lines.slice() } });
+                return buildLineStage(output, hash, "Diff", {
+                    lineSourceIds: outputSourceIds,
+                    sourceCatalog: getStageSourceCatalog(stage),
+                    diffMeta: {
+                        signature: diffSignature(operator),
+                        originalLines: lines.slice(),
+                        originalLineSourceIds: sourceIds.slice()
+                    }
+                });
             }
 
             function normalizeSelection(selection) {
@@ -2043,12 +2413,27 @@
                 const offsetY = startRow * state.view.rowHeight - state.view.scrollTop;
                 const selection = normalizeSelection(state.selection);
                 const previewFilter = getPreviewFilterOperator();
+                const multipleSources = getStageSourceCatalog(stage).length > 1;
                 let html = "";
                 for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
                     const line = getStageLine(stage, rowIndex);
                     const previewFiltered = previewFilter ? evaluateFilterLine(line, previewFilter) : false;
                     const range = selectionRangeForRow(selection, rowIndex);
-                    html += "<div class=\"log-line" + (previewFiltered ? " preview-next-filter" : "") + "\" data-row=\"" + rowIndex + "\" style=\"transform:translateY(" + ((rowIndex - startRow) * state.view.rowHeight + offsetY) + "px);\">" +
+                    const sourceDescriptor = getLineSourceDescriptor(stage, rowIndex);
+                    const lineClasses = ["log-line"];
+                    if (previewFiltered) {
+                        lineClasses.push("preview-next-filter");
+                    }
+                    if (multipleSources && sourceDescriptor) {
+                        lineClasses.push("has-source-tint");
+                    }
+                    const styleParts = ["transform:translateY(" + ((rowIndex - startRow) * state.view.rowHeight + offsetY) + "px)"];
+                    if (multipleSources && sourceDescriptor) {
+                        styleParts.push("--line-bg:" + sourceDescriptor.lineBg);
+                        styleParts.push("--line-hover-bg:" + sourceDescriptor.lineHoverBg);
+                    }
+                    const sourceTitle = multipleSources && sourceDescriptor ? " title=\"" + escapeAttribute(sourceDescriptor.path || sourceDescriptor.label) + "\"" : "";
+                    html += "<div class=\"" + lineClasses.join(" ") + "\" data-row=\"" + rowIndex + "\"" + sourceTitle + " style=\"" + styleParts.join(";") + "\">" +
                         "<div class=\"line-number\">" + formatGrouped(rowIndex + 1) + "</div>" +
                         "<div class=\"line-text\">" + renderLineText(line, rowIndex, range, previewFiltered) + "</div>" +
                         "</div>";
@@ -2096,6 +2481,7 @@
                 updateHeader(stage);
                 updateSelectionInfo(stage);
                 updateScrollInfo(stage);
+                updateHoveredSourceInfo(stage);
             }
 
             function updateHeader(stage) {
@@ -2126,6 +2512,32 @@
                 elements.scrollInfo.textContent = "Scroll row " + formatGrouped(row) + "/" + formatGrouped(totalRows) + " col " + formatGrouped(col) + "/" + formatGrouped(totalCols);
             }
 
+            function updateHoveredSourceInfo(stage) {
+                if (stage && state.view.hoverClientX != null && state.view.hoverClientY != null) {
+                    const rect = elements.viewerViewport.getBoundingClientRect();
+                    if (state.view.hoverClientX >= rect.left && state.view.hoverClientX <= rect.right && state.view.hoverClientY >= rect.top && state.view.hoverClientY <= rect.bottom) {
+                        state.view.hoveredRow = getRowAndColumnFromPointer({ clientX: state.view.hoverClientX, clientY: state.view.hoverClientY }, stage).row;
+                    } else {
+                        state.view.hoveredRow = null;
+                    }
+                }
+                if (!stage || state.view.hoveredRow == null || state.view.hoveredRow < 0 || state.view.hoveredRow >= stage.lineCount) {
+                    elements.hoveredSourceInfo.textContent = "Source: -";
+                    return;
+                }
+                const source = getLineSourceDescriptor(stage, state.view.hoveredRow);
+                elements.hoveredSourceInfo.textContent = "Source: " + (source ? (source.path || source.label) : "-");
+            }
+
+            function setHoveredRow(row) {
+                const nextRow = typeof row === "number" ? row : null;
+                if (state.view.hoveredRow === nextRow) {
+                    return;
+                }
+                state.view.hoveredRow = nextRow;
+                updateHoveredSourceInfo(getCurrentStageSync());
+            }
+
             function updateSelectionInfo(stage) {
                 const selection = normalizeSelection(state.selection);
                 if (!stage) {
@@ -2146,15 +2558,44 @@
                 const hasSource = !!state.source.stage;
                 const hasSelection = !!normalizeSelection(state.selection);
                 const hasProfiles = Object.keys(state.profiles.named).length > 0;
+                const sourceCount = hasSource ? getStageSourceCatalog(state.source.stage).length : 0;
                 elements.exportViewButton.disabled = !hasSource;
                 elements.copyViewButton.disabled = !hasSource;
                 elements.copySelectionButton.disabled = !hasSelection;
                 elements.copyColumnButton.disabled = !hasSelection || !hasSource;
                 elements.copyBlockButton.disabled = !hasSelection || !hasSource;
                 elements.resetViewButton.disabled = !hasSource;
+                elements.flattenSourcesButton.disabled = !hasSource || sourceCount <= 1;
                 elements.saveProfileButton.disabled = state.operators.length === 0;
                 elements.loadProfileButton.disabled = !hasProfiles;
                 elements.deleteProfileButton.disabled = !hasProfiles;
+            }
+
+            function flattenSources() {
+                if (!state.source.stage) {
+                    return;
+                }
+                const sourceCatalog = getStageSourceCatalog(state.source.stage);
+                if (sourceCatalog.length <= 1) {
+                    updateStatus("Source view is already flat.");
+                    return;
+                }
+                const flattenedSource = createSourceDescriptor({
+                    name: state.source.name || "Clipboard",
+                    path: state.source.name || "Clipboard"
+                }, 0);
+                const flatCatalog = [flattenedSource];
+                const flatLineSourceIds = new Array(state.source.stage.lineCount).fill(0);
+                state.source.sourceCatalog = flatCatalog;
+                state.source.stage.sourceCatalog = flatCatalog;
+                state.source.stage.lineSourceIds = flatLineSourceIds;
+                state.stageCache.clear();
+                state.stageCacheOrder = [];
+                state.stageCacheBytes = 0;
+                putStageInCache("raw", state.source.stage);
+                state.activeJob = ++state.jobVersion;
+                updateStatus("Flattened source mapping to a single source.");
+                renderSoon();
             }
 
             function setDropZoneVisibility(visible) {
@@ -2837,6 +3278,23 @@
                 continueSelection(event);
             }
 
+            function handleViewportHover(event) {
+                state.view.hoverClientX = event.clientX;
+                state.view.hoverClientY = event.clientY;
+                const stage = getCurrentStageSync();
+                if (!stage) {
+                    setHoveredRow(null);
+                    return;
+                }
+                setHoveredRow(getRowAndColumnFromPointer(event, stage).row);
+            }
+
+            function clearViewportHover() {
+                state.view.hoverClientX = null;
+                state.view.hoverClientY = null;
+                setHoveredRow(null);
+            }
+
             function handlePointerUp() {
                 state.view.draggingVertical = false;
                 state.view.draggingHorizontal = false;
@@ -3041,14 +3499,28 @@
                 return { decoded, encoding: detection.encoding };
             }
 
-            async function loadTextSource(text, sourceName, originalEncoding) {
+            async function loadTextSource(text, sourceName, originalEncoding, sourceMeta) {
                 const normalizedText = String(text).replace(/\r\n?/g, "\n");
+                const normalizedLines = Array.isArray(sourceMeta && sourceMeta.lines)
+                    ? sourceMeta.lines.slice()
+                    : splitTextLines(normalizedText);
+                const sourceCatalog = Array.isArray(sourceMeta && sourceMeta.sourceCatalog) && sourceMeta.sourceCatalog.length
+                    ? cloneSourceCatalog(sourceMeta.sourceCatalog)
+                    : getDefaultSourceCatalog(sourceName || "Clipboard");
+                const lineSourceIds = Array.isArray(sourceMeta && sourceMeta.lineSourceIds) && sourceMeta.lineSourceIds.length === normalizedLines.length
+                    ? sourceMeta.lineSourceIds.slice()
+                    : new Array(normalizedLines.length).fill(sourceCatalog.length ? 0 : -1);
                 state.source.name = sourceName || "Clipboard";
                 state.source.originalEncoding = originalEncoding || "clipboard";
                 state.source.normalizedEncoding = "utf-8";
+                state.source.sourceCatalog = sourceCatalog;
                 state.source.byteLength = new TextEncoder().encode(normalizedText).length;
                 state.source.charLength = normalizedText.length;
-                state.source.stage = buildIndexedStage(normalizedText, "raw", "Raw");
+                state.source.stage = buildIndexedStage(normalizedText, "raw", "Raw", {
+                    lines: normalizedLines,
+                    lineSourceIds,
+                    sourceCatalog
+                });
                 state.stageCache.clear();
                 state.stageCacheOrder = [];
                 state.stageCacheBytes = 0;
@@ -3056,6 +3528,9 @@
                 state.selectedOperatorId = null;
                 state.view.scrollTop = 0;
                 state.view.scrollLeftCols = 0;
+                state.view.hoveredRow = null;
+                state.view.hoverClientX = null;
+                state.view.hoverClientY = null;
                 state.selection = null;
                 state.cursor.row = 0;
                 state.cursor.col = 0;
@@ -3327,6 +3802,10 @@
                     resetView();
                     closeAppMenu();
                 });
+                elements.flattenSourcesButton.addEventListener("click", () => {
+                    flattenSources();
+                    closeAppMenu();
+                });
                 elements.helpButton.addEventListener("click", () => elements.helpModal.classList.add("visible"));
                 elements.closeHelpButton.addEventListener("click", () => elements.helpModal.classList.remove("visible"));
                 elements.helpModal.addEventListener("click", (event) => {
@@ -3377,6 +3856,8 @@
                 });
                 elements.viewerViewport.addEventListener("wheel", handleWheel, { passive: false });
                 elements.viewerViewport.addEventListener("mousedown", beginSelection);
+                elements.viewerViewport.addEventListener("mousemove", handleViewportHover);
+                elements.viewerViewport.addEventListener("mouseleave", clearViewportHover);
                 document.addEventListener("mousemove", handlePointerMove);
                 document.addEventListener("mouseup", handlePointerUp);
                 elements.verticalThumb.addEventListener("mousedown", startVerticalDrag);
