@@ -380,6 +380,82 @@
             gap: 10px;
         }
 
+        .saved-profiles-panel {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(212, 222, 238, 0.78);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .saved-profiles-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .saved-profiles-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .saved-profile-chip {
+            min-width: 0;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        .saved-profile-chip[draggable="true"] {
+            cursor: grab;
+        }
+
+        .saved-profile-chip.dragging {
+            opacity: 0.52;
+            cursor: grabbing;
+        }
+
+        .saved-profile-chip.drop-target {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(47, 128, 237, 0.16);
+        }
+
+        .saved-profile-chip.implicit {
+            background: linear-gradient(180deg, #eef5ff, #dfeeff);
+            border-color: rgba(47, 128, 237, 0.34);
+        }
+
+        .profile-context-menu {
+            position: fixed;
+            z-index: 80;
+            min-width: 190px;
+            display: grid;
+            gap: 4px;
+            padding: 8px;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.96);
+            box-shadow: var(--shadow);
+            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(14px);
+        }
+
+        .profile-context-menu[hidden] {
+            display: none;
+        }
+
+        .profile-context-menu button {
+            width: 100%;
+            text-align: left;
+            padding: 9px 10px;
+            background: transparent;
+        }
+
         .operator-card {
             border: 1px solid var(--border);
             border-radius: 14px;
@@ -853,6 +929,32 @@
             flex-wrap: wrap;
         }
 
+        .choice-modal-columns {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .choice-modal-column {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.6);
+        }
+
+        .choice-modal-column h4 {
+            margin: 0;
+            font-size: 0.94rem;
+        }
+
+        .choice-modal-column .toolbar-hint {
+            margin: 0;
+        }
+
         .choice-button {
             min-width: 140px;
         }
@@ -990,8 +1092,10 @@
                 </div>
                 <div class="panel-body">
                     <div class="operator-hint">Single click smart-selects structures. Drag to override. Ctrl+click picks
-                        the smallest matching token.</div>
+                        the smallest matching token. Middle click jumps to the previous stage; Ctrl+middle click goes
+                        forward.</div>
                     <div class="operator-list" id="operatorList"></div>
+                    <div class="saved-profiles-panel" id="savedProfilesPanel" hidden></div>
                 </div>
             </div>
 
@@ -1013,7 +1117,7 @@
                             <div>
                                 <h2>Drop a log file, open one, or paste clipboard text</h2>
                                 <p>The viewer keeps rows unwrapped, caches stage results, and supports Ctrl + wheel for
-                                    horizontal scrolling.</p>
+                                    horizontal scrolling plus middle-click stage navigation.</p>
                             </div>
                         </div>
                     </div>
@@ -1049,8 +1153,9 @@
             <p>Load content by drop, file picker, or clipboard. Inputs are normalized to UTF-8 before indexing. Rows
                 stay unwrapped; use the custom scrollbars, arrow keys, Page Up, Page Down, Home, End, or Ctrl + wheel
                 for horizontal movement. When content is already loaded, or when multiple new inputs arrive together,
-                Log Explorer asks whether to load the new input as <code>New</code>, <code>Append</code>, or
-                <code>Zip</code>. Press <code>Esc</code> in that dialog to cancel the load.
+                Log Explorer asks whether to load the new input into the current source or as a fresh source. The
+                dialog offers separate combine and new columns with <code>Append</code> and <code>Zip</code>
+                variants. Press <code>Esc</code> in that dialog to cancel the load.
             </p>
             <p>The top bar keeps the most common actions visible and moves secondary commands into the app menu.
                 Profiles live in that menu together with export, import, and alternate copy commands. When multiple
@@ -1059,6 +1164,10 @@
                 <code>Flatten sources</code> from the menu when you want the current loaded content to behave like a
                 single source again.
             </p>
+            <p>The Operations panel also shows quick profile chips. <code>Empty</code> clears the current pipeline and
+                view state but keeps the loaded source. <code>Last</code> is the implicit snapshot from the previous
+                session. Right-click a profile chip to rename it, overwrite it from the current pipeline, or delete
+                it. Drag named profile chips to reorder them.</p>
             <p>Each operation row is selectable. Only enabled operations from the top down to the selected row affect
                 the preview. Disabled rows stay visible but do not contribute. If the next enabled row after the
                 selected stage is a Filter, lines that would stay after that Filter are previewed in blue.</p>
@@ -1076,7 +1185,10 @@
             </ul>
             <p>Single click prefers a structural selection on the clicked line: words, floats, dotted identifiers,
                 paths, URLs, quoted strings, bracketed spans, date-times, time spans, JSON fragments, and XML tags.
-                Ctrl+click picks the smallest matching token. Shift plus navigation extends the current selection.</p>
+                Ctrl+click picks the smallest matching token. Middle click opens the previous stage for the same row,
+                and Ctrl+middle click moves forward again. The preview can overscroll near the start and end of the
+                file so the target row still aligns under the pointer. Shift plus navigation extends the current
+                selection.</p>
             <p>Keyboard actions outside editors: <code>Ctrl+A</code> selects the current stage, <code>Ctrl+C</code>
                 copies selection, <code>Enter</code> adds the selection to the current Filter or inserts a new include
                 Filter after the selected stage, <code>Esc</code> does the same for exclude clauses or clears
@@ -1098,14 +1210,34 @@
                 aria-label="Cancel load">✕</button>
             <h3 id="loadActionTitle">How should the new input be loaded?</h3>
             <p class="modal-summary" id="loadActionSummary"></p>
-            <div class="modal-actions choice-modal-actions">
-                <button class="primary choice-button" id="loadActionNewButton">New</button>
-                <button class="choice-button" id="loadActionAppendButton">Append</button>
-                <button class="choice-button" id="loadActionZipButton">Zip</button>
+            <div class="choice-modal-columns">
+                <section class="choice-modal-column" id="loadActionCombineColumn">
+                    <h4>Combine with current</h4>
+                    <p class="toolbar-hint">Append keeps files in sequence. Zip interleaves them row by row.</p>
+                    <div class="modal-actions choice-modal-actions">
+                        <button class="choice-button" id="loadActionAppendButton">Append</button>
+                        <button class="choice-button" id="loadActionZipButton">Zip</button>
+                    </div>
+                </section>
+                <section class="choice-modal-column" id="loadActionNewColumn">
+                    <h4>Load as new</h4>
+                    <p class="toolbar-hint">Use the dropped files as a fresh source and choose how to combine them.</p>
+                    <div class="modal-actions choice-modal-actions">
+                        <button class="primary choice-button" id="loadActionNewButton">New</button>
+                        <button class="primary choice-button" id="loadActionNewAppendButton">New / Append</button>
+                        <button class="primary choice-button" id="loadActionNewZipButton">New / Zip</button>
+                    </div>
+                </section>
             </div>
             <p class="toolbar-hint">Zip interleaves rows and inserts empty lines when a source has no row at that
                 position. Press Esc to cancel.</p>
         </div>
+    </div>
+
+    <div class="profile-context-menu" id="profileContextMenu" hidden>
+        <button type="button" data-profile-action="rename">Rename</button>
+        <button type="button" data-profile-action="overwrite">Overwrite by current</button>
+        <button type="button" class="danger" data-profile-action="delete">DEL profile</button>
     </div>
 
     <div id="measureRuler">0000000000</div>
@@ -1116,6 +1248,9 @@
             const STORAGE_PROFILES = "logExplorer.profiles.v1";
             const PROFILE_KIND = "LogExplorerProfiles";
             const PROFILE_VERSION = 1;
+            const PROFILE_RECENT_LIMIT = 6;
+            const IMPLICIT_PROFILE_NAME = "Last";
+            const TAB_REPLACEMENT = "    ";
             const CACHE_MAX_STAGES = 18;
             const CACHE_MAX_BYTES = 220 * 1024 * 1024;
             const BUFFER_ROWS = 10;
@@ -1167,6 +1302,7 @@
                 addSortButton: document.getElementById("addSortButton"),
                 addDiffButton: document.getElementById("addDiffButton"),
                 operatorList: document.getElementById("operatorList"),
+                savedProfilesPanel: document.getElementById("savedProfilesPanel"),
                 viewerViewport: document.getElementById("viewerViewport"),
                 lineLayer: document.getElementById("lineLayer"),
                 emptyState: document.getElementById("emptyState"),
@@ -1180,9 +1316,14 @@
                 cancelLoadActionButton: document.getElementById("cancelLoadActionButton"),
                 loadActionTitle: document.getElementById("loadActionTitle"),
                 loadActionSummary: document.getElementById("loadActionSummary"),
+                loadActionCombineColumn: document.getElementById("loadActionCombineColumn"),
+                loadActionNewColumn: document.getElementById("loadActionNewColumn"),
                 loadActionNewButton: document.getElementById("loadActionNewButton"),
+                loadActionNewAppendButton: document.getElementById("loadActionNewAppendButton"),
+                loadActionNewZipButton: document.getElementById("loadActionNewZipButton"),
                 loadActionAppendButton: document.getElementById("loadActionAppendButton"),
                 loadActionZipButton: document.getElementById("loadActionZipButton"),
+                profileContextMenu: document.getElementById("profileContextMenu"),
                 measureRuler: document.getElementById("measureRuler")
             };
 
@@ -1223,7 +1364,10 @@
                 jobVersion: 0,
                 activeJob: 0,
                 profiles: {
-                    named: {}
+                    named: {},
+                    order: [],
+                    draggingName: "",
+                    contextMenuName: ""
                 },
                 loadedProfileName: "",
                 cursor: {
@@ -1265,9 +1409,13 @@
                 return escapeHtml(text).replace(/"/g, "&quot;");
             }
 
+            function normalizeLoadedText(text) {
+                return String(text).replace(/\r\n?/g, "\n").replace(/\t/g, TAB_REPLACEMENT);
+            }
+
             function buildTextInputSource(text, sourceName, originalEncoding, sourcePath) {
                 return {
-                    text: String(text).replace(/\r\n?/g, "\n"),
+                    text: normalizeLoadedText(text),
                     name: sourceName || "Clipboard",
                     encoding: originalEncoding || "clipboard",
                     path: sourcePath || sourceName || "Clipboard"
@@ -1345,6 +1493,16 @@
                     stage.lineSourceIds = new Array(stage.lineCount).fill(fallbackSourceId);
                 }
                 return stage.lineSourceIds;
+            }
+
+            function getStageLineRowIds(stage) {
+                if (!stage) {
+                    return [];
+                }
+                if (!Array.isArray(stage.lineRowIds) || stage.lineRowIds.length !== stage.lineCount) {
+                    stage.lineRowIds = Array.from({ length: stage.lineCount }, (_, index) => index);
+                }
+                return stage.lineRowIds;
             }
 
             function getStageLineSourceId(stage, rowIndex) {
@@ -1446,7 +1604,13 @@
             function buildCombinedSourceName(action, existingSource, incomingSources) {
                 const incomingLabel = summarizeSourceNames(incomingSources);
                 if (action === "replace") {
-                    return incomingSources.length > 1 ? "New appended: " + incomingLabel : incomingLabel;
+                    return incomingLabel;
+                }
+                if (action === "replace-append") {
+                    return "New appended: " + incomingLabel;
+                }
+                if (action === "replace-zip") {
+                    return "New zipped: " + incomingLabel;
                 }
                 if (action === "append") {
                     return existingSource ? "Append: " + summarizeSourceNames([existingSource].concat(incomingSources)) : "Append: " + incomingLabel;
@@ -1481,13 +1645,16 @@
                 elements.loadActionSummary.textContent = hasExisting
                     ? "Current source: " + existingSource.name + ". Incoming: " + summarizeSourceNames(incomingSources) + "."
                     : "Incoming sources: " + summarizeSourceNames(incomingSources) + ".";
-                elements.loadActionNewButton.hidden = !hasExisting;
-                elements.loadActionNewButton.textContent = incomingSources.length > 1 ? "New appended" : "New";
+                elements.loadActionCombineColumn.hidden = !hasExisting;
+                elements.loadActionNewColumn.hidden = false;
+                elements.loadActionNewButton.hidden = hasMultipleIncoming;
+                elements.loadActionNewAppendButton.hidden = !hasMultipleIncoming;
+                elements.loadActionNewZipButton.hidden = !hasMultipleIncoming;
                 elements.loadActionModal.classList.add("visible");
                 return new Promise((resolve) => {
                     pendingLoadAction = { resolve };
                     requestAnimationFrame(() => {
-                        const focusTarget = hasExisting ? elements.loadActionNewButton : elements.loadActionAppendButton;
+                        const focusTarget = hasMultipleIncoming ? elements.loadActionNewAppendButton : elements.loadActionNewButton;
                         focusTarget.focus();
                     });
                 });
@@ -1519,15 +1686,17 @@
                     return;
                 }
                 const incomingBundles = incomingSources.map(createBundleFromInputSource);
-                const bundlesForLoad = action === "replace"
+                const isReplaceAction = action === "replace" || action === "replace-append" || action === "replace-zip";
+                const mergeMode = action === "zip" || action === "replace-zip" ? "zip" : "append";
+                const bundlesForLoad = isReplaceAction
                     ? incomingBundles
                     : existingSource
                         ? [existingSource.bundle].concat(incomingBundles)
                         : incomingBundles;
-                const merged = action === "zip"
+                const merged = mergeMode === "zip"
                     ? mergeBundlesZip(bundlesForLoad)
                     : mergeBundlesAppend(bundlesForLoad);
-                const sourcesForLoad = action === "replace"
+                const sourcesForLoad = isReplaceAction
                     ? incomingSources
                     : existingSource
                         ? [existingSource].concat(incomingSources)
@@ -1839,6 +2008,9 @@
                 const lineSourceIds = Array.isArray(stageExtra.lineSourceIds) && stageExtra.lineSourceIds.length === lineCount
                     ? stageExtra.lineSourceIds.slice()
                     : new Array(lineCount).fill(sourceCatalog.length ? 0 : -1);
+                const lineRowIds = Array.isArray(stageExtra.lineRowIds) && stageExtra.lineRowIds.length === lineCount
+                    ? stageExtra.lineRowIds.slice()
+                    : Array.from({ length: lineCount }, (_, index) => index);
                 return {
                     kind: "indexed",
                     hash,
@@ -1850,6 +2022,7 @@
                     maxLineLength,
                     estimatedBytes: text.length * 2 + lineStarts.length * 16,
                     lineSourceIds,
+                    lineRowIds,
                     sourceCatalog,
                     ...stageExtra
                 };
@@ -1867,6 +2040,9 @@
                 const lineSourceIds = Array.isArray(stageExtra.lineSourceIds) && stageExtra.lineSourceIds.length === lines.length
                     ? stageExtra.lineSourceIds.slice()
                     : new Array(lines.length).fill(sourceCatalog.length ? 0 : -1);
+                const lineRowIds = Array.isArray(stageExtra.lineRowIds) && stageExtra.lineRowIds.length === lines.length
+                    ? stageExtra.lineRowIds.slice()
+                    : Array.from({ length: lines.length }, (_, index) => index);
                 return {
                     kind: "lines",
                     hash,
@@ -1876,6 +2052,7 @@
                     maxLineLength,
                     estimatedBytes,
                     lineSourceIds,
+                    lineRowIds,
                     sourceCatalog,
                     ...stageExtra
                 };
@@ -1960,7 +2137,13 @@
                 return lineSourceIds[findLineIndexForOffset(indexedStage.lineStarts, clampedOffset)] ?? -1;
             }
 
-            function appendStageSliceFragments(stage, startOffset, endOffset, lineSourceIds, fragments) {
+            function getLineRowIdAtTextOffset(stage, lineRowIds, offset) {
+                const indexedStage = ensureStageIndex(stage);
+                const clampedOffset = clamp(offset, 0, Math.max(0, indexedStage.text.length - 1));
+                return lineRowIds[findLineIndexForOffset(indexedStage.lineStarts, clampedOffset)] ?? -1;
+            }
+
+            function appendStageSliceFragments(stage, startOffset, endOffset, lineSourceIds, lineRowIds, fragments) {
                 if (endOffset <= startOffset) {
                     return;
                 }
@@ -1972,7 +2155,8 @@
                     const sliceEnd = Math.min(endOffset, lineLimit);
                     fragments.push({
                         text: indexedStage.text.slice(currentOffset, sliceEnd),
-                        sourceId: lineSourceIds[lineIndex] ?? -1
+                        sourceId: lineSourceIds[lineIndex] ?? -1,
+                        rowId: lineRowIds[lineIndex] ?? lineIndex
                     });
                     currentOffset = sliceEnd;
                     if (currentOffset >= lineLimit) {
@@ -1984,29 +2168,40 @@
             function materializeFragmentsToLines(fragments) {
                 const lines = [];
                 const lineSourceIds = [];
+                const lineRowIds = [];
                 let currentLine = "";
                 let currentSourceId = -1;
+                let currentRowId = -1;
 
-                const flushLine = (fallbackSourceId) => {
+                const flushLine = (fallbackSourceId, fallbackRowId) => {
                     if (currentSourceId === -1 && typeof fallbackSourceId === "number") {
                         currentSourceId = fallbackSourceId;
                     }
+                    if (currentRowId === -1 && typeof fallbackRowId === "number") {
+                        currentRowId = fallbackRowId;
+                    }
                     lines.push(currentLine);
                     lineSourceIds.push(currentSourceId);
+                    lineRowIds.push(currentRowId);
                     currentLine = "";
                     currentSourceId = -1;
+                    currentRowId = -1;
                 };
 
                 for (const fragment of fragments) {
                     const sourceId = typeof fragment.sourceId === "number" ? fragment.sourceId : -1;
+                    const rowId = typeof fragment.rowId === "number" ? fragment.rowId : -1;
                     for (let index = 0; index < fragment.text.length; index++) {
                         const char = fragment.text[index];
                         if (char === "\n") {
-                            flushLine(sourceId);
+                            flushLine(sourceId, rowId);
                             continue;
                         }
                         if (currentSourceId === -1 && sourceId !== -1) {
                             currentSourceId = sourceId;
+                        }
+                        if (currentRowId === -1 && rowId !== -1) {
+                            currentRowId = rowId;
                         }
                         currentLine += char;
                     }
@@ -2015,8 +2210,11 @@
                 const trailingSourceId = fragments.length && typeof fragments[fragments.length - 1].sourceId === "number"
                     ? fragments[fragments.length - 1].sourceId
                     : -1;
-                flushLine(trailingSourceId);
-                return { lines, lineSourceIds };
+                const trailingRowId = fragments.length && typeof fragments[fragments.length - 1].rowId === "number"
+                    ? fragments[fragments.length - 1].rowId
+                    : -1;
+                flushLine(trailingSourceId, trailingRowId);
+                return { lines, lineSourceIds, lineRowIds };
             }
 
             function putStageInCache(key, stage) {
@@ -2087,12 +2285,11 @@
                 return getOperatorIndexById(state.selectedOperatorId);
             }
 
-            async function computeSelectedStage() {
+            async function computeStageForSelectionIndex(selectedIndex) {
                 if (!state.source.stage) {
                     return null;
                 }
                 let stage = state.source.stage;
-                const selectedIndex = getSelectedOperatorIndex();
                 for (let index = 0; index <= selectedIndex; index++) {
                     const operator = state.operators[index];
                     if (!operator) continue;
@@ -2112,10 +2309,13 @@
                 return stage;
             }
 
-            function getCurrentStageSync() {
+            async function computeSelectedStage() {
+                return computeStageForSelectionIndex(getSelectedOperatorIndex());
+            }
+
+            function getCachedStageForSelectionIndex(selectedIndex) {
                 if (!state.source.stage) return null;
                 let stage = state.source.stage;
-                const selectedIndex = getSelectedOperatorIndex();
                 for (let index = 0; index <= selectedIndex; index++) {
                     const operator = state.operators[index];
                     if (!operator || !operator.enabled) continue;
@@ -2127,6 +2327,10 @@
                     stage = cached;
                 }
                 return stage;
+            }
+
+            function getCurrentStageSync() {
+                return getCachedStageForSelectionIndex(getSelectedOperatorIndex());
             }
 
             async function applyOperator(stage, operator, jobVersion) {
@@ -2169,17 +2373,21 @@
             function applyFilter(stage, operator, hash) {
                 const sourceLines = materializeStageLines(stage);
                 const sourceIds = getStageLineSourceIds(stage);
+                const lineRowIds = getStageLineRowIds(stage);
                 const filtered = [];
                 const filteredSourceIds = [];
+                const filteredRowIds = [];
                 for (let index = 0; index < sourceLines.length; index++) {
                     const line = sourceLines[index];
                     if (evaluateFilterLine(stage, index, line, operator)) {
                         filtered.push(line);
                         filteredSourceIds.push(sourceIds[index] ?? -1);
+                        filteredRowIds.push(lineRowIds[index] ?? index);
                     }
                 }
                 return buildLineStage(filtered, hash, "Filter", {
                     lineSourceIds: filteredSourceIds,
+                    lineRowIds: filteredRowIds,
                     sourceCatalog: getStageSourceCatalog(stage)
                 });
             }
@@ -2187,9 +2395,11 @@
             function applyReplace(stage, operator, hash) {
                 const sourceCatalog = getStageSourceCatalog(stage);
                 const lineSourceIds = getStageLineSourceIds(stage);
+                const lineRowIds = getStageLineRowIds(stage);
                 if (!operator.search) {
                     return buildLineStage(materializeStageLines(stage).slice(), hash, "Replace", {
                         lineSourceIds,
+                        lineRowIds,
                         sourceCatalog
                     });
                 }
@@ -2199,20 +2409,22 @@
                 let cursor = 0;
                 let matchIndex = indexedStage.text.indexOf(operator.search, cursor);
                 while (matchIndex !== -1) {
-                    appendStageSliceFragments(indexedStage, cursor, matchIndex, lineSourceIds, fragments);
+                    appendStageSliceFragments(indexedStage, cursor, matchIndex, lineSourceIds, lineRowIds, fragments);
                     fragments.push({
                         text: replacementText,
-                        sourceId: getSourceIdAtTextOffset(indexedStage, lineSourceIds, matchIndex)
+                        sourceId: getSourceIdAtTextOffset(indexedStage, lineSourceIds, matchIndex),
+                        rowId: getLineRowIdAtTextOffset(indexedStage, lineRowIds, matchIndex)
                     });
                     cursor = matchIndex + operator.search.length;
                     matchIndex = indexedStage.text.indexOf(operator.search, cursor);
                 }
-                appendStageSliceFragments(indexedStage, cursor, indexedStage.text.length, lineSourceIds, fragments);
+                appendStageSliceFragments(indexedStage, cursor, indexedStage.text.length, lineSourceIds, lineRowIds, fragments);
                 const replaced = fragments.map((fragment) => fragment.text).join("");
                 const replacedLines = materializeFragmentsToLines(fragments);
                 const indexed = buildIndexedStage(replaced, hash, "Replace", {
                     lines: replacedLines.lines,
                     lineSourceIds: replacedLines.lineSourceIds,
+                    lineRowIds: replacedLines.lineRowIds,
                     sourceCatalog
                 });
                 indexed.diffMeta = null;
@@ -2596,10 +2808,11 @@
                 return { leadingCount, blocks };
             }
 
-            function appendLineRange(output, outputSourceIds, outputIndex, lines, lineSourceIds, startIndex, endIndex) {
+            function appendLineRange(output, outputSourceIds, outputRowIds, outputIndex, lines, lineSourceIds, lineRowIds, startIndex, endIndex) {
                 for (let index = startIndex; index < endIndex; index++) {
                     output[outputIndex] = lines[index];
                     outputSourceIds[outputIndex] = lineSourceIds[index] ?? -1;
+                    outputRowIds[outputIndex] = lineRowIds[index] ?? index;
                     outputIndex += 1;
                 }
                 return outputIndex;
@@ -2608,6 +2821,7 @@
             function applySort(stage, operator, hash) {
                 const lines = materializeStageLines(stage);
                 const sourceIds = getStageLineSourceIds(stage);
+                const lineRowIds = getStageLineRowIds(stage);
                 const grouped = buildGroupedBlocks(lines, sourceIds, operator, false);
                 const sortedBlocks = grouped.blocks
                     .map((block, index) => ({ block, index }))
@@ -2618,12 +2832,14 @@
                     .map((entry) => entry.block);
                 const output = new Array(lines.length);
                 const outputSourceIds = new Array(sourceIds.length);
-                let outputIndex = appendLineRange(output, outputSourceIds, 0, lines, sourceIds, 0, grouped.leadingCount);
+                const outputRowIds = new Array(lineRowIds.length);
+                let outputIndex = appendLineRange(output, outputSourceIds, outputRowIds, 0, lines, sourceIds, lineRowIds, 0, grouped.leadingCount);
                 for (const block of sortedBlocks) {
-                    outputIndex = appendLineRange(output, outputSourceIds, outputIndex, lines, sourceIds, block.startIndex, block.endIndex);
+                    outputIndex = appendLineRange(output, outputSourceIds, outputRowIds, outputIndex, lines, sourceIds, lineRowIds, block.startIndex, block.endIndex);
                 }
                 return buildLineStage(output, hash, "Sort", {
                     lineSourceIds: outputSourceIds,
+                    lineRowIds: outputRowIds,
                     sourceCatalog: getStageSourceCatalog(stage)
                 });
             }
@@ -2658,15 +2874,18 @@
                 if (operator.invert && stage.diffMeta && stage.diffMeta.signature === diffSignature(operator)) {
                     return buildLineStage(stage.diffMeta.originalLines.slice(), hash, "Diff restore", {
                         lineSourceIds: (stage.diffMeta.originalLineSourceIds || []).slice(),
+                        lineRowIds: (stage.diffMeta.originalLineRowIds || []).slice(),
                         sourceCatalog: getStageSourceCatalog(stage)
                     });
                 }
                 const lines = materializeStageLines(stage);
                 const sourceIds = getStageLineSourceIds(stage);
+                const lineRowIds = getStageLineRowIds(stage);
                 const grouped = buildGroupedBlocks(lines, sourceIds, operator, operator.invert && operator.valueType === "date-time");
                 const output = new Array(lines.length);
                 const outputSourceIds = new Array(sourceIds.length);
-                let outputIndex = appendLineRange(output, outputSourceIds, 0, lines, sourceIds, 0, grouped.leadingCount);
+                const outputRowIds = new Array(lineRowIds.length);
+                let outputIndex = appendLineRange(output, outputSourceIds, outputRowIds, 0, lines, sourceIds, lineRowIds, 0, grouped.leadingCount);
                 let previousInputComparable = null;
                 let previousOutputComparable = null;
                 const diffOutputRange = getDiffOutputRange(operator);
@@ -2716,20 +2935,24 @@
                     const changedAnchor = replaceRange(anchor, diffOutputRange.pos, diffOutputRange.len, replacement);
                     output[outputIndex] = changedAnchor;
                     outputSourceIds[outputIndex] = sourceIds[block.startIndex] ?? -1;
+                    outputRowIds[outputIndex] = lineRowIds[block.startIndex] ?? block.startIndex;
                     outputIndex += 1;
                     for (let followerIndex = block.startIndex + 1; followerIndex < block.endIndex; followerIndex++) {
                         output[outputIndex] = lines[followerIndex];
                         outputSourceIds[outputIndex] = sourceIds[followerIndex] ?? -1;
+                        outputRowIds[outputIndex] = lineRowIds[followerIndex] ?? followerIndex;
                         outputIndex += 1;
                     }
                 }
                 return buildLineStage(output, hash, "Diff", {
                     lineSourceIds: outputSourceIds,
+                    lineRowIds: outputRowIds,
                     sourceCatalog: getStageSourceCatalog(stage),
                     diffMeta: {
                         signature: diffSignature(operator),
                         originalLines: lines.slice(),
-                        originalLineSourceIds: sourceIds.slice()
+                        originalLineSourceIds: sourceIds.slice(),
+                        originalLineRowIds: lineRowIds.slice()
                     }
                 });
             }
@@ -2860,6 +3083,24 @@
                 state.view.viewportCols = Math.max(4, Math.floor((viewportRect.width - state.view.gutterWidth - 16) / state.view.charWidth));
             }
 
+            function getVerticalScrollMetrics(stage) {
+                const viewportHeight = elements.viewerViewport.clientHeight;
+                const totalHeight = stage ? stage.lineCount * state.view.rowHeight : 0;
+                const overscroll = stage ? Math.max(0, viewportHeight - state.view.rowHeight) : 0;
+                const minScrollTop = -overscroll;
+                const maxContentScrollTop = Math.max(0, totalHeight - viewportHeight);
+                const maxScrollTop = maxContentScrollTop + overscroll;
+                return {
+                    viewportHeight,
+                    totalHeight,
+                    overscroll,
+                    minScrollTop,
+                    maxContentScrollTop,
+                    maxScrollTop,
+                    scrollRange: Math.max(1, maxScrollTop - minScrollTop)
+                };
+            }
+
             async function renderViewer(stage) {
                 elements.emptyState.style.display = stage ? "none" : "flex";
                 if (!stage) {
@@ -2867,13 +3108,12 @@
                     updateScrollbars(null);
                     return;
                 }
-                const viewportHeight = elements.viewerViewport.clientHeight;
-                const totalHeight = stage.lineCount * state.view.rowHeight;
-                const maxScrollTop = Math.max(0, totalHeight - viewportHeight);
-                state.view.scrollTop = clamp(state.view.scrollTop, 0, maxScrollTop);
-                const firstVisibleRow = Math.floor(state.view.scrollTop / state.view.rowHeight);
-                const startRow = Math.max(0, firstVisibleRow - BUFFER_ROWS);
-                const endRow = Math.min(stage.lineCount, firstVisibleRow + state.view.viewportRows + BUFFER_ROWS);
+                const verticalMetrics = getVerticalScrollMetrics(stage);
+                state.view.scrollTop = clamp(state.view.scrollTop, verticalMetrics.minScrollTop, verticalMetrics.maxScrollTop);
+                const visibleTop = state.view.scrollTop;
+                const visibleBottom = state.view.scrollTop + verticalMetrics.viewportHeight;
+                const startRow = Math.max(0, Math.floor(visibleTop / state.view.rowHeight) - BUFFER_ROWS);
+                const endRow = Math.min(stage.lineCount, Math.ceil(visibleBottom / state.view.rowHeight) + BUFFER_ROWS);
                 const offsetY = startRow * state.view.rowHeight - state.view.scrollTop;
                 const selection = normalizeSelection(state.selection);
                 const previewFilter = getPreviewFilterOperator();
@@ -2912,13 +3152,13 @@
                     elements.horizontalThumb.style.left = "0px";
                     return;
                 }
-                const viewportHeight = elements.viewerViewport.clientHeight;
-                const totalHeight = stage.lineCount * state.view.rowHeight;
+                const verticalMetrics = getVerticalScrollMetrics(stage);
                 const vTrackHeight = elements.verticalTrack.clientHeight;
-                const vThumbHeight = totalHeight <= viewportHeight ? vTrackHeight : Math.max(22, (viewportHeight / totalHeight) * vTrackHeight);
+                const totalScrollableHeight = verticalMetrics.totalHeight + verticalMetrics.overscroll * 2;
+                const vThumbHeight = totalScrollableHeight <= verticalMetrics.viewportHeight ? vTrackHeight : Math.max(22, (verticalMetrics.viewportHeight / totalScrollableHeight) * vTrackHeight);
                 const maxVThumbTop = Math.max(0, vTrackHeight - vThumbHeight);
-                const maxVScroll = Math.max(0, totalHeight - viewportHeight);
-                const vThumbTop = maxVScroll ? (state.view.scrollTop / maxVScroll) * maxVThumbTop : 0;
+                const normalizedScrollTop = state.view.scrollTop - verticalMetrics.minScrollTop;
+                const vThumbTop = verticalMetrics.scrollRange ? (normalizedScrollTop / verticalMetrics.scrollRange) * maxVThumbTop : 0;
                 elements.verticalThumb.style.height = vThumbHeight + "px";
                 elements.verticalThumb.style.top = vThumbTop + "px";
 
@@ -2969,7 +3209,7 @@
                     elements.scrollInfo.textContent = "Scroll row 1 / 1 col 1 / 1";
                     return;
                 }
-                const row = Math.floor(state.view.scrollTop / state.view.rowHeight) + 1;
+                const row = clamp(Math.floor(state.view.scrollTop / state.view.rowHeight) + 1, 1, Math.max(1, stage.lineCount));
                 const col = state.view.scrollLeftCols + 1;
                 const totalRows = Math.max(1, stage.lineCount);
                 const totalCols = Math.max(1, stage.maxLineLength);
@@ -3021,7 +3261,7 @@
             function updateButtons() {
                 const hasSource = !!state.source.stage;
                 const hasSelection = !!normalizeSelection(state.selection);
-                const hasProfiles = Object.keys(state.profiles.named).length > 0;
+                const hasProfiles = getOrderedProfileNames().length > 0;
                 const sourceCount = hasSource ? getStageSourceCatalog(state.source.stage).length : 0;
                 elements.exportViewButton.disabled = !hasSource;
                 elements.copyViewButton.disabled = !hasSource;
@@ -3031,8 +3271,8 @@
                 elements.resetViewButton.disabled = !hasSource;
                 elements.flattenSourcesButton.disabled = !hasSource || sourceCount <= 1;
                 elements.saveProfileButton.disabled = state.operators.length === 0;
-                elements.loadProfileButton.disabled = !hasProfiles;
-                elements.deleteProfileButton.disabled = !hasProfiles;
+                elements.loadProfileButton.disabled = !hasProfiles || !elements.profileSelect.value;
+                elements.deleteProfileButton.disabled = !hasProfiles || !elements.profileSelect.value;
             }
 
             function flattenSources() {
@@ -3429,6 +3669,61 @@
                 persistWorkingSet();
             }
 
+            function getOperatorIdForSelectionIndex(index) {
+                return index >= 0 && index < state.operators.length ? state.operators[index].id : null;
+            }
+
+            function findRowByLineRowId(stage, lineRowId, fallbackRow) {
+                const rowIds = getStageLineRowIds(stage);
+                const directIndex = rowIds.indexOf(lineRowId);
+                if (directIndex !== -1) {
+                    return directIndex;
+                }
+                return clamp(fallbackRow, 0, Math.max(0, stage.lineCount - 1));
+            }
+
+            async function navigateStageFromPointer(event, direction) {
+                const currentIndex = getSelectedOperatorIndex();
+                const targetIndex = clamp(currentIndex + direction, -1, state.operators.length - 1);
+                if (targetIndex === currentIndex) {
+                    return;
+                }
+                const currentStage = await computeStageForSelectionIndex(currentIndex);
+                if (!currentStage) {
+                    return;
+                }
+                const point = getRowAndColumnFromPointer(event, currentStage);
+                const currentRowId = getStageLineRowIds(currentStage)[point.row] ?? point.row;
+                const targetStage = await computeStageForSelectionIndex(targetIndex);
+                if (!targetStage) {
+                    return;
+                }
+                const targetRow = findRowByLineRowId(targetStage, currentRowId, point.row);
+                const targetCol = clamp(point.col, 0, getStageLine(targetStage, targetRow).length);
+                const rect = elements.viewerViewport.getBoundingClientRect();
+                const pointerLineCenterOffsetY = event.clientY - rect.top - state.view.rowHeight / 2;
+                const pointerTextOffsetX = Math.max(0, event.clientX - rect.left - state.view.gutterWidth - 10);
+                const pointerColsOffset = Math.floor(pointerTextOffsetX / state.view.charWidth);
+                const verticalMetrics = getVerticalScrollMetrics(targetStage);
+                state.selectedOperatorId = getOperatorIdForSelectionIndex(targetIndex);
+                state.selection = null;
+                state.view.scrollTop = clamp(
+                    targetRow * state.view.rowHeight - pointerLineCenterOffsetY,
+                    verticalMetrics.minScrollTop,
+                    verticalMetrics.maxScrollTop
+                );
+                state.view.scrollLeftCols = clamp(
+                    targetCol - pointerColsOffset,
+                    0,
+                    Math.max(0, targetStage.maxLineLength - state.view.viewportCols)
+                );
+                setCursor({ row: targetRow, col: targetCol }, targetStage);
+                persistWorkingSet();
+                state.activeJob = ++state.jobVersion;
+                await renderAll();
+                updateStatus(direction < 0 ? "Moved to previous stage." : "Moved to next stage.");
+            }
+
             function getRowAndColumnFromPointer(event, stage) {
                 const rect = elements.viewerViewport.getBoundingClientRect();
                 const y = event.clientY - rect.top + state.view.scrollTop;
@@ -3573,6 +3868,23 @@
                 if (event.target.closest("button") || event.target.closest("input") || event.target.closest("textarea") || event.target.closest("select")) {
                     return;
                 }
+                const activeElement = document.activeElement;
+                if (activeElement && typeof activeElement.blur === "function" && (
+                    activeElement.closest("#savedProfilesPanel") ||
+                    activeElement.closest("#profileContextMenu") ||
+                    activeElement.tagName === "BUTTON" ||
+                    activeElement.tagName === "SUMMARY"
+                )) {
+                    activeElement.blur();
+                }
+                if (event.button === 1) {
+                    event.preventDefault();
+                    navigateStageFromPointer(event, event.ctrlKey ? 1 : -1).catch(handleError);
+                    return;
+                }
+                if (event.button !== 0) {
+                    return;
+                }
                 if (event.button === 0 && event.detail > 1) {
                     event.preventDefault();
                     endSelection();
@@ -3629,13 +3941,13 @@
             }
 
             function ensureVisible(stage, row, col) {
-                const viewportHeight = elements.viewerViewport.clientHeight;
+                const verticalMetrics = getVerticalScrollMetrics(stage);
                 const top = row * state.view.rowHeight;
                 const bottom = top + state.view.rowHeight;
                 if (top < state.view.scrollTop) {
-                    state.view.scrollTop = top;
-                } else if (bottom > state.view.scrollTop + viewportHeight) {
-                    state.view.scrollTop = Math.max(0, bottom - viewportHeight);
+                    state.view.scrollTop = clamp(top, verticalMetrics.minScrollTop, verticalMetrics.maxScrollTop);
+                } else if (bottom > state.view.scrollTop + verticalMetrics.viewportHeight) {
+                    state.view.scrollTop = clamp(bottom - verticalMetrics.viewportHeight, verticalMetrics.minScrollTop, verticalMetrics.maxScrollTop);
                 }
                 if (col < state.view.scrollLeftCols) {
                     state.view.scrollLeftCols = col;
@@ -3696,6 +4008,373 @@
                 return !!(target && (target.closest("input") || target.closest("textarea") || target.closest("select") || target.closest("button") || target.closest("summary") || target.isContentEditable));
             }
 
+            function createWorkingSetSnapshot() {
+                return {
+                    operators: JSON.parse(JSON.stringify(state.operators)),
+                    selectedOperatorId: state.selectedOperatorId,
+                    nextOperatorId: state.nextOperatorId
+                };
+            }
+
+            function normalizeProfileOrder(order, namedProfiles) {
+                const names = Object.keys(namedProfiles || {}).filter((name) => name !== IMPLICIT_PROFILE_NAME);
+                const requested = Array.isArray(order)
+                    ? order.filter((name) => name !== IMPLICIT_PROFILE_NAME && names.includes(name))
+                    : [];
+                return requested.concat(names.filter((name) => !requested.includes(name)));
+            }
+
+            function syncProfileOrder() {
+                state.profiles.order = normalizeProfileOrder(state.profiles.order, state.profiles.named);
+            }
+
+            function getPersistedProfileOrder() {
+                syncProfileOrder();
+                return state.profiles.order.slice();
+            }
+
+            function getPersistedProfilesState() {
+                return {
+                    named: getExportableProfiles(),
+                    order: getPersistedProfileOrder()
+                };
+            }
+
+            function parsePersistedProfilesState(payload) {
+                if (payload && typeof payload === "object" && !Array.isArray(payload) && payload.named && typeof payload.named === "object") {
+                    return {
+                        named: payload.named,
+                        order: Array.isArray(payload.order) ? payload.order : []
+                    };
+                }
+                return {
+                    named: payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {},
+                    order: []
+                };
+            }
+
+            function hideProfileContextMenu() {
+                state.profiles.contextMenuName = "";
+                elements.profileContextMenu.hidden = true;
+            }
+
+            function normalizeProfileRecord(profile, fallbackSavedAt, implicit) {
+                return {
+                    operators: normalizeOperatorList(profile && profile.operators),
+                    selectedOperatorId: profile && profile.selectedOperatorId != null ? profile.selectedOperatorId : null,
+                    nextOperatorId: Number((profile && profile.nextOperatorId) || 1),
+                    savedAt: Number((profile && profile.savedAt) || fallbackSavedAt || Date.now()),
+                    implicit: typeof implicit === "boolean" ? implicit : !!(profile && profile.implicit)
+                };
+            }
+
+            function normalizeProfilesPayload(payload) {
+                if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+                    return {};
+                }
+                const names = Object.keys(payload);
+                const baseTime = Date.now();
+                return Object.fromEntries(names.map((name, index) => [name, normalizeProfileRecord(payload[name], baseTime - index, name === IMPLICIT_PROFILE_NAME)]));
+            }
+
+            function getOrderedProfileNames() {
+                syncProfileOrder();
+                const names = state.profiles.order.filter((name) => state.profiles.named[name]);
+                return state.profiles.named[IMPLICIT_PROFILE_NAME]
+                    ? [IMPLICIT_PROFILE_NAME].concat(names)
+                    : names;
+            }
+
+            function getExportableProfiles() {
+                return Object.fromEntries(Object.entries(state.profiles.named).filter(([, profile]) => !profile.implicit));
+            }
+
+            function replaceProfileNameInOrder(previousName, nextName) {
+                syncProfileOrder();
+                const index = state.profiles.order.indexOf(previousName);
+                if (index === -1) {
+                    if (nextName && nextName !== IMPLICIT_PROFILE_NAME && !state.profiles.order.includes(nextName)) {
+                        state.profiles.order.unshift(nextName);
+                    }
+                    return;
+                }
+                if (!nextName || nextName === IMPLICIT_PROFILE_NAME) {
+                    state.profiles.order.splice(index, 1);
+                    return;
+                }
+                state.profiles.order[index] = nextName;
+                state.profiles.order = state.profiles.order.filter((name, orderIndex) => name !== nextName || orderIndex === index);
+            }
+
+            function insertProfileNameAtOrder(name, targetIndex) {
+                if (!name || name === IMPLICIT_PROFILE_NAME) {
+                    return;
+                }
+                syncProfileOrder();
+                state.profiles.order = state.profiles.order.filter((entry) => entry !== name);
+                const insertIndex = clamp(targetIndex, 0, state.profiles.order.length);
+                state.profiles.order.splice(insertIndex, 0, name);
+            }
+
+            function moveProfileBefore(draggedName, targetName) {
+                syncProfileOrder();
+                const sourceIndex = state.profiles.order.indexOf(draggedName);
+                if (sourceIndex === -1) {
+                    return false;
+                }
+                state.profiles.order.splice(sourceIndex, 1);
+                if (!targetName) {
+                    state.profiles.order.push(draggedName);
+                    return true;
+                }
+                const targetIndex = state.profiles.order.indexOf(targetName);
+                if (targetIndex === -1) {
+                    state.profiles.order.push(draggedName);
+                    return true;
+                }
+                state.profiles.order.splice(targetIndex, 0, draggedName);
+                return true;
+            }
+
+            function deleteProfileByName(name) {
+                if (!name || !state.profiles.named[name]) {
+                    return false;
+                }
+                delete state.profiles.named[name];
+                replaceProfileNameInOrder(name, null);
+                if (state.loadedProfileName === name) {
+                    setLoadedProfileName("");
+                }
+                hideProfileContextMenu();
+                persistProfiles();
+                updateStatus("Deleted profile '" + name + "'.");
+                return true;
+            }
+
+            function overwriteProfileByCurrent(name) {
+                const profile = state.profiles.named[name];
+                if (!profile) {
+                    return false;
+                }
+                state.profiles.named[name] = normalizeProfileRecord(createWorkingSetSnapshot(), Date.now(), !!profile.implicit);
+                if (!profile.implicit && !state.profiles.order.includes(name)) {
+                    state.profiles.order.unshift(name);
+                }
+                hideProfileContextMenu();
+                persistProfiles();
+                updateStatus("Overwrote profile '" + name + "' with current operations.");
+                return true;
+            }
+
+            function renameProfileByName(name) {
+                const profile = state.profiles.named[name];
+                if (!profile) {
+                    return false;
+                }
+                const promptLabel = profile.implicit
+                    ? "Rename 'Last' into a new profile:"
+                    : "Rename profile:";
+                const suggestedName = profile.implicit ? "" : name;
+                const nextName = window.prompt(promptLabel, suggestedName);
+                if (nextName == null) {
+                    return false;
+                }
+                const trimmedName = nextName.trim();
+                if (!trimmedName) {
+                    updateStatus("Profile name cannot be empty.");
+                    return false;
+                }
+                if (trimmedName === IMPLICIT_PROFILE_NAME) {
+                    updateStatus("'Last' is reserved.");
+                    return false;
+                }
+                if (trimmedName !== name && state.profiles.named[trimmedName] && !window.confirm("Overwrite existing profile '" + trimmedName + "'?")) {
+                    return false;
+                }
+                if (profile.implicit) {
+                    state.profiles.named[trimmedName] = normalizeProfileRecord(profile, Date.now(), false);
+                    insertProfileNameAtOrder(trimmedName, 0);
+                } else {
+                    delete state.profiles.named[name];
+                    state.profiles.named[trimmedName] = normalizeProfileRecord(profile, Date.now(), false);
+                    replaceProfileNameInOrder(name, trimmedName);
+                    if (state.loadedProfileName === name) {
+                        setLoadedProfileName(trimmedName);
+                    }
+                }
+                hideProfileContextMenu();
+                persistProfiles();
+                updateStatus("Renamed profile '" + name + "' to '" + trimmedName + "'.");
+                return true;
+            }
+
+            function clearWorkspaceState() {
+                hideProfileContextMenu();
+                state.operators = [];
+                state.selectedOperatorId = null;
+                state.nextOperatorId = 1;
+                clearPipelineCache();
+                state.selection = null;
+                state.pointerSelection = null;
+                state.isSelecting = false;
+                state.view.scrollTop = 0;
+                state.view.scrollLeftCols = 0;
+                state.view.hoveredRow = null;
+                state.view.hoverClientX = null;
+                state.view.hoverClientY = null;
+                state.cursor.row = 0;
+                state.cursor.col = 0;
+                state.loadedProfileName = "";
+                elements.profileNameInput.value = "";
+                persistWorkingSet();
+                elements.dropZone.classList.remove("drag-over");
+                setDropZoneVisibility(!state.source.stage);
+                state.activeJob = ++state.jobVersion;
+                renderAll().catch(handleError);
+                updateStatus(state.source.stage ? "Cleared current profile state." : "Cleared current state.");
+            }
+
+            function openProfileContextMenu(name, event) {
+                const profile = state.profiles.named[name];
+                if (!profile) {
+                    return;
+                }
+                event.preventDefault();
+                state.profiles.contextMenuName = name;
+                const renameButton = elements.profileContextMenu.querySelector('[data-profile-action="rename"]');
+                renameButton.textContent = profile.implicit ? "Rename as new" : "Rename";
+                elements.profileContextMenu.hidden = false;
+                const menuWidth = 196;
+                const menuHeight = 132;
+                const left = Math.min(window.innerWidth - menuWidth - 8, Math.max(8, event.clientX));
+                const top = Math.min(window.innerHeight - menuHeight - 8, Math.max(8, event.clientY));
+                elements.profileContextMenu.style.left = left + "px";
+                elements.profileContextMenu.style.top = top + "px";
+            }
+
+            function clearSavedProfileDropTarget() {
+                elements.savedProfilesPanel.querySelectorAll(".saved-profile-chip.drop-target, .saved-profile-chip.dragging").forEach((element) => {
+                    element.classList.remove("drop-target", "dragging");
+                });
+            }
+
+            function handleSavedProfilesContextMenu(event) {
+                const button = event.target.closest("[data-profile-name]");
+                if (!button) {
+                    hideProfileContextMenu();
+                    return;
+                }
+                openProfileContextMenu(button.getAttribute("data-profile-name"), event);
+            }
+
+            function handleProfileContextMenuAction(event) {
+                const action = event.target.getAttribute("data-profile-action");
+                const profileName = state.profiles.contextMenuName;
+                if (!action || !profileName) {
+                    return;
+                }
+                if (action === "rename") {
+                    renameProfileByName(profileName);
+                } else if (action === "overwrite") {
+                    overwriteProfileByCurrent(profileName);
+                } else if (action === "delete") {
+                    deleteProfileByName(profileName);
+                }
+            }
+
+            function handleSavedProfilesDragStart(event) {
+                const button = event.target.closest("[data-profile-name]");
+                if (!button) {
+                    return;
+                }
+                const profileName = button.getAttribute("data-profile-name");
+                const isImplicit = button.getAttribute("data-profile-implicit") === "true";
+                if (isImplicit) {
+                    event.preventDefault();
+                    return;
+                }
+                hideProfileContextMenu();
+                state.profiles.draggingName = profileName;
+                button.classList.add("dragging");
+                event.stopPropagation();
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", profileName);
+                elements.dropZone.classList.remove("drag-over");
+            }
+
+            function handleSavedProfilesDragOver(event) {
+                if (!state.profiles.draggingName) {
+                    return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                clearSavedProfileDropTarget();
+                const button = event.target.closest("[data-profile-name]");
+                if (!button) {
+                    return;
+                }
+                if (button.getAttribute("data-profile-implicit") === "true") {
+                    return;
+                }
+                if (button.getAttribute("data-profile-name") === state.profiles.draggingName) {
+                    return;
+                }
+                button.classList.add("drop-target");
+                event.dataTransfer.dropEffect = "move";
+            }
+
+            function handleSavedProfilesDrop(event) {
+                if (!state.profiles.draggingName) {
+                    return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                const draggedName = state.profiles.draggingName;
+                const button = event.target.closest("[data-profile-name]");
+                const targetName = button && button.getAttribute("data-profile-implicit") !== "true"
+                    ? button.getAttribute("data-profile-name")
+                    : null;
+                clearSavedProfileDropTarget();
+                state.profiles.draggingName = "";
+                if (moveProfileBefore(draggedName, targetName)) {
+                    persistProfiles();
+                    updateStatus(targetName
+                        ? "Moved profile '" + draggedName + "'."
+                        : "Moved profile '" + draggedName + "' to the end.");
+                }
+            }
+
+            function handleSavedProfilesDragEnd() {
+                state.profiles.draggingName = "";
+                clearSavedProfileDropTarget();
+                elements.dropZone.classList.remove("drag-over");
+            }
+
+            function isFileDragEvent(event) {
+                const types = event && event.dataTransfer && event.dataTransfer.types;
+                return !!(types && Array.from(types).includes("Files"));
+            }
+
+            function renderSavedProfilesPanel() {
+                const names = getOrderedProfileNames().slice(0, PROFILE_RECENT_LIMIT);
+                elements.savedProfilesPanel.hidden = false;
+                elements.savedProfilesPanel.innerHTML = "<div class=\"saved-profiles-head\"><strong>Saved profiles</strong><span class=\"operator-meta\">Click to load</span></div>" +
+                    "<div class=\"saved-profiles-list\">" +
+                    "<button class=\"saved-profile-chip\" data-profile-action=\"empty\" title=\"Clear current source, operations, selection, and view state\">Empty</button>" +
+                    names.map((name) => {
+                        const profile = state.profiles.named[name];
+                        const classes = ["saved-profile-chip"];
+                        if (profile && profile.implicit) {
+                            classes.push("implicit");
+                        }
+                        const label = profile && profile.implicit ? IMPLICIT_PROFILE_NAME : name;
+                        const title = profile && profile.implicit
+                            ? "Last session snapshot. Right click for actions."
+                            : "Load profile '" + name + "'. Right click for actions or drag to reorder.";
+                        return "<button class=\"" + classes.join(" ") + "\" data-profile-name=\"" + escapeAttribute(name) + "\" data-profile-implicit=\"" + (profile && profile.implicit ? "true" : "false") + "\" draggable=\"" + (profile && profile.implicit ? "false" : "true") + "\" title=\"" + escapeAttribute(title) + "\">" + escapeHtml(label) + "</button>";
+                    }).join("") + "</div>";
+            }
+
             function autoSizeTextarea(textarea) {
                 if (!textarea || textarea.tagName !== "TEXTAREA") return;
                 textarea.style.height = "auto";
@@ -3751,8 +4430,8 @@
             function setScrollTop(scrollTop) {
                 const stage = getCurrentStageSync();
                 if (!stage) return;
-                const maxScroll = Math.max(0, stage.lineCount * state.view.rowHeight - elements.viewerViewport.clientHeight);
-                state.view.scrollTop = clamp(scrollTop, 0, maxScroll);
+                const verticalMetrics = getVerticalScrollMetrics(stage);
+                state.view.scrollTop = clamp(scrollTop, verticalMetrics.minScrollTop, verticalMetrics.maxScrollTop);
                 renderSoon();
             }
 
@@ -3776,6 +4455,12 @@
                 }
             }
 
+            function suppressViewportMiddleClickDefault(event) {
+                if (event.button === 1) {
+                    event.preventDefault();
+                }
+            }
+
             function startVerticalDrag(event) {
                 event.preventDefault();
                 state.view.draggingVertical = true;
@@ -3794,12 +4479,12 @@
                 const stage = getCurrentStageSync();
                 if (!stage) return;
                 if (state.view.draggingVertical) {
+                    const verticalMetrics = getVerticalScrollMetrics(stage);
                     const trackHeight = elements.verticalTrack.clientHeight;
                     const thumbHeight = elements.verticalThumb.offsetHeight;
                     const maxThumbTop = Math.max(1, trackHeight - thumbHeight);
-                    const totalHeight = Math.max(0, stage.lineCount * state.view.rowHeight - elements.viewerViewport.clientHeight);
                     const delta = event.clientY - state.view.dragStartClient;
-                    setScrollTop(state.view.dragStartScroll + (delta / maxThumbTop) * totalHeight);
+                    setScrollTop(state.view.dragStartScroll + (delta / maxThumbTop) * verticalMetrics.scrollRange);
                     return;
                 }
                 if (state.view.draggingHorizontal) {
@@ -3841,10 +4526,10 @@
                 const stage = getCurrentStageSync();
                 if (!stage) return;
                 if (axis === "vertical") {
+                    const verticalMetrics = getVerticalScrollMetrics(stage);
                     const rect = elements.verticalTrack.getBoundingClientRect();
                     const percent = clamp((event.clientY - rect.top) / rect.height, 0, 1);
-                    const totalHeight = Math.max(0, stage.lineCount * state.view.rowHeight - elements.viewerViewport.clientHeight);
-                    setScrollTop(totalHeight * percent);
+                    setScrollTop(verticalMetrics.minScrollTop + verticalMetrics.scrollRange * percent);
                     return;
                 }
                 const rect = elements.horizontalTrack.getBoundingClientRect();
@@ -3857,7 +4542,8 @@
                 return {
                     kind: PROFILE_KIND,
                     version: PROFILE_VERSION,
-                    profiles: state.profiles.named,
+                    profiles: getExportableProfiles(),
+                    profileOrder: getPersistedProfileOrder(),
                     workingSet: {
                         operators: state.operators,
                         selectedOperatorId: state.selectedOperatorId,
@@ -3875,39 +4561,50 @@
             }
 
             function persistProfiles() {
-                localStorage.setItem(STORAGE_PROFILES, JSON.stringify(state.profiles.named));
+                localStorage.setItem(STORAGE_PROFILES, JSON.stringify(getPersistedProfilesState()));
                 renderProfileControls();
             }
 
             function loadPersistedState() {
                 try {
+                    let lastProfile = null;
                     const workingSetRaw = localStorage.getItem(STORAGE_WORKING_SET);
                     if (workingSetRaw) {
                         const workingSet = JSON.parse(workingSetRaw);
-                        state.operators = normalizeOperatorList(workingSet.operators);
-                        state.selectedOperatorId = workingSet.selectedOperatorId ?? null;
-                        state.nextOperatorId = Number(workingSet.nextOperatorId || 1);
+                        if (Array.isArray(workingSet && workingSet.operators) && workingSet.operators.length) {
+                            lastProfile = normalizeProfileRecord(workingSet, Date.now(), true);
+                        }
                     }
                     const profilesRaw = localStorage.getItem(STORAGE_PROFILES);
                     if (profilesRaw) {
-                        const profiles = JSON.parse(profilesRaw);
-                        if (profiles && typeof profiles === "object") {
-                            state.profiles.named = profiles;
-                        }
+                        const parsedProfiles = parsePersistedProfilesState(JSON.parse(profilesRaw));
+                        state.profiles.named = normalizeProfilesPayload(parsedProfiles.named);
+                        state.profiles.order = normalizeProfileOrder(parsedProfiles.order, state.profiles.named);
+                    }
+                    if (lastProfile) {
+                        state.profiles.named[IMPLICIT_PROFILE_NAME] = lastProfile;
                     }
                 } catch (error) {
                     console.warn("Failed to load persisted state", error);
                 }
+                state.operators = [];
+                state.selectedOperatorId = null;
+                state.nextOperatorId = 1;
                 state.loadedProfileName = "";
                 elements.profileNameInput.value = "";
                 renderProfileControls();
             }
 
             function renderProfileControls() {
-                const names = Object.keys(state.profiles.named).sort();
+                const names = getOrderedProfileNames();
+                const previousValue = state.loadedProfileName || elements.profileSelect.value;
                 elements.profileSelect.innerHTML = names.length
                     ? names.map((name) => "<option value=\"" + escapeHtml(name) + "\">" + escapeHtml(name) + "</option>").join("")
                     : "<option value=\"\">No saved profiles</option>";
+                if (names.length) {
+                    elements.profileSelect.value = names.includes(previousValue) ? previousValue : names[0];
+                }
+                renderSavedProfilesPanel();
                 updateButtons();
             }
 
@@ -3922,37 +4619,36 @@
                     updateStatus("Enter a profile name first.");
                     return;
                 }
-                state.profiles.named[name] = {
-                    operators: JSON.parse(JSON.stringify(state.operators)),
-                    selectedOperatorId: state.selectedOperatorId,
-                    nextOperatorId: state.nextOperatorId
-                };
+                if (name === IMPLICIT_PROFILE_NAME) {
+                    updateStatus("'Last' is reserved.");
+                    return;
+                }
+                state.profiles.named[name] = normalizeProfileRecord(createWorkingSetSnapshot(), Date.now(), false);
+                replaceProfileNameInOrder(null, name);
+                state.profiles.order = [name].concat(state.profiles.order.filter((entry) => entry !== name));
                 setLoadedProfileName(name);
                 persistProfiles();
                 updateStatus("Saved profile '" + name + "'.");
             }
 
-            function loadProfile() {
-                const name = elements.profileSelect.value;
+            function loadProfileByName(name) {
                 const profile = state.profiles.named[name];
-                if (!profile) return;
+                if (!profile) return false;
                 state.operators = normalizeOperatorList(JSON.parse(JSON.stringify(profile.operators || [])));
                 state.selectedOperatorId = profile.selectedOperatorId ?? null;
                 state.nextOperatorId = Number(profile.nextOperatorId || 1);
                 setLoadedProfileName(name);
                 invalidateAfterOperatorChange();
                 updateStatus("Loaded profile '" + name + "'.");
+                return true;
+            }
+
+            function loadProfile() {
+                loadProfileByName(elements.profileSelect.value);
             }
 
             function deleteProfile() {
-                const name = elements.profileSelect.value;
-                if (!name || !state.profiles.named[name]) return;
-                delete state.profiles.named[name];
-                if (state.loadedProfileName === name) {
-                    setLoadedProfileName("");
-                }
-                persistProfiles();
-                updateStatus("Deleted profile '" + name + "'.");
+                deleteProfileByName(elements.profileSelect.value);
             }
 
             function exportProfiles() {
@@ -3970,10 +4666,10 @@
                     throw new Error("Unsupported profile bundle.");
                 }
                 if (payload.profiles && typeof payload.profiles === "object") {
-                    state.profiles.named = Object.fromEntries(Object.entries({ ...state.profiles.named, ...payload.profiles }).map(([name, profile]) => [name, {
-                        ...profile,
-                        operators: normalizeOperatorList(profile && profile.operators)
-                    }]));
+                    const importedProfiles = normalizeProfilesPayload(payload.profiles);
+                    const previousOrder = getPersistedProfileOrder();
+                    state.profiles.named = { ...state.profiles.named, ...importedProfiles };
+                    state.profiles.order = normalizeProfileOrder(previousOrder.concat(Array.isArray(payload.profileOrder) ? payload.profileOrder : Object.keys(importedProfiles)), state.profiles.named);
                 }
                 if (payload.workingSet) {
                     state.operators = normalizeOperatorList(payload.workingSet.operators || state.operators);
@@ -4034,14 +4730,14 @@
                 } else {
                     decoded = new TextDecoder(detection.encoding.replace("-bom", ""), { fatal: false }).decode(sliced);
                 }
-                decoded = decoded.replace(/\r\n?/g, "\n");
+                decoded = normalizeLoadedText(decoded);
                 return { decoded, encoding: detection.encoding };
             }
 
             async function loadTextSource(text, sourceName, originalEncoding, sourceMeta) {
-                const normalizedText = String(text).replace(/\r\n?/g, "\n");
+                const normalizedText = normalizeLoadedText(text);
                 const normalizedLines = Array.isArray(sourceMeta && sourceMeta.lines)
-                    ? sourceMeta.lines.slice()
+                    ? sourceMeta.lines.map((line) => normalizeLoadedText(line))
                     : splitTextLines(normalizedText);
                 const sourceCatalog = Array.isArray(sourceMeta && sourceMeta.sourceCatalog) && sourceMeta.sourceCatalog.length
                     ? cloneSourceCatalog(sourceMeta.sourceCatalog)
@@ -4049,6 +4745,9 @@
                 const lineSourceIds = Array.isArray(sourceMeta && sourceMeta.lineSourceIds) && sourceMeta.lineSourceIds.length === normalizedLines.length
                     ? sourceMeta.lineSourceIds.slice()
                     : new Array(normalizedLines.length).fill(sourceCatalog.length ? 0 : -1);
+                const lineRowIds = Array.isArray(sourceMeta && sourceMeta.lineRowIds) && sourceMeta.lineRowIds.length === normalizedLines.length
+                    ? sourceMeta.lineRowIds.slice()
+                    : Array.from({ length: normalizedLines.length }, (_, index) => index);
                 state.source.name = sourceName || "Clipboard";
                 state.source.originalEncoding = originalEncoding || "clipboard";
                 state.source.normalizedEncoding = "utf-8";
@@ -4058,6 +4757,7 @@
                 state.source.stage = buildIndexedStage(normalizedText, "raw", "Raw", {
                     lines: normalizedLines,
                     lineSourceIds,
+                    lineRowIds,
                     sourceCatalog
                 });
                 state.stageCache.clear();
@@ -4121,6 +4821,9 @@
             }
 
             function handlePasteEvent(event) {
+                if (isFormEditingTarget(event.target)) {
+                    return;
+                }
                 const items = Array.from(event.clipboardData ? event.clipboardData.items : []);
                 const files = items
                     .filter((item) => item.kind === "file")
@@ -4212,6 +4915,11 @@
 
             function handleGlobalKeydown(event) {
                 const stage = getCurrentStageSync();
+                if (!elements.profileContextMenu.hidden && event.key === "Escape") {
+                    hideProfileContextMenu();
+                    event.preventDefault();
+                    return;
+                }
                 if (elements.loadActionModal.classList.contains("visible") && event.key === "Escape") {
                     event.preventDefault();
                     resolvePendingLoadAction(null);
@@ -4391,6 +5099,8 @@
                     }
                 });
                 elements.loadActionNewButton.addEventListener("click", () => resolvePendingLoadAction("replace"));
+                elements.loadActionNewAppendButton.addEventListener("click", () => resolvePendingLoadAction("replace-append"));
+                elements.loadActionNewZipButton.addEventListener("click", () => resolvePendingLoadAction("replace-zip"));
                 elements.loadActionAppendButton.addEventListener("click", () => resolvePendingLoadAction("append"));
                 elements.loadActionZipButton.addEventListener("click", () => resolvePendingLoadAction("zip"));
                 elements.addFilterButton.addEventListener("click", () => addOperator("filter"));
@@ -4408,6 +5118,24 @@
                     loadProfile();
                     closeAppMenu();
                 });
+                elements.savedProfilesPanel.addEventListener("click", (event) => {
+                    const actionButton = event.target.closest('[data-profile-action="empty"]');
+                    if (actionButton) {
+                        clearWorkspaceState();
+                        return;
+                    }
+                    const button = event.target.closest("[data-profile-name]");
+                    if (!button) {
+                        return;
+                    }
+                    loadProfileByName(button.getAttribute("data-profile-name"));
+                });
+                elements.savedProfilesPanel.addEventListener("contextmenu", handleSavedProfilesContextMenu);
+                elements.savedProfilesPanel.addEventListener("dragstart", handleSavedProfilesDragStart);
+                elements.savedProfilesPanel.addEventListener("dragover", handleSavedProfilesDragOver);
+                elements.savedProfilesPanel.addEventListener("drop", handleSavedProfilesDrop);
+                elements.savedProfilesPanel.addEventListener("dragend", handleSavedProfilesDragEnd);
+                elements.profileContextMenu.addEventListener("click", handleProfileContextMenuAction);
                 elements.deleteProfileButton.addEventListener("click", () => {
                     deleteProfile();
                     closeAppMenu();
@@ -4426,6 +5154,8 @@
                     closeAppMenu();
                 });
                 elements.viewerViewport.addEventListener("wheel", handleWheel, { passive: false });
+                elements.viewerViewport.addEventListener("auxclick", suppressViewportMiddleClickDefault);
+                elements.viewerViewport.addEventListener("mousedown", suppressViewportMiddleClickDefault);
                 elements.viewerViewport.addEventListener("mousedown", beginSelection);
                 elements.viewerViewport.addEventListener("mousemove", handleViewportHover);
                 elements.viewerViewport.addEventListener("mouseleave", clearViewportHover);
@@ -4445,12 +5175,18 @@
                 });
                 ["dragenter", "dragover"].forEach((type) => {
                     document.addEventListener(type, (event) => {
+                        if (state.profiles.draggingName || !isFileDragEvent(event)) {
+                            return;
+                        }
                         event.preventDefault();
                         elements.dropZone.classList.add("visible", "drag-over");
                     });
                 });
                 ["dragleave", "dragend"].forEach((type) => {
                     document.addEventListener(type, (event) => {
+                        if (state.profiles.draggingName) {
+                            return;
+                        }
                         if (event.target === document.documentElement || event.target === document.body) {
                             elements.dropZone.classList.remove("drag-over");
                         }
@@ -4461,6 +5197,10 @@
                 document.addEventListener("copy", handleCopyEvent);
                 window.addEventListener("resize", renderSoon);
                 document.addEventListener("click", (event) => {
+                    if (elements.profileContextMenu.contains(event.target)) {
+                        return;
+                    }
+                    hideProfileContextMenu();
                     if (elements.appMenu && elements.appMenu.hasAttribute("open") && !elements.appMenu.contains(event.target)) {
                         closeAppMenu();
                     }
