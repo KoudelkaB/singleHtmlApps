@@ -1112,7 +1112,7 @@
                     <span class="pill" id="stageSummary">Stage: raw</span>
                 </div>
                 <div class="panel-body">
-                    <div class="operator-hint">Drag to override.</div>
+                    <div class="operator-hint">Click an operation to preview that stage.</div>
                     <div class="operator-list" id="operatorList"></div>
                     <div class="saved-profiles-panel" id="savedProfilesPanel" hidden></div>
                 </div>
@@ -1138,7 +1138,7 @@
                         <div class="line-layer" id="lineLayer"></div>
                         <div class="empty-state" id="emptyState">
                             <div>
-                                <h2>Drop a log file, open one, or paste clipboard text</h2>
+                                <h2>Drop log files, open a file, or paste clipboard text</h2>
                                 <p>The viewer keeps rows unwrapped, caches stage results, and supports Ctrl + wheel for
                                     horizontal scrolling plus middle-click stage navigation.</p>
                             </div>
@@ -1163,7 +1163,7 @@
 
     <div class="drop-zone visible" id="dropZone">
         <div>
-            <h2>Drop a file or profile bundle</h2>
+            <h2>Drop files or a profile bundle</h2>
             <p>Log files are decoded to UTF-8. JSON profile bundles are imported. You can also paste text or file
                 content from the clipboard.</p>
         </div>
@@ -1173,12 +1173,13 @@
         <div class="modal-card">
             <button id="closeHelpButton" class="modal-close" title="Close help" aria-label="Close help">✕</button>
             <h3>How to use Log Explorer</h3>
-            <p>Load content by drop, file picker, or clipboard. Inputs are normalized to UTF-8 before indexing. Rows
-                stay unwrapped; use the custom scrollbars, arrow keys, Page Up, Page Down, Home, End, or Ctrl + wheel
-                for horizontal movement. When content is already loaded, or when multiple new inputs arrive together,
-                Log Explorer asks whether to load the new input into the current source or as a fresh source. The
-                dialog offers separate combine and new columns with <code>Append</code> and <code>Zip</code>
-                variants. Press <code>Esc</code> in that dialog to cancel the load.
+            <p>Load content by dropping files, using the file picker, or pasting from the clipboard. Inputs are
+                normalized to UTF-8 before indexing. Rows stay unwrapped; use the custom scrollbars, arrow keys, Page
+                Up, Page Down, Home, End, or Ctrl + wheel for horizontal movement. When content is already loaded, or
+                when multiple new inputs arrive together, Log Explorer asks whether to load the new input into the
+                current source or as a fresh source. The dialog offers separate combine and new columns with
+                <code>Append</code> and <code>Zip</code> variants. Press <code>Esc</code> in that dialog to cancel the
+                load.
             </p>
             <p>The top bar keeps the most common actions visible and moves secondary commands into the app menu.
                 Profiles live in that menu together with export, import, and alternate copy commands. When multiple
