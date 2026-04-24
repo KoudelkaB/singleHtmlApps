@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mouse Button Test</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f4efe6;
+            --panel: rgba(255, 252, 247, 0.92);
+            --border: rgba(100, 79, 54, 0.22);
+            --text: #241a10;
+            --muted: #6c5a49;
+            --accent: #0d7a66;
+            --accent-soft: rgba(13, 122, 102, 0.12);
+            --warn: #b4542d;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(13, 122, 102, 0.12), transparent 26%),
+                radial-gradient(circle at bottom right, rgba(180, 84, 45, 0.12), transparent 30%),
+                var(--bg);
+        }
+
+        main {
+            width: min(1100px, calc(100vw - 32px));
+            margin: 24px auto;
+            display: grid;
+            gap: 16px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            box-shadow: 0 18px 50px rgba(47, 34, 18, 0.08);
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 20px 22px 10px;
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: clamp(1.6rem, 3vw, 2.2rem);
+        }
+
+        p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .status-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 0 22px 18px;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            min-height: 40px;
+            padding: 8px 14px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.72);
+            font-size: 0.95rem;
+        }
+
+        .test-zone {
+            position: relative;
+            margin: 0 22px 22px;
+            min-height: 320px;
+            border-radius: 24px;
+            border: 2px dashed rgba(13, 122, 102, 0.4);
+            background:
+                linear-gradient(135deg, rgba(13, 122, 102, 0.08), rgba(180, 84, 45, 0.08)),
+                repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.45) 14px, rgba(255, 248, 240, 0.75) 14px, rgba(255, 248, 240, 0.75) 28px);
+            display: grid;
+            place-items: center;
+            text-align: center;
+            padding: 28px;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .test-zone strong {
+            display: block;
+            font-size: 1.35rem;
+            margin-bottom: 8px;
+        }
+
+        .test-zone small {
+            display: block;
+            color: var(--muted);
+            font-size: 0.95rem;
+            line-height: 1.45;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            padding: 0 22px 18px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: #fff;
+            color: var(--text);
+            min-height: 40px;
+            padding: 0 14px;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        button.primary {
+            background: var(--accent);
+            border-color: transparent;
+            color: #fff;
+        }
+
+        .log {
+            padding: 0 22px 22px;
+        }
+
+        pre {
+            margin: 0;
+            min-height: 240px;
+            max-height: 420px;
+            overflow: auto;
+            padding: 16px;
+            border-radius: 18px;
+            background: #1f1d1a;
+            color: #f7f1e8;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            font: 13px/1.45 "IBM Plex Mono", "Cascadia Code", monospace;
+        }
+
+        .hint {
+            padding: 0 22px 22px;
+            color: var(--muted);
+        }
+
+        .ok {
+            color: var(--accent);
+        }
+
+        .warn {
+            color: var(--warn);
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <section class="panel">
+            <div class="header">
+                <h1>Mouse Button Test</h1>
+                <p>Click inside the test zone with left, middle, and right button. This page logs both pointer and mouse events so you can see exactly what the browser receives.</p>
+            </div>
+            <div class="status-bar">
+                <div class="pill" id="lastEvent">Last event: none</div>
+                <div class="pill" id="middleSeen">Middle click seen: no</div>
+                <div class="pill" id="pointerSeen">Pointer events: no</div>
+            </div>
+            <div class="test-zone" id="testZone" tabindex="0">
+                <div>
+                    <strong>Click Here</strong>
+                    <small>Expected middle-button value is <code>button=1</code>.<br>If you only see left and right clicks, the problem is outside LogExplorer.</small>
+                </div>
+            </div>
+            <div class="controls">
+                <button class="primary" id="clearLogButton">Clear Log</button>
+                <button id="copyLogButton">Copy Log</button>
+            </div>
+            <div class="log">
+                <pre id="logOutput"></pre>
+            </div>
+            <div class="hint">
+                <strong>Interpretation:</strong> <span class="ok">If middle click logs `pointerdown` or `mousedown` with `button=1`, your mouse is fine and the issue is in app/browser routing.</span> <span class="warn">If nothing at all logs for the middle button, test the OS next with `libinput debug-events`.</span>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const testZone = document.getElementById("testZone");
+        const logOutput = document.getElementById("logOutput");
+        const lastEvent = document.getElementById("lastEvent");
+        const middleSeen = document.getElementById("middleSeen");
+        const pointerSeen = document.getElementById("pointerSeen");
+        const clearLogButton = document.getElementById("clearLogButton");
+        const copyLogButton = document.getElementById("copyLogButton");
+
+        let sawMiddle = false;
+        let sawPointer = false;
+
+        function buttonLabel(button) {
+            if (button === 0) return "left";
+            if (button === 1) return "middle";
+            if (button === 2) return "right";
+            return String(button);
+        }
+
+        function updatePills(type, button) {
+            lastEvent.textContent = "Last event: " + type + " button=" + button + " (" + buttonLabel(button) + ")";
+            if (button === 1) {
+                sawMiddle = true;
+                middleSeen.textContent = "Middle click seen: yes";
+            }
+            if (type.startsWith("pointer")) {
+                sawPointer = true;
+                pointerSeen.textContent = "Pointer events: yes";
+            }
+        }
+
+        function appendLog(event) {
+            const line = [
+                new Date().toLocaleTimeString(),
+                event.type,
+                "button=" + event.button,
+                "buttons=" + event.buttons,
+                event.pointerType ? "pointerType=" + event.pointerType : "",
+                "target=" + ((event.target && event.target.id) || event.target.className || event.target.tagName)
+            ].filter(Boolean).join("  ");
+            logOutput.textContent = line + "\n" + logOutput.textContent;
+            updatePills(event.type, event.button);
+        }
+
+        for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup", "auxclick", "contextmenu"]) {
+            testZone.addEventListener(type, (event) => {
+                if (type === "contextmenu") {
+                    event.preventDefault();
+                }
+                appendLog(event);
+            });
+        }
+
+        clearLogButton.addEventListener("click", () => {
+            logOutput.textContent = "";
+            sawMiddle = false;
+            sawPointer = false;
+            lastEvent.textContent = "Last event: none";
+            middleSeen.textContent = "Middle click seen: no";
+            pointerSeen.textContent = "Pointer events: no";
+            testZone.focus();
+        });
+
+        copyLogButton.addEventListener("click", async () => {
+            try {
+                await navigator.clipboard.writeText(logOutput.textContent);
+                lastEvent.textContent = "Last event: log copied";
+            } catch (error) {
+                lastEvent.textContent = "Last event: clipboard copy failed";
+            }
+            testZone.focus();
+        });
+
+        testZone.focus();
+    </script>
+</body>
+</html>

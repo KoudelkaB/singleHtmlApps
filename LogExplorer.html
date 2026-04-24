@@ -3679,6 +3679,28 @@
                 if (directIndex !== -1) {
                     return directIndex;
                 }
+                if (typeof lineRowId === "number" && Number.isFinite(lineRowId)) {
+                    const clampedFallbackRow = clamp(fallbackRow, 0, Math.max(0, stage.lineCount - 1));
+                    let closestIndex = -1;
+                    let closestDistance = Infinity;
+                    let closestFallbackDistance = Infinity;
+                    for (let index = 0; index < rowIds.length; index++) {
+                        const candidateRowId = rowIds[index];
+                        if (typeof candidateRowId !== "number" || !Number.isFinite(candidateRowId)) {
+                            continue;
+                        }
+                        const distance = Math.abs(candidateRowId - lineRowId);
+                        const fallbackDistance = Math.abs(index - clampedFallbackRow);
+                        if (distance < closestDistance || (distance === closestDistance && fallbackDistance < closestFallbackDistance)) {
+                            closestIndex = index;
+                            closestDistance = distance;
+                            closestFallbackDistance = fallbackDistance;
+                        }
+                    }
+                    if (closestIndex !== -1) {
+                        return closestIndex;
+                    }
+                }
                 return clamp(fallbackRow, 0, Math.max(0, stage.lineCount - 1));
             }
 
@@ -3876,11 +3898,6 @@
                     activeElement.tagName === "SUMMARY"
                 )) {
                     activeElement.blur();
-                }
-                if (event.button === 1) {
-                    event.preventDefault();
-                    navigateStageFromPointer(event, event.ctrlKey ? 1 : -1).catch(handleError);
-                    return;
                 }
                 if (event.button !== 0) {
                     return;
@@ -4451,12 +4468,35 @@
                     const deltaCols = Math.sign(event.deltaY || event.deltaX) * Math.max(1, Math.round(Math.abs(event.deltaY || event.deltaX) / 60));
                     setScrollLeftCols(state.view.scrollLeftCols + deltaCols * 4);
                 } else {
-                    setScrollTop(state.view.scrollTop + event.deltaY);
+                    const verticalMetrics = getVerticalScrollMetrics(stage);
+                    const nextScrollTop = state.view.scrollTop + event.deltaY;
+                    if (state.view.scrollTop < 0) {
+                        setScrollTop(Math.min(0, Math.max(state.view.scrollTop, nextScrollTop)));
+                    } else if (state.view.scrollTop > verticalMetrics.maxContentScrollTop) {
+                        setScrollTop(Math.max(verticalMetrics.maxContentScrollTop, Math.min(state.view.scrollTop, nextScrollTop)));
+                    } else {
+                        setScrollTop(clamp(nextScrollTop, 0, verticalMetrics.maxContentScrollTop));
+                    }
                 }
             }
 
+            function isViewerViewportTarget(target) {
+                return !!(target && elements.viewerViewport.contains(target));
+            }
+
+            function handleViewportMiddlePointerDown(event) {
+                if (event.button !== 1 || !isViewerViewportTarget(event.target)) {
+                    return;
+                }
+                event.preventDefault();
+                if (isFormEditingTarget(event.target)) {
+                    return;
+                }
+                navigateStageFromPointer(event, event.ctrlKey ? 1 : -1).catch(handleError);
+            }
+
             function suppressViewportMiddleClickDefault(event) {
-                if (event.button === 1) {
+                if (event.button === 1 && isViewerViewportTarget(event.target)) {
                     event.preventDefault();
                 }
             }
@@ -5154,8 +5194,11 @@
                     closeAppMenu();
                 });
                 elements.viewerViewport.addEventListener("wheel", handleWheel, { passive: false });
-                elements.viewerViewport.addEventListener("auxclick", suppressViewportMiddleClickDefault);
-                elements.viewerViewport.addEventListener("mousedown", suppressViewportMiddleClickDefault);
+                elements.viewerViewport.addEventListener("pointerdown", handleViewportMiddlePointerDown, true);
+                elements.viewerViewport.addEventListener("pointerup", suppressViewportMiddleClickDefault, true);
+                elements.viewerViewport.addEventListener("auxclick", suppressViewportMiddleClickDefault, true);
+                elements.viewerViewport.addEventListener("mousedown", suppressViewportMiddleClickDefault, true);
+                elements.viewerViewport.addEventListener("mouseup", suppressViewportMiddleClickDefault, true);
                 elements.viewerViewport.addEventListener("mousedown", beginSelection);
                 elements.viewerViewport.addEventListener("mousemove", handleViewportHover);
                 elements.viewerViewport.addEventListener("mouseleave", clearViewportHover);
