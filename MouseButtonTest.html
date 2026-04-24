@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -165,12 +166,14 @@
         }
     </style>
 </head>
+
 <body>
     <main>
         <section class="panel">
             <div class="header">
                 <h1>Mouse Button Test</h1>
-                <p>Click inside the test zone with left, middle, and right button. This page logs both pointer and mouse events so you can see exactly what the browser receives.</p>
+                <p>Click inside the test zone with left, middle, and right button. This page logs both pointer and mouse
+                    events so you can see exactly what the browser receives.</p>
             </div>
             <div class="status-bar">
                 <div class="pill" id="lastEvent">Last event: none</div>
@@ -180,7 +183,8 @@
             <div class="test-zone" id="testZone" tabindex="0">
                 <div>
                     <strong>Click Here</strong>
-                    <small>Expected middle-button value is <code>button=1</code>.<br>If you only see left and right clicks, the problem is outside LogExplorer.</small>
+                    <small>Expected middle-button value is <code>button=1</code>.<br>If you only see left and right
+                        clicks, the problem is outside LogExplorer.</small>
                 </div>
             </div>
             <div class="controls">
@@ -191,7 +195,9 @@
                 <pre id="logOutput"></pre>
             </div>
             <div class="hint">
-                <strong>Interpretation:</strong> <span class="ok">If middle click logs `pointerdown` or `mousedown` with `button=1`, your mouse is fine and the issue is in app/browser routing.</span> <span class="warn">If nothing at all logs for the middle button, test the OS next with `libinput debug-events`.</span>
+                <strong>Interpretation:</strong> <span class="ok">If middle click logs `pointerdown` or `mousedown` with
+                    `button=1`, your mouse is fine and the issue is in app/browser routing.</span> <span class="warn">If
+                    nothing at all logs for the middle button, test the OS next with `libinput debug-events`.</span>
             </div>
         </section>
     </main>
@@ -272,4 +278,5 @@
         testZone.focus();
     </script>
 </body>
+
 </html>

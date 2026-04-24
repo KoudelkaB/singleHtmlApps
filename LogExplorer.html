@@ -425,9 +425,32 @@
             box-shadow: 0 0 0 2px rgba(47, 128, 237, 0.16);
         }
 
+        .saved-profile-chip.meta {
+            background: rgba(247, 249, 253, 0.72);
+            border-style: dashed;
+            color: var(--muted);
+        }
+
         .saved-profile-chip.implicit {
-            background: linear-gradient(180deg, #eef5ff, #dfeeff);
             border-color: rgba(47, 128, 237, 0.34);
+        }
+
+        .saved-profile-chip.empty {
+            background: transparent;
+            border-color: rgba(97, 117, 142, 0.34);
+        }
+
+        .saved-profile-chip.loaded {
+            background: linear-gradient(180deg, #eef7ff, #d9ebff);
+            border-color: rgba(47, 128, 237, 0.54);
+            box-shadow: 0 0 0 2px rgba(47, 128, 237, 0.12);
+            color: var(--text);
+        }
+
+        .saved-profile-chip.loaded.dirty {
+            background: linear-gradient(180deg, #fff5d8, #ffe9aa);
+            border-color: rgba(174, 117, 0, 0.55);
+            box-shadow: 0 0 0 2px rgba(230, 156, 0, 0.16);
         }
 
         .profile-context-menu {
@@ -666,6 +689,12 @@
         .viewer-stage-label {
             color: var(--muted);
             font-size: 0.86rem;
+        }
+
+        .viewer-toolbar-hint {
+            color: var(--muted);
+            font-size: 0.8rem;
+            line-height: 1.35;
         }
 
         .viewer-shell {
@@ -1048,18 +1077,10 @@
                             </div>
                             <div class="menu-group">
                                 <span class="menu-label">Profiles</span>
-                                <div class="menu-stack">
-                                    <input class="wide" type="text" id="profileNameInput" placeholder="Profile name">
-                                    <label for="profileSelect" class="visually-hidden">Saved profiles</label>
-                                    <select id="profileSelect" title="Saved profiles"></select>
-                                </div>
                                 <div class="menu-grid">
-                                    <button class="menu-button" id="saveProfileButton" disabled>⇢ Save</button>
-                                    <button class="menu-button" id="loadProfileButton" disabled>⇠ Load</button>
-                                    <button class="menu-button" id="deleteProfileButton" disabled>✕ Delete</button>
-                                    <button class="menu-button" id="exportProfilesButton">⇩ Export</button>
+                                    <button class="menu-button" id="exportProfilesButton">⇩ Download profiles</button>
+                                    <button class="menu-button" id="importProfilesButton">⇧ Upload profiles</button>
                                 </div>
-                                <button class="menu-button" id="importProfilesButton">⇧ Import profiles</button>
                             </div>
                         </div>
                     </details>
@@ -1091,9 +1112,7 @@
                     <span class="pill" id="stageSummary">Stage: raw</span>
                 </div>
                 <div class="panel-body">
-                    <div class="operator-hint">Single click smart-selects structures. Drag to override. Ctrl+click picks
-                        the smallest matching token. Middle click jumps to the previous stage; Ctrl+middle click goes
-                        forward.</div>
+                    <div class="operator-hint">Drag to override.</div>
                     <div class="operator-list" id="operatorList"></div>
                     <div class="saved-profiles-panel" id="savedProfilesPanel" hidden></div>
                 </div>
@@ -1102,7 +1121,11 @@
             <div class="panel viewer-panel">
                 <div class="viewer-toolbar">
                     <div class="viewer-toolbar-main">
-                        <span class="viewer-stage-label" id="viewerStageLabel">Previewing raw source</span>
+                        <span class="viewer-stage-label" id="viewerStageLabel"
+                            title="Shows the current file view. Hover for the active stage details.">File view</span>
+                        <span class="viewer-toolbar-hint">Single click smart-selects structures. Ctrl+click picks the
+                            smallest matching token. Middle click jumps to the previous stage; Ctrl+middle click goes
+                            forward.</span>
                     </div>
                     <div class="viewer-toolbar-stats">
                         <span class="pill" id="selectionInfo">Selection: none</span>
@@ -1183,12 +1206,9 @@
                     preceding parsable anchor row. Applying the inverted diff right after the normal diff restores the
                     cached original stage.</li>
             </ul>
-            <p>Single click prefers a structural selection on the clicked line: words, floats, dotted identifiers,
-                paths, URLs, quoted strings, bracketed spans, date-times, time spans, JSON fragments, and XML tags.
-                Ctrl+click picks the smallest matching token. Middle click opens the previous stage for the same row,
-                and Ctrl+middle click moves forward again. The preview can overscroll near the start and end of the
-                file so the target row still aligns under the pointer. Shift plus navigation extends the current
-                selection.</p>
+            <p>Middle click opens the previous stage for the same row, and Ctrl+middle click moves forward again. The
+                preview can overscroll near the start and end of the file so the target row still aligns under the
+                pointer. Shift plus navigation extends the current selection.</p>
             <p>Keyboard actions outside editors: <code>Ctrl+A</code> selects the current stage, <code>Ctrl+C</code>
                 copies selection, <code>Enter</code> adds the selection to the current Filter or inserts a new include
                 Filter after the selected stage, <code>Esc</code> does the same for exclude clauses or clears
@@ -1235,8 +1255,9 @@
     </div>
 
     <div class="profile-context-menu" id="profileContextMenu" hidden>
+        <button type="button" data-profile-action="save">Save</button>
+        <button type="button" data-profile-action="save-as">Save as</button>
         <button type="button" data-profile-action="rename">Rename</button>
-        <button type="button" data-profile-action="overwrite">Overwrite by current</button>
         <button type="button" class="danger" data-profile-action="delete">DEL profile</button>
     </div>
 
@@ -1250,6 +1271,7 @@
             const PROFILE_VERSION = 1;
             const PROFILE_RECENT_LIMIT = 6;
             const IMPLICIT_PROFILE_NAME = "Last";
+            const NEW_PROFILE_CONTEXT_NAME = "\u0000new-profile";
             const TAB_REPLACEMENT = "    ";
             const CACHE_MAX_STAGES = 18;
             const CACHE_MAX_BYTES = 220 * 1024 * 1024;
@@ -1292,11 +1314,6 @@
                 profileImportInput: document.getElementById("profileImportInput"),
                 importProfilesButton: document.getElementById("importProfilesButton"),
                 exportProfilesButton: document.getElementById("exportProfilesButton"),
-                profileNameInput: document.getElementById("profileNameInput"),
-                profileSelect: document.getElementById("profileSelect"),
-                saveProfileButton: document.getElementById("saveProfileButton"),
-                loadProfileButton: document.getElementById("loadProfileButton"),
-                deleteProfileButton: document.getElementById("deleteProfileButton"),
                 addFilterButton: document.getElementById("addFilterButton"),
                 addReplaceButton: document.getElementById("addReplaceButton"),
                 addSortButton: document.getElementById("addSortButton"),
@@ -3192,13 +3209,16 @@
                 const selectedIndex = getSelectedOperatorIndex();
                 const label = selectedIndex === -1 ? "raw" : "through #" + (selectedIndex + 1) + " " + state.operators[selectedIndex].type;
                 elements.stageSummary.textContent = "Stage: " + label;
-                elements.viewerStageLabel.textContent = selectedIndex === -1 ? "Previewing raw source" : "Previewing enabled operations through row " + (selectedIndex + 1);
                 if (!state.source.stage) {
+                    elements.viewerStageLabel.title = "No source is loaded yet.";
                     elements.fileInfo.textContent = "No source loaded";
                     elements.encodingInfo.textContent = "Encoding: n/a";
                     elements.lineInfo.textContent = "Lines: 0, len: 0";
                     return;
                 }
+                elements.viewerStageLabel.title = selectedIndex === -1
+                    ? "Raw file view. No operations are selected."
+                    : "Shows the file after the enabled operations through stage " + (selectedIndex + 1) + " (" + state.operators[selectedIndex].type + ").";
                 elements.fileInfo.textContent = state.source.name || "Clipboard";
                 elements.encodingInfo.textContent = "Encoding: " + state.source.originalEncoding + " -> UTF-8";
                 elements.lineInfo.textContent = "Lines: " + formatGrouped(state.source.stage.lineCount) + ", len: " + formatGrouped(state.source.charLength);
@@ -3261,7 +3281,6 @@
             function updateButtons() {
                 const hasSource = !!state.source.stage;
                 const hasSelection = !!normalizeSelection(state.selection);
-                const hasProfiles = getOrderedProfileNames().length > 0;
                 const sourceCount = hasSource ? getStageSourceCatalog(state.source.stage).length : 0;
                 elements.exportViewButton.disabled = !hasSource;
                 elements.copyViewButton.disabled = !hasSource;
@@ -3270,9 +3289,6 @@
                 elements.copyBlockButton.disabled = !hasSelection || !hasSource;
                 elements.resetViewButton.disabled = !hasSource;
                 elements.flattenSourcesButton.disabled = !hasSource || sourceCount <= 1;
-                elements.saveProfileButton.disabled = state.operators.length === 0;
-                elements.loadProfileButton.disabled = !hasProfiles || !elements.profileSelect.value;
-                elements.deleteProfileButton.disabled = !hasProfiles || !elements.profileSelect.value;
             }
 
             function flattenSources() {
@@ -3445,6 +3461,7 @@
                 clearPipelineCache();
                 persistWorkingSet();
                 state.activeJob = ++state.jobVersion;
+                renderSavedProfilesPanel();
                 renderSoon();
             }
 
@@ -4033,6 +4050,24 @@
                 };
             }
 
+            function createComparableProfileSnapshot(profile) {
+                return {
+                    operators: JSON.parse(JSON.stringify((profile && profile.operators) || [])),
+                    selectedOperatorId: profile && profile.selectedOperatorId != null ? profile.selectedOperatorId : null
+                };
+            }
+
+            function isLoadedProfileDirty(name) {
+                if (!name || state.loadedProfileName !== name) {
+                    return false;
+                }
+                const profile = state.profiles.named[name];
+                if (!profile) {
+                    return false;
+                }
+                return stableStringify(createComparableProfileSnapshot(createWorkingSetSnapshot())) !== stableStringify(createComparableProfileSnapshot(profile));
+            }
+
             function normalizeProfileOrder(order, namedProfiles) {
                 const names = Object.keys(namedProfiles || {}).filter((name) => name !== IMPLICIT_PROFILE_NAME);
                 const requested = Array.isArray(order)
@@ -4106,6 +4141,14 @@
                 return Object.fromEntries(Object.entries(state.profiles.named).filter(([, profile]) => !profile.implicit));
             }
 
+            function isNewProfileActive() {
+                return !state.loadedProfileName;
+            }
+
+            function isNewProfileDirty() {
+                return state.operators.length > 0;
+            }
+
             function replaceProfileNameInOrder(previousName, nextName) {
                 syncProfileOrder();
                 const index = state.profiles.order.indexOf(previousName);
@@ -4168,7 +4211,7 @@
                 return true;
             }
 
-            function overwriteProfileByCurrent(name) {
+            function saveProfileByCurrentName(name) {
                 const profile = state.profiles.named[name];
                 if (!profile) {
                     return false;
@@ -4179,7 +4222,19 @@
                 }
                 hideProfileContextMenu();
                 persistProfiles();
-                updateStatus("Overwrote profile '" + name + "' with current operations.");
+                updateStatus("Saved profile '" + name + "'.");
+                return true;
+            }
+
+            function applyProfileRecordToWorkingSet(profile, name) {
+                if (!profile) {
+                    return false;
+                }
+                state.operators = normalizeOperatorList(JSON.parse(JSON.stringify(profile.operators || [])));
+                state.selectedOperatorId = profile.selectedOperatorId ?? null;
+                state.nextOperatorId = Number(profile.nextOperatorId || 1);
+                setLoadedProfileName(name || "");
+                invalidateAfterOperatorChange();
                 return true;
             }
 
@@ -4208,21 +4263,71 @@
                 if (trimmedName !== name && state.profiles.named[trimmedName] && !window.confirm("Overwrite existing profile '" + trimmedName + "'?")) {
                     return false;
                 }
+                const overwrittenLoadedProfile = trimmedName !== name && state.loadedProfileName === trimmedName;
                 if (profile.implicit) {
                     state.profiles.named[trimmedName] = normalizeProfileRecord(profile, Date.now(), false);
                     insertProfileNameAtOrder(trimmedName, 0);
                 } else {
+                    const orderIndex = state.profiles.order.indexOf(name);
                     delete state.profiles.named[name];
                     state.profiles.named[trimmedName] = normalizeProfileRecord(profile, Date.now(), false);
-                    replaceProfileNameInOrder(name, trimmedName);
+                    if (trimmedName !== name) {
+                        insertProfileNameAtOrder(trimmedName, orderIndex === -1 ? state.profiles.order.length : orderIndex);
+                    }
                     if (state.loadedProfileName === name) {
                         setLoadedProfileName(trimmedName);
                     }
+                }
+                if (overwrittenLoadedProfile) {
+                    applyProfileRecordToWorkingSet(state.profiles.named[trimmedName], trimmedName);
                 }
                 hideProfileContextMenu();
                 persistProfiles();
                 updateStatus("Renamed profile '" + name + "' to '" + trimmedName + "'.");
                 return true;
+            }
+
+            function saveProfileByName(name, statusMessage) {
+                const trimmedName = String(name || "").trim();
+                if (!trimmedName) {
+                    updateStatus("Enter a profile name first.");
+                    return false;
+                }
+                if (trimmedName === IMPLICIT_PROFILE_NAME) {
+                    updateStatus("'Last' is reserved.");
+                    return false;
+                }
+                state.profiles.named[trimmedName] = normalizeProfileRecord(createWorkingSetSnapshot(), Date.now(), false);
+                replaceProfileNameInOrder(null, trimmedName);
+                state.profiles.order = [trimmedName].concat(state.profiles.order.filter((entry) => entry !== trimmedName));
+                setLoadedProfileName(trimmedName);
+                persistProfiles();
+                updateStatus(statusMessage || ("Saved profile '" + trimmedName + "'."));
+                return true;
+            }
+
+            function saveCurrentProfileAs() {
+                const currentName = state.loadedProfileName && state.loadedProfileName !== IMPLICIT_PROFILE_NAME
+                    ? state.loadedProfileName
+                    : "";
+                const nextName = window.prompt("Save current profile as:", currentName ? currentName + " copy" : "");
+                if (nextName == null) {
+                    return false;
+                }
+                const trimmedName = nextName.trim();
+                if (!trimmedName) {
+                    updateStatus("Profile name cannot be empty.");
+                    return false;
+                }
+                if (trimmedName === state.loadedProfileName) {
+                    updateStatus("Choose a different name for Save as.");
+                    return false;
+                }
+                if (state.profiles.named[trimmedName] && !window.confirm("Overwrite existing profile '" + trimmedName + "'?")) {
+                    return false;
+                }
+                hideProfileContextMenu();
+                return saveProfileByName(trimmedName, "Saved current profile as '" + trimmedName + "'.");
             }
 
             function clearWorkspaceState() {
@@ -4242,13 +4347,33 @@
                 state.cursor.row = 0;
                 state.cursor.col = 0;
                 state.loadedProfileName = "";
-                elements.profileNameInput.value = "";
+                renderSavedProfilesPanel();
                 persistWorkingSet();
                 elements.dropZone.classList.remove("drag-over");
                 setDropZoneVisibility(!state.source.stage);
                 state.activeJob = ++state.jobVersion;
                 renderAll().catch(handleError);
                 updateStatus(state.source.stage ? "Cleared current profile state." : "Cleared current state.");
+            }
+
+            function openNewProfileContextMenu(event) {
+                event.preventDefault();
+                state.profiles.contextMenuName = NEW_PROFILE_CONTEXT_NAME;
+                const saveButton = elements.profileContextMenu.querySelector('[data-profile-action="save"]');
+                const renameButton = elements.profileContextMenu.querySelector('[data-profile-action="rename"]');
+                const saveAsButton = elements.profileContextMenu.querySelector('[data-profile-action="save-as"]');
+                const deleteButton = elements.profileContextMenu.querySelector('[data-profile-action="delete"]');
+                saveButton.hidden = true;
+                renameButton.hidden = true;
+                saveAsButton.hidden = false;
+                deleteButton.hidden = true;
+                elements.profileContextMenu.hidden = false;
+                const menuWidth = elements.profileContextMenu.offsetWidth || 196;
+                const menuHeight = elements.profileContextMenu.offsetHeight || 132;
+                const left = Math.min(window.innerWidth - menuWidth - 8, Math.max(8, event.clientX));
+                const top = Math.min(window.innerHeight - menuHeight - 8, Math.max(8, event.clientY));
+                elements.profileContextMenu.style.left = left + "px";
+                elements.profileContextMenu.style.top = top + "px";
             }
 
             function openProfileContextMenu(name, event) {
@@ -4258,11 +4383,20 @@
                 }
                 event.preventDefault();
                 state.profiles.contextMenuName = name;
+                const saveButton = elements.profileContextMenu.querySelector('[data-profile-action="save"]');
                 const renameButton = elements.profileContextMenu.querySelector('[data-profile-action="rename"]');
-                renameButton.textContent = profile.implicit ? "Rename as new" : "Rename";
+                const saveAsButton = elements.profileContextMenu.querySelector('[data-profile-action="save-as"]');
+                const deleteButton = elements.profileContextMenu.querySelector('[data-profile-action="delete"]');
+                const isLoadedProfile = state.loadedProfileName === name;
+                const isDirty = isLoadedProfileDirty(name);
+                saveButton.hidden = !isLoadedProfile || !isDirty;
+                renameButton.hidden = !!profile.implicit;
+                renameButton.textContent = "Rename";
+                saveAsButton.hidden = !isLoadedProfile;
+                deleteButton.hidden = false;
                 elements.profileContextMenu.hidden = false;
-                const menuWidth = 196;
-                const menuHeight = 132;
+                const menuWidth = elements.profileContextMenu.offsetWidth || 196;
+                const menuHeight = elements.profileContextMenu.offsetHeight || 132;
                 const left = Math.min(window.innerWidth - menuWidth - 8, Math.max(8, event.clientX));
                 const top = Math.min(window.innerHeight - menuHeight - 8, Math.max(8, event.clientY));
                 elements.profileContextMenu.style.left = left + "px";
@@ -4276,6 +4410,11 @@
             }
 
             function handleSavedProfilesContextMenu(event) {
+                const actionButton = event.target.closest('[data-profile-action="new"]');
+                if (actionButton) {
+                    openNewProfileContextMenu(event);
+                    return;
+                }
                 const button = event.target.closest("[data-profile-name]");
                 if (!button) {
                     hideProfileContextMenu();
@@ -4290,10 +4429,18 @@
                 if (!action || !profileName) {
                     return;
                 }
-                if (action === "rename") {
+                if (profileName === NEW_PROFILE_CONTEXT_NAME) {
+                    if (action === "save-as") {
+                        saveCurrentProfileAs();
+                    }
+                    return;
+                }
+                if (action === "save") {
+                    saveProfileByCurrentName(profileName);
+                } else if (action === "rename") {
                     renameProfileByName(profileName);
-                } else if (action === "overwrite") {
-                    overwriteProfileByCurrent(profileName);
+                } else if (action === "save-as") {
+                    saveCurrentProfileAs();
                 } else if (action === "delete") {
                     deleteProfileByName(profileName);
                 }
@@ -4374,20 +4521,46 @@
 
             function renderSavedProfilesPanel() {
                 const names = getOrderedProfileNames().slice(0, PROFILE_RECENT_LIMIT);
+                const newClasses = ["saved-profile-chip", "meta", "empty"];
+                if (isNewProfileActive()) {
+                    newClasses.push("loaded");
+                    if (isNewProfileDirty()) {
+                        newClasses.push("dirty");
+                    }
+                }
+                const newTitle = isNewProfileActive()
+                    ? (isNewProfileDirty()
+                        ? "Current unnamed pipeline with unsaved changes. Right click to save as, or click to start fresh."
+                        : "Current unnamed pipeline. Right click to save as, or click to start fresh.")
+                    : "Start a new unnamed pipeline. Right click to save the current unnamed pipeline as a profile.";
                 elements.savedProfilesPanel.hidden = false;
                 elements.savedProfilesPanel.innerHTML = "<div class=\"saved-profiles-head\"><strong>Saved profiles</strong><span class=\"operator-meta\">Click to load</span></div>" +
                     "<div class=\"saved-profiles-list\">" +
-                    "<button class=\"saved-profile-chip\" data-profile-action=\"empty\" title=\"Clear current source, operations, selection, and view state\">Empty</button>" +
+                    "<button class=\"" + newClasses.join(" ") + "\" data-profile-action=\"new\" title=\"" + escapeAttribute(newTitle) + "\">New</button>" +
                     names.map((name) => {
                         const profile = state.profiles.named[name];
                         const classes = ["saved-profile-chip"];
                         if (profile && profile.implicit) {
-                            classes.push("implicit");
+                            classes.push("meta", "implicit");
+                        }
+                        if (state.loadedProfileName === name) {
+                            classes.push("loaded");
+                            if (isLoadedProfileDirty(name)) {
+                                classes.push("dirty");
+                            }
                         }
                         const label = profile && profile.implicit ? IMPLICIT_PROFILE_NAME : name;
-                        const title = profile && profile.implicit
-                            ? "Last session snapshot. Right click for actions."
-                            : "Load profile '" + name + "'. Right click for actions or drag to reorder.";
+                        const title = state.loadedProfileName === name
+                            ? (profile && profile.implicit
+                                ? (isLoadedProfileDirty(name)
+                                    ? "Loaded from the previous session snapshot with unsaved changes. Right click to save, save as, or delete it."
+                                    : "Currently loaded from the previous session snapshot. Right click to save as or delete it.")
+                                : (isLoadedProfileDirty(name)
+                                    ? "Loaded from '" + name + "' with unsaved changes. Right click to save, save as, rename, or delete."
+                                    : "Currently loaded from '" + name + "'. Right click for save as, rename, delete, or drag to reorder."))
+                            : (profile && profile.implicit
+                                ? "Last session snapshot from the previous session. Click to load. Right click to delete it."
+                                : "Load profile '" + name + "'. Right click for actions or drag to reorder.");
                         return "<button class=\"" + classes.join(" ") + "\" data-profile-name=\"" + escapeAttribute(name) + "\" data-profile-implicit=\"" + (profile && profile.implicit ? "true" : "false") + "\" draggable=\"" + (profile && profile.implicit ? "false" : "true") + "\" title=\"" + escapeAttribute(title) + "\">" + escapeHtml(label) + "</button>";
                     }).join("") + "</div>";
             }
@@ -4631,64 +4804,24 @@
                 state.selectedOperatorId = null;
                 state.nextOperatorId = 1;
                 state.loadedProfileName = "";
-                elements.profileNameInput.value = "";
                 renderProfileControls();
             }
 
             function renderProfileControls() {
-                const names = getOrderedProfileNames();
-                const previousValue = state.loadedProfileName || elements.profileSelect.value;
-                elements.profileSelect.innerHTML = names.length
-                    ? names.map((name) => "<option value=\"" + escapeHtml(name) + "\">" + escapeHtml(name) + "</option>").join("")
-                    : "<option value=\"\">No saved profiles</option>";
-                if (names.length) {
-                    elements.profileSelect.value = names.includes(previousValue) ? previousValue : names[0];
-                }
                 renderSavedProfilesPanel();
                 updateButtons();
             }
 
             function setLoadedProfileName(name) {
                 state.loadedProfileName = name || "";
-                elements.profileNameInput.value = state.loadedProfileName;
-            }
-
-            function saveProfile() {
-                const name = elements.profileNameInput.value.trim();
-                if (!name) {
-                    updateStatus("Enter a profile name first.");
-                    return;
-                }
-                if (name === IMPLICIT_PROFILE_NAME) {
-                    updateStatus("'Last' is reserved.");
-                    return;
-                }
-                state.profiles.named[name] = normalizeProfileRecord(createWorkingSetSnapshot(), Date.now(), false);
-                replaceProfileNameInOrder(null, name);
-                state.profiles.order = [name].concat(state.profiles.order.filter((entry) => entry !== name));
-                setLoadedProfileName(name);
-                persistProfiles();
-                updateStatus("Saved profile '" + name + "'.");
             }
 
             function loadProfileByName(name) {
                 const profile = state.profiles.named[name];
                 if (!profile) return false;
-                state.operators = normalizeOperatorList(JSON.parse(JSON.stringify(profile.operators || [])));
-                state.selectedOperatorId = profile.selectedOperatorId ?? null;
-                state.nextOperatorId = Number(profile.nextOperatorId || 1);
-                setLoadedProfileName(name);
-                invalidateAfterOperatorChange();
+                applyProfileRecordToWorkingSet(profile, name);
                 updateStatus("Loaded profile '" + name + "'.");
                 return true;
-            }
-
-            function loadProfile() {
-                loadProfileByName(elements.profileSelect.value);
-            }
-
-            function deleteProfile() {
-                deleteProfileByName(elements.profileSelect.value);
             }
 
             function exportProfiles() {
@@ -5150,16 +5283,8 @@
                 elements.operatorList.addEventListener("click", handleOperatorListClick);
                 elements.operatorList.addEventListener("change", handleOperatorInput);
                 elements.operatorList.addEventListener("input", handleOperatorInput);
-                elements.saveProfileButton.addEventListener("click", () => {
-                    saveProfile();
-                    closeAppMenu();
-                });
-                elements.loadProfileButton.addEventListener("click", () => {
-                    loadProfile();
-                    closeAppMenu();
-                });
                 elements.savedProfilesPanel.addEventListener("click", (event) => {
-                    const actionButton = event.target.closest('[data-profile-action="empty"]');
+                    const actionButton = event.target.closest('[data-profile-action="new"]');
                     if (actionButton) {
                         clearWorkspaceState();
                         return;
@@ -5176,10 +5301,6 @@
                 elements.savedProfilesPanel.addEventListener("drop", handleSavedProfilesDrop);
                 elements.savedProfilesPanel.addEventListener("dragend", handleSavedProfilesDragEnd);
                 elements.profileContextMenu.addEventListener("click", handleProfileContextMenuAction);
-                elements.deleteProfileButton.addEventListener("click", () => {
-                    deleteProfile();
-                    closeAppMenu();
-                });
                 elements.exportProfilesButton.addEventListener("click", () => {
                     exportProfiles();
                     closeAppMenu();
