@@ -1,0 +1,1478 @@
+<!DOCTYPE html>
+<html lang="cs">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generátor osmisměrek</title>
+    <style>
+        :root {
+            --bg: #f4f1ea;
+            --panel: #fffdf8;
+            --surface: #f8f4ec;
+            --surface-2: #eef3f0;
+            --ink: #25231f;
+            --muted: #6b675e;
+            --line: #d9d0c2;
+            --line-strong: #b8aa98;
+            --accent: #2f6f73;
+            --accent-strong: #24565a;
+            --accent-soft: #dceceb;
+            --warm: #b95d32;
+            --warm-soft: #f3dfd1;
+            --gold: #c4932e;
+            --danger: #b33f45;
+            --ok: #2f7a4e;
+            --shadow: 0 18px 42px rgba(56, 47, 36, 0.14);
+            --mono: "Cascadia Mono", "Consolas", "Menlo", monospace;
+            --ui: "Segoe UI", "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            background:
+                linear-gradient(180deg, #f8f5ee 0%, #ebe7dc 100%);
+            color: var(--ink);
+            font-family: var(--ui);
+        }
+
+        body {
+            min-height: 100vh;
+        }
+
+        button,
+        input,
+        textarea,
+        select {
+            font: inherit;
+        }
+
+        button,
+        input,
+        textarea,
+        select {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel);
+            color: var(--ink);
+        }
+
+        button {
+            min-height: 38px;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+        }
+
+        button:hover:not(:disabled) {
+            border-color: var(--accent);
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            cursor: progress;
+            opacity: 0.68;
+        }
+
+        textarea,
+        input,
+        select {
+            width: 100%;
+            padding: 9px 10px;
+        }
+
+        textarea {
+            min-height: 112px;
+            resize: vertical;
+            line-height: 1.35;
+        }
+
+        label {
+            display: grid;
+            gap: 6px;
+            color: var(--muted);
+            font-size: 0.86rem;
+            font-weight: 650;
+        }
+
+        .app {
+            min-height: 100vh;
+            display: grid;
+            grid-template-rows: auto 1fr;
+        }
+
+        .topbar {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 16px;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--line);
+            background: rgba(255, 253, 248, 0.9);
+            backdrop-filter: blur(12px);
+            position: sticky;
+            top: 0;
+            z-index: 20;
+        }
+
+        .title h1 {
+            margin: 0;
+            font-size: 1.28rem;
+            letter-spacing: 0;
+        }
+
+        .title p {
+            margin: 3px 0 0;
+            color: var(--muted);
+            font-size: 0.93rem;
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .primary {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent-strong);
+        }
+
+        .secondary {
+            background: var(--surface-2);
+        }
+
+        .warm {
+            background: var(--warm);
+            color: #fff;
+            border-color: #994a28;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+            gap: 16px;
+            padding: 16px;
+            min-height: 0;
+        }
+
+        .panel,
+        .preview {
+            border: 1px solid var(--line);
+            background: var(--panel);
+            box-shadow: var(--shadow);
+            border-radius: 8px;
+        }
+
+        .panel {
+            display: grid;
+            align-content: start;
+            gap: 14px;
+            padding: 14px;
+            max-height: calc(100vh - 94px);
+            overflow: auto;
+        }
+
+        .field-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .inline {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .switch {
+            grid-template-columns: auto 1fr;
+            align-items: center;
+            color: var(--ink);
+            font-weight: 600;
+        }
+
+        .switch input {
+            width: auto;
+            accent-color: var(--accent);
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .stat {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--surface);
+            padding: 9px;
+        }
+
+        .stat b {
+            display: block;
+            font-size: 1.05rem;
+        }
+
+        .stat span {
+            color: var(--muted);
+            font-size: 0.78rem;
+        }
+
+        .preview {
+            min-width: 0;
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr);
+            overflow: hidden;
+        }
+
+        .status {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--line);
+            background: var(--surface);
+        }
+
+        .status-main {
+            min-width: 0;
+        }
+
+        .status-main strong {
+            display: block;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .status-main span {
+            color: var(--muted);
+            font-size: 0.88rem;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 28px;
+            padding: 4px 9px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: var(--panel);
+            color: var(--muted);
+            font-size: 0.82rem;
+            font-weight: 650;
+        }
+
+        .badge.ok {
+            color: var(--ok);
+            border-color: rgba(47, 122, 78, 0.35);
+            background: #edf7f0;
+        }
+
+        .badge.warn {
+            color: #875f11;
+            border-color: rgba(196, 147, 46, 0.45);
+            background: #fbf2d9;
+        }
+
+        .badge.bad {
+            color: var(--danger);
+            border-color: rgba(179, 63, 69, 0.38);
+            background: #fae7e9;
+        }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(250px, 340px);
+            gap: 16px;
+            min-height: 0;
+            padding: 16px;
+            overflow: auto;
+        }
+
+        .board-wrap {
+            display: grid;
+            align-content: start;
+            justify-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .board-stage {
+            position: relative;
+            width: min(100%, 720px);
+            max-width: calc(100vh - 160px);
+            aspect-ratio: 1 / 1;
+        }
+
+        .board {
+            display: grid;
+            gap: 2px;
+            width: 100%;
+            height: 100%;
+            background: var(--line-strong);
+            border: 2px solid var(--line-strong);
+            border-radius: 8px;
+            padding: 2px;
+        }
+
+        .solution-arrows {
+            position: absolute;
+            inset: 4px;
+            width: calc(100% - 8px);
+            height: calc(100% - 8px);
+            pointer-events: none;
+            z-index: 4;
+            overflow: visible;
+        }
+
+        .solution-arrow {
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            stroke-width: 3.2;
+            vector-effect: non-scaling-stroke;
+            opacity: 0.84;
+        }
+
+        .solution-arrow.required {
+            stroke: var(--accent-strong);
+        }
+
+        .solution-arrow.optional {
+            stroke: var(--warm);
+            opacity: 0.68;
+        }
+
+        .cell {
+            display: grid;
+            place-items: center;
+            min-width: 0;
+            min-height: 0;
+            background: #fffdfa;
+            font-family: var(--mono);
+            font-weight: 800;
+            color: var(--ink);
+            user-select: none;
+            border-radius: 3px;
+            font-size: var(--cell-font, 5rem);
+            line-height: 1;
+        }
+
+        .cell.solution-word {
+            background: var(--accent-soft);
+            color: #173f42;
+        }
+
+        .cell.solution-secret {
+            background: var(--warm-soft);
+            color: #7f341e;
+            outline: 2px solid rgba(185, 93, 50, 0.35);
+            outline-offset: -2px;
+        }
+
+        .cell.blocked {
+            background: #3a352e;
+            color: transparent;
+        }
+
+        .side {
+            display: grid;
+            align-content: start;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .section {
+            display: grid;
+            gap: 9px;
+        }
+
+        .section h2 {
+            margin: 0;
+            font-size: 0.95rem;
+        }
+
+        .word-list {
+            display: flex;
+            gap: 7px;
+            align-content: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .word-chip {
+            border: 1px solid var(--line);
+            background: #fffdfa;
+            border-radius: 999px;
+            padding: 5px 8px;
+            font-family: var(--mono);
+            font-size: 0.84rem;
+        }
+
+        .word-chip.required {
+            border-color: rgba(47, 111, 115, 0.36);
+            background: var(--accent-soft);
+        }
+
+        .word-chip.optional {
+            border-color: rgba(185, 93, 50, 0.34);
+            background: #fff2ea;
+        }
+
+        .secret {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .secret span {
+            min-width: 24px;
+            min-height: 28px;
+            display: grid;
+            place-items: center;
+            border: 1px solid var(--line);
+            background: var(--warm-soft);
+            border-radius: 5px;
+            font-family: var(--mono);
+            font-weight: 800;
+        }
+
+        .empty {
+            display: grid;
+            place-items: center;
+            min-height: 360px;
+            color: var(--muted);
+            text-align: center;
+            padding: 22px;
+        }
+
+        .message {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--surface);
+            color: var(--muted);
+            padding: 10px;
+            line-height: 1.4;
+        }
+
+        .message.error {
+            border-color: rgba(179, 63, 69, 0.38);
+            background: #fae7e9;
+            color: #8d2e34;
+        }
+
+        .message.success {
+            border-color: rgba(47, 122, 78, 0.34);
+            background: #edf7f0;
+            color: #286441;
+        }
+
+        @media (max-width: 980px) {
+
+            .layout,
+            .workspace {
+                grid-template-columns: 1fr;
+            }
+
+            .panel {
+                max-height: none;
+            }
+
+            .topbar {
+                grid-template-columns: 1fr;
+            }
+
+            .actions {
+                justify-content: flex-start;
+            }
+
+            .board {
+                max-width: 100%;
+            }
+
+            .board-stage {
+                max-width: 100%;
+            }
+        }
+
+        @media (max-width: 560px) {
+
+            .topbar,
+            .layout {
+                padding: 12px;
+            }
+
+            .field-row,
+            .stats {
+                grid-template-columns: 1fr;
+            }
+
+            .workspace {
+                padding: 12px;
+            }
+
+            .cell {
+                font-size: var(--cell-font, 1rem);
+            }
+        }
+
+        @media print {
+            body {
+                background: #fff;
+            }
+
+            .topbar,
+            .panel,
+            .status,
+            .secret,
+            .message {
+                display: none;
+            }
+
+            .layout,
+            .preview,
+            .workspace {
+                display: block;
+                padding: 0;
+                border: 0;
+                box-shadow: none;
+            }
+
+            .board-stage {
+                width: 18cm;
+                max-width: 100%;
+                margin: 0 auto 1cm;
+            }
+
+            .board {
+                width: 100%;
+                margin: 0;
+            }
+
+            .side {
+                display: block;
+            }
+
+            .word-chip {
+                color: #000;
+                background: #fff;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="app">
+        <header class="topbar">
+            <div class="title">
+                <h1>Generátor osmisměrek</h1>
+                <p>Tajenka zůstane ve volných políčkách po vyškrtání slov.</p>
+            </div>
+            <div class="actions">
+                <button class="secondary" id="sampleButton" type="button">Ukázka</button>
+                <button class="primary" id="generateButton" type="button">Sestavit</button>
+                <button class="secondary" id="printButton" type="button">Tisk</button>
+                <button class="warm" id="exportButton" type="button">TXT</button>
+            </div>
+        </header>
+
+        <div class="layout">
+            <aside class="panel">
+                <label>
+                    Tajenka
+                    <textarea id="secretInput" spellcheck="false">KDO HLEDÁ NAJDE</textarea>
+                </label>
+
+                <label>
+                    Povinná slova
+                    <textarea id="requiredInput" spellcheck="false">PRAHA
+MOST
+ŘEKA
+KNIHA
+JARO
+SVĚTLO
+CESTA
+KÁVA</textarea>
+                </label>
+
+                <label>
+                    Volitelná slova
+                    <textarea id="optionalInput" spellcheck="false">strom
+list
+město
+vlak
+hory
+louka
+zahrada
+okno
+kámen
+mostek
+hrad
+slunce
+mrak
+potok
+cukr
+papír
+tužka
+škola
+hudba
+obraz
+barva
+písek
+kometa
+talíř
+vítr
+mapa
+brána
+ulice
+dvůr
+klíč
+lampička
+čaj
+noty
+sešit
+kopec
+jezero
+perla
+vlna
+les
+sad
+zvon
+mlýn
+loď
+rosa</textarea>
+                </label>
+
+                <div class="field-row">
+                    <label>
+                        Řádky
+                        <input id="rowsInput" type="number" min="6" max="32" value="14">
+                    </label>
+                    <label>
+                        Sloupce
+                        <input id="colsInput" type="number" min="6" max="32" value="14">
+                    </label>
+                </div>
+
+                <div class="field-row">
+                    <label>
+                        Pokusy
+                        <input id="attemptsInput" type="number" min="20" max="1000" step="10" value="220">
+                    </label>
+                    <label>
+                        Seed
+                        <input id="seedInput" type="text" value="osm-2026" spellcheck="false">
+                    </label>
+                </div>
+
+                <div class="inline">
+                    <label class="switch">
+                        <input id="diagonalInput" type="checkbox" checked>
+                        Úhlopříčky
+                    </label>
+                    <label class="switch">
+                        <input id="backwardInput" type="checkbox" checked>
+                        Pozpátku
+                    </label>
+                    <label class="switch">
+                        <input id="solutionInput" type="checkbox">
+                        Řešení
+                    </label>
+                </div>
+
+                <div class="stats">
+                    <div class="stat">
+                        <b id="statSecret">0</b>
+                        <span>písmen tajenky</span>
+                    </div>
+                    <div class="stat">
+                        <b id="statRequired">0</b>
+                        <span>povinných slov</span>
+                    </div>
+                    <div class="stat">
+                        <b id="statOptional">0</b>
+                        <span>volitelných slov</span>
+                    </div>
+                    <div class="stat">
+                        <b id="statCells">0</b>
+                        <span>políček</span>
+                    </div>
+                </div>
+
+                <div id="inputMessage" class="message"></div>
+            </aside>
+
+            <section class="preview">
+                <div class="status">
+                    <div class="status-main">
+                        <strong id="statusTitle">Připraveno</strong>
+                        <span id="statusDetail">Zadej vstupy a sestav osmisměrku.</span>
+                    </div>
+                    <span id="statusBadge" class="badge">čeká</span>
+                </div>
+
+                <div class="workspace" id="workspace">
+                    <div class="empty">Osmisměrka se zobrazí po sestavení.</div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        const alphabet = Array.from("ABCDEFGHIJKLMNOPQRSTUVWXYZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ");
+        const colorClasses = ["solution-word"];
+        const state = {
+            puzzle: null,
+            busy: false
+        };
+
+        const els = {
+            secret: document.getElementById("secretInput"),
+            required: document.getElementById("requiredInput"),
+            optional: document.getElementById("optionalInput"),
+            rows: document.getElementById("rowsInput"),
+            cols: document.getElementById("colsInput"),
+            attempts: document.getElementById("attemptsInput"),
+            seed: document.getElementById("seedInput"),
+            diagonal: document.getElementById("diagonalInput"),
+            backward: document.getElementById("backwardInput"),
+            solution: document.getElementById("solutionInput"),
+            generate: document.getElementById("generateButton"),
+            sample: document.getElementById("sampleButton"),
+            print: document.getElementById("printButton"),
+            export: document.getElementById("exportButton"),
+            workspace: document.getElementById("workspace"),
+            statusTitle: document.getElementById("statusTitle"),
+            statusDetail: document.getElementById("statusDetail"),
+            statusBadge: document.getElementById("statusBadge"),
+            inputMessage: document.getElementById("inputMessage"),
+            statSecret: document.getElementById("statSecret"),
+            statRequired: document.getElementById("statRequired"),
+            statOptional: document.getElementById("statOptional"),
+            statCells: document.getElementById("statCells")
+        };
+
+        function toLetters(value) {
+            return Array.from(value.toLocaleUpperCase("cs-CZ").normalize("NFC").replace(/[^\p{L}\p{N}]/gu, ""));
+        }
+
+        function normalizeWord(value) {
+            return toLetters(value).join("");
+        }
+
+        function parseWords(value) {
+            const seen = new Set();
+            return value
+                .split(/[\s,;]+/u)
+                .map(normalizeWord)
+                .filter(Boolean)
+                .filter(word => {
+                    if (seen.has(word)) return false;
+                    seen.add(word);
+                    return true;
+                });
+        }
+
+        function hashString(value) {
+            let hash = 2166136261;
+            for (const char of value) {
+                hash ^= char.codePointAt(0);
+                hash = Math.imul(hash, 16777619);
+            }
+            return hash >>> 0;
+        }
+
+        function mulberry32(seed) {
+            return function next() {
+                seed |= 0;
+                seed = seed + 0x6D2B79F5 | 0;
+                let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+                t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+                return ((t ^ t >>> 14) >>> 0) / 4294967296;
+            };
+        }
+
+        function randomInt(rng, max) {
+            return Math.floor(rng() * max);
+        }
+
+        function shuffle(items, rng) {
+            const copy = items.slice();
+            for (let index = copy.length - 1; index > 0; index--) {
+                const swapIndex = randomInt(rng, index + 1);
+                [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+            }
+            return copy;
+        }
+
+        function getDirections() {
+            const dirs = [{ dr: 0, dc: 1, label: "→" }, { dr: 1, dc: 0, label: "↓" }];
+            if (els.backward.checked) {
+                dirs.push({ dr: 0, dc: -1, label: "←" }, { dr: -1, dc: 0, label: "↑" });
+            }
+            if (els.diagonal.checked) {
+                dirs.push({ dr: 1, dc: 1, label: "↘" }, { dr: 1, dc: -1, label: "↙" });
+                if (els.backward.checked) {
+                    dirs.push({ dr: -1, dc: -1, label: "↖" }, { dr: -1, dc: 1, label: "↗" });
+                }
+            }
+            return dirs;
+        }
+
+        function createGrid(rows, cols) {
+            return Array.from({ length: rows }, () =>
+                Array.from({ length: cols }, () => ({ letter: "", word: false, secret: false, blocked: false }))
+            );
+        }
+
+        function inBounds(row, col, rows, cols) {
+            return row >= 0 && row < rows && col >= 0 && col < cols;
+        }
+
+        function inspectPlacement(grid, word, row, col, dir) {
+            const rows = grid.length;
+            const cols = grid[0].length;
+            const letters = Array.from(word);
+            const cells = [];
+            let newCells = 0;
+            let overlaps = 0;
+
+            for (let index = 0; index < letters.length; index++) {
+                const r = row + dir.dr * index;
+                const c = col + dir.dc * index;
+                if (!inBounds(r, c, rows, cols)) return null;
+                const cell = grid[r][c];
+                if (cell.letter && cell.letter !== letters[index]) return null;
+                cells.push({ row: r, col: c, letter: letters[index] });
+                if (cell.word) overlaps++;
+                else newCells++;
+            }
+
+            return { cells, newCells, overlaps, dir };
+        }
+
+        function findCandidates(grid, word, dirs, rng, maxNewCells, limit) {
+            const rows = grid.length;
+            const cols = grid[0].length;
+            const candidates = [];
+            const positions = [];
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    positions.push({ row, col });
+                }
+            }
+
+            for (const pos of shuffle(positions, rng)) {
+                for (const dir of shuffle(dirs, rng)) {
+                    const inspected = inspectPlacement(grid, word, pos.row, pos.col, dir);
+                    if (!inspected) continue;
+                    if (inspected.newCells < 1 || inspected.newCells > maxNewCells) continue;
+                    candidates.push({
+                        word,
+                        row: pos.row,
+                        col: pos.col,
+                        cells: inspected.cells,
+                        newCells: inspected.newCells,
+                        overlaps: inspected.overlaps,
+                        dir: inspected.dir
+                    });
+                    if (limit && candidates.length >= limit) return candidates;
+                }
+            }
+
+            return candidates;
+        }
+
+        function applyPlacement(grid, placement, source) {
+            const changed = [];
+            for (const item of placement.cells) {
+                const cell = grid[item.row][item.col];
+                if (!cell.word) changed.push({ row: item.row, col: item.col });
+                cell.letter = item.letter;
+                cell.word = true;
+            }
+            return {
+                word: placement.word,
+                row: placement.row,
+                col: placement.col,
+                dir: placement.dir,
+                cells: placement.cells,
+                changed,
+                source
+            };
+        }
+
+        function undoPlacement(grid, applied) {
+            for (const item of applied.changed) {
+                const cell = grid[item.row][item.col];
+                cell.letter = "";
+                cell.word = false;
+            }
+        }
+
+        function countCovered(grid) {
+            let count = 0;
+            for (const row of grid) {
+                for (const cell of row) {
+                    if (cell.word) count++;
+                }
+            }
+            return count;
+        }
+
+        function directionKey(dir) {
+            return `${dir.dr},${dir.dc}`;
+        }
+
+        function directionCounts(placements, dirs) {
+            const counts = new Map(dirs.map(dir => [directionKey(dir), 0]));
+            for (const placement of placements) {
+                const key = directionKey(placement.dir);
+                counts.set(key, (counts.get(key) || 0) + 1);
+            }
+            return counts;
+        }
+
+        function directionBalanceScore(dir, counts, dirs, totalPlacements) {
+            const key = directionKey(dir);
+            const current = counts.get(key) || 0;
+            const values = dirs.map(item => counts.get(directionKey(item)) || 0);
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const afterValues = dirs.map(item => {
+                const itemKey = directionKey(item);
+                const count = counts.get(itemKey) || 0;
+                return itemKey === key ? count + 1 : count;
+            });
+            const afterSpread = Math.max(...afterValues) - Math.min(...afterValues);
+            const expectedAfter = (totalPlacements + 1) / dirs.length;
+            const overExpected = Math.max(0, current + 1 - Math.ceil(expectedAfter));
+
+            return (max - current) * 24
+                + (current === min ? 28 : 0)
+                - afterSpread * 9
+                - overExpected * 18;
+        }
+
+        function directionSpread(placements, dirs) {
+            if (!placements.length || !dirs.length) return 0;
+            const counts = directionCounts(placements, dirs);
+            const values = dirs.map(dir => counts.get(directionKey(dir)) || 0);
+            return Math.max(...values) - Math.min(...values);
+        }
+
+        function placeRequiredWords(grid, words, dirs, rng, placements) {
+            for (const word of words.slice().sort((a, b) => Array.from(b).length - Array.from(a).length)) {
+                const counts = directionCounts(placements, dirs);
+                const candidates = findCandidates(grid, word, dirs, rng, Infinity, 180)
+                    .map(candidate => ({
+                        candidate,
+                        score: candidate.overlaps * 8
+                            - candidate.newCells
+                            + directionBalanceScore(candidate.dir, counts, dirs, placements.length)
+                            + rng()
+                    }))
+                    .sort((a, b) => b.score - a.score);
+
+                if (!candidates.length) return false;
+                const pick = candidates[Math.min(candidates.length - 1, randomInt(rng, Math.min(5, candidates.length)))].candidate;
+                placements.push(applyPlacement(grid, pick, "required"));
+            }
+            return true;
+        }
+
+        function optionalCandidates(grid, words, used, dirs, rng, remaining, wideSearch, placements) {
+            const pool = wideSearch
+                ? shuffle(words, rng).slice(0, Math.min(520, words.length))
+                : shuffle(words, rng).slice(0, Math.min(260, words.length));
+            const candidates = [];
+            const counts = directionCounts(placements, dirs);
+
+            for (const word of pool) {
+                if (used.has(word)) continue;
+                const found = findCandidates(grid, word, dirs, rng, remaining, remaining <= 8 ? 80 : 16);
+                for (const candidate of found) {
+                    const exactBonus = candidate.newCells === remaining ? 900 : 0;
+                    const tightBonus = remaining <= 8 ? (candidate.overlaps * 9 - candidate.newCells) : (candidate.newCells * 18 + candidate.overlaps * 3);
+                    candidates.push({
+                        candidate,
+                        score: exactBonus
+                            + tightBonus
+                            + directionBalanceScore(candidate.dir, counts, dirs, placements.length)
+                            + rng()
+                    });
+                }
+            }
+
+            return candidates.sort((a, b) => b.score - a.score);
+        }
+
+        function finishWithBacktracking(grid, words, used, dirs, rng, remaining, placements, deadline, depth) {
+            if (remaining === 0) return true;
+            if (performance.now() > deadline || depth > 8) return false;
+
+            const candidates = optionalCandidates(grid, words, used, dirs, rng, remaining, true, placements).slice(0, remaining <= 4 ? 90 : 55);
+            for (const scored of candidates) {
+                const placement = scored.candidate;
+                used.add(placement.word);
+                const applied = applyPlacement(grid, placement, "optional");
+                placements.push(applied);
+
+                if (finishWithBacktracking(grid, words, used, dirs, rng, remaining - placement.newCells, placements, deadline, depth + 1)) {
+                    return true;
+                }
+
+                placements.pop();
+                undoPlacement(grid, applied);
+                used.delete(placement.word);
+            }
+
+            return false;
+        }
+
+        function placeOptionalWords(grid, words, dirs, rng, targetCovered, placements) {
+            const used = new Set(placements.map(item => item.word));
+            let covered = countCovered(grid);
+            let remaining = targetCovered - covered;
+
+            while (remaining > 10) {
+                const candidates = optionalCandidates(grid, words, used, dirs, rng, remaining, false, placements).slice(0, 18);
+                if (!candidates.length) break;
+                const pick = candidates[Math.min(candidates.length - 1, randomInt(rng, Math.min(4, candidates.length)))].candidate;
+                used.add(pick.word);
+                placements.push(applyPlacement(grid, pick, "optional"));
+                remaining -= pick.newCells;
+            }
+
+            if (remaining === 0) return true;
+            return finishWithBacktracking(grid, words, used, dirs, rng, remaining, placements, performance.now() + 95, 0);
+        }
+
+        function collectOpenCells(grid) {
+            const cells = [];
+            for (let row = 0; row < grid.length; row++) {
+                for (let col = 0; col < grid[row].length; col++) {
+                    if (!grid[row][col].word) cells.push({ row, col });
+                }
+            }
+            return cells;
+        }
+
+        function fillSecret(grid, secretLetters) {
+            const open = collectOpenCells(grid);
+            const extra = Math.max(0, open.length - secretLetters.length);
+            open.forEach((pos, index) => {
+                const cell = grid[pos.row][pos.col];
+                if (index < secretLetters.length) {
+                    cell.letter = secretLetters[index];
+                    cell.secret = true;
+                } else {
+                    cell.blocked = true;
+                }
+            });
+            return extra;
+        }
+
+        function clonePuzzleGrid(grid) {
+            return grid.map(row => row.map(cell => ({ ...cell })));
+        }
+
+        function buildPuzzle(config) {
+            const area = config.rows * config.cols;
+            const targetCovered = area - config.secretLetters.length;
+            const maxWordLength = Math.max(0, ...config.required.concat(config.optional).map(word => Array.from(word).length));
+            const maxLine = Math.max(config.rows, config.cols);
+
+            if (!config.secretLetters.length) throw new Error("Tajenka nemá žádná písmena.");
+            if (config.secretLetters.length >= area) throw new Error("Tajenka je delší než počet volných polí v mřížce.");
+            if (config.required.length === 0) throw new Error("Přidej aspoň jedno povinné slovo.");
+            if (maxWordLength > maxLine) throw new Error("Některé slovo je delší než nejdelší strana mřížky.");
+            if (targetCovered < config.required.length) throw new Error("Mřížka je pro zadanou tajenku a slova příliš malá.");
+
+            let best = null;
+            const dirs = config.dirs;
+            const baseSeed = hashString(config.seed + "|" + config.secretLetters.join("") + "|" + config.required.join(","));
+
+            for (let attempt = 0; attempt < config.attempts; attempt++) {
+                const rng = mulberry32(baseSeed + attempt * 2654435761);
+                const grid = createGrid(config.rows, config.cols);
+                const placements = [];
+                const optional = shuffle(config.optional, rng).filter(word => Array.from(word).length <= maxLine);
+
+                if (!placeRequiredWords(grid, config.required, dirs, rng, placements)) continue;
+
+                const coveredAfterRequired = countCovered(grid);
+                if (coveredAfterRequired > targetCovered) continue;
+
+                const exact = placeOptionalWords(grid, optional, dirs, rng, targetCovered, placements);
+                const openCount = area - countCovered(grid);
+                const distance = Math.abs(openCount - config.secretLetters.length);
+                const spread = directionSpread(placements, dirs);
+                const isExact = openCount === config.secretLetters.length;
+
+                if (!best || distance < best.distance || (distance === best.distance && spread < best.spread)) {
+                    best = {
+                        grid: clonePuzzleGrid(grid),
+                        placements: placements.map(item => ({ ...item, cells: item.cells.map(cell => ({ ...cell })) })),
+                        distance,
+                        spread,
+                        attempt,
+                        exact: isExact
+                    };
+                }
+
+                if (exact && isExact && spread <= 1) {
+                    const extra = fillSecret(grid, config.secretLetters);
+                    return {
+                        grid,
+                        placements,
+                        exact: extra === 0,
+                        extra,
+                        spread,
+                        attemptsUsed: attempt + 1
+                    };
+                }
+            }
+
+            if (!best) throw new Error("Povinná slova se nepodařilo do mřížky umístit.");
+            const open = collectOpenCells(best.grid);
+            if (open.length < config.secretLetters.length) {
+                throw new Error("Slova obsadila příliš mnoho polí. Zvětši mřížku nebo zkrať seznam povinných slov.");
+            }
+            const extra = fillSecret(best.grid, config.secretLetters);
+            return {
+                grid: best.grid,
+                placements: best.placements,
+                exact: extra === 0,
+                extra,
+                spread: best.spread,
+                attemptsUsed: best.attempt + 1
+            };
+        }
+
+        function readConfig() {
+            const secretLetters = toLetters(els.secret.value);
+            const required = parseWords(els.required.value).filter(word => Array.from(word).length > 1);
+            const requiredSet = new Set(required);
+            const optional = parseWords(els.optional.value)
+                .filter(word => Array.from(word).length > 1)
+                .filter(word => !requiredSet.has(word));
+            const rows = Number.parseInt(els.rows.value, 10);
+            const cols = Number.parseInt(els.cols.value, 10);
+            const attempts = Number.parseInt(els.attempts.value, 10);
+
+            return {
+                secretLetters,
+                required,
+                optional,
+                rows: clamp(rows, 6, 32),
+                cols: clamp(cols, 6, 32),
+                attempts: clamp(attempts, 20, 1000),
+                dirs: getDirections(),
+                seed: els.seed.value.trim() || String(Date.now())
+            };
+        }
+
+        function clamp(value, min, max) {
+            if (!Number.isFinite(value)) return min;
+            return Math.max(min, Math.min(max, value));
+        }
+
+        function setStatus(title, detail, kind, badge) {
+            els.statusTitle.textContent = title;
+            els.statusDetail.textContent = detail;
+            els.statusBadge.textContent = badge;
+            els.statusBadge.className = "badge " + (kind || "");
+        }
+
+        function makeSolutionArrows(placements, rows, cols) {
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("class", "solution-arrows");
+            svg.setAttribute("viewBox", "0 0 100 100");
+            svg.setAttribute("preserveAspectRatio", "none");
+            svg.setAttribute("aria-hidden", "true");
+
+            const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+            const markers = {
+                required: "solutionArrowHeadRequired",
+                optional: "solutionArrowHeadOptional"
+            };
+            const addMarker = (id, color) => {
+                const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+                marker.setAttribute("id", id);
+                marker.setAttribute("viewBox", "0 0 10 10");
+                marker.setAttribute("refX", "8.4");
+                marker.setAttribute("refY", "5");
+                marker.setAttribute("markerWidth", "4.8");
+                marker.setAttribute("markerHeight", "4.8");
+                marker.setAttribute("orient", "auto-start-reverse");
+
+                const arrowHead = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                arrowHead.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+                arrowHead.setAttribute("fill", color);
+                marker.append(arrowHead);
+                defs.append(marker);
+            };
+            addMarker(markers.required, "#24565a");
+            addMarker(markers.optional, "#b95d32");
+            svg.append(defs);
+
+            placements.forEach(placement => {
+                if (!placement.cells.length) return;
+                const first = placement.cells[0];
+                const last = placement.cells[placement.cells.length - 1];
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("class", `solution-arrow ${placement.source}`);
+                line.setAttribute("x1", ((first.col + 0.5) / cols * 100).toFixed(3));
+                line.setAttribute("y1", ((first.row + 0.5) / rows * 100).toFixed(3));
+                line.setAttribute("x2", ((last.col + 0.5) / cols * 100).toFixed(3));
+                line.setAttribute("y2", ((last.row + 0.5) / rows * 100).toFixed(3));
+                line.setAttribute("marker-end", `url(#${markers[placement.source] || markers.optional})`);
+
+                const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+                title.textContent = `${placement.word} ${placement.dir.label}`;
+                line.append(title);
+                svg.append(line);
+            });
+
+            return svg;
+        }
+
+        function updateStats() {
+            const config = readConfig();
+            els.statSecret.textContent = config.secretLetters.length;
+            els.statRequired.textContent = config.required.length;
+            els.statOptional.textContent = config.optional.length;
+            els.statCells.textContent = config.rows * config.cols;
+
+            const target = config.rows * config.cols - config.secretLetters.length;
+            const requiredLetters = config.required.reduce((sum, word) => sum + Array.from(word).length, 0);
+            const notes = [];
+            if (!config.secretLetters.length) notes.push("Tajenka je prázdná.");
+            if (!config.required.length) notes.push("Chybí povinná slova.");
+            if (target <= 0) notes.push("Mřížka nemá prostor pro slova.");
+            if (requiredLetters < target * 0.35 && config.optional.length < 8) {
+                notes.push("Pro přesnou tajenku bude potřeba víc volitelných slov nebo menší mřížka.");
+            }
+
+            els.inputMessage.textContent = notes.length ? notes.join(" ") : "Vstupy jsou připravené.";
+            els.inputMessage.className = "message" + (notes.length ? "" : " success");
+        }
+
+        function renderPuzzle(puzzle) {
+            const showSolution = els.solution.checked;
+            const grid = puzzle.grid;
+            const rows = grid.length;
+            const cols = grid[0].length;
+            const usedRequired = puzzle.placements.filter(item => item.source === "required");
+            const usedOptional = puzzle.placements.filter(item => item.source === "optional");
+
+            const board = document.createElement("div");
+            board.className = "board";
+            board.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+            board.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+            board.style.setProperty("--cell-font", `${Math.max(0.7, Math.min(1.9, 11.8 / Math.max(rows, cols))).toFixed(2)}rem`);
+
+            for (const row of grid) {
+                for (const cell of row) {
+                    const div = document.createElement("div");
+                    div.className = "cell";
+                    if (showSolution && cell.word) div.classList.add(colorClasses[0]);
+                    if (showSolution && cell.secret) div.classList.add("solution-secret");
+                    if (cell.blocked) div.classList.add("blocked");
+                    div.textContent = cell.blocked ? "" : cell.letter;
+                    board.append(div);
+                }
+            }
+
+            const boardStage = document.createElement("div");
+            boardStage.className = "board-stage";
+            boardStage.style.aspectRatio = `${cols} / ${rows}`;
+            boardStage.append(board);
+            if (showSolution) {
+                boardStage.append(makeSolutionArrows(puzzle.placements, rows, cols));
+            }
+
+            const requiredList = makeWordList(usedRequired, "required");
+            const optionalList = makeWordList(usedOptional, "optional");
+            const secret = document.createElement("div");
+            secret.className = "secret";
+            for (const letter of collectSecret(grid)) {
+                const item = document.createElement("span");
+                item.textContent = letter;
+                secret.append(item);
+            }
+
+            const message = document.createElement("div");
+            message.className = "message " + (puzzle.exact ? "success" : "");
+            const balanceText = puzzle.spread <= 1
+                ? "Směry jsou rovnoměrně rozložené."
+                : `Rozptyl směrů je ${puzzle.spread}.`;
+            message.textContent = puzzle.exact
+                ? `Přesná osmisměrka vznikla po ${puzzle.attemptsUsed} pokusech. ${balanceText}`
+                : `Tajenka je zachovaná, ale ${puzzle.extra} nadbytečných polí muselo zůstat prázdných. ${balanceText} Pomůže větší volitelný slovník, jiná velikost nebo jiný seed.`;
+
+            const boardWrap = document.createElement("div");
+            boardWrap.className = "board-wrap";
+            boardWrap.append(boardStage, message);
+
+            const side = document.createElement("aside");
+            side.className = "side";
+            side.append(
+                makeSection("Povinná slova", requiredList),
+                makeSection("Doplněná slova", optionalList),
+                makeSection("Tajenka", secret)
+            );
+
+            els.workspace.replaceChildren(boardWrap, side);
+            setStatus(
+                puzzle.exact ? "Hotovo" : "Částečně sestaveno",
+                `${rows} x ${cols}, ${usedRequired.length} povinných slov, ${usedOptional.length} doplněných slov, rozptyl směrů ${puzzle.spread}`,
+                puzzle.exact ? "ok" : "warn",
+                puzzle.exact ? "přesné" : "s rezervou"
+            );
+        }
+
+        function makeSection(title, content) {
+            const section = document.createElement("section");
+            section.className = "section";
+            const h2 = document.createElement("h2");
+            h2.textContent = title;
+            section.append(h2, content);
+            return section;
+        }
+
+        function makeWordList(placements, kind) {
+            const list = document.createElement("div");
+            list.className = "word-list";
+            for (const placement of placements.slice().sort((a, b) => a.word.localeCompare(b.word, "cs"))) {
+                const chip = document.createElement("span");
+                chip.className = `word-chip ${kind}`;
+                chip.textContent = placement.word;
+                chip.title = `${placement.dir.label} od ${placement.row + 1}:${placement.col + 1}`;
+                list.append(chip);
+            }
+            if (!placements.length) {
+                const chip = document.createElement("span");
+                chip.className = "badge";
+                chip.textContent = "nic";
+                list.append(chip);
+            }
+            return list;
+        }
+
+        function collectSecret(grid) {
+            const letters = [];
+            for (const row of grid) {
+                for (const cell of row) {
+                    if (cell.secret) letters.push(cell.letter);
+                }
+            }
+            return letters;
+        }
+
+        function runGenerate() {
+            if (state.busy) return;
+            state.busy = true;
+            els.generate.disabled = true;
+            setStatus("Sestavuji", "Hledám rozmístění slov a přesný počet volných polí.", "", "běží");
+
+            window.setTimeout(() => {
+                try {
+                    const config = readConfig();
+                    els.rows.value = config.rows;
+                    els.cols.value = config.cols;
+                    els.attempts.value = config.attempts;
+                    const puzzle = buildPuzzle(config);
+                    state.puzzle = puzzle;
+                    renderPuzzle(puzzle);
+                    updateStats();
+                } catch (error) {
+                    state.puzzle = null;
+                    els.workspace.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+                    setStatus("Nepodařilo se sestavit", error.message, "bad", "chyba");
+                } finally {
+                    state.busy = false;
+                    els.generate.disabled = false;
+                }
+            }, 20);
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;");
+        }
+
+        function sample() {
+            els.secret.value = "KDO HLEDÁ NAJDE";
+            els.required.value = "PRAHA\nMOST\nŘEKA\nKNIHA\nJARO\nSVĚTLO\nCESTA\nKÁVA";
+            els.optional.value = "strom\nlist\nměsto\nvlak\nhory\nlouka\nzahrada\nokno\nkámen\nmostek\nhrad\nslunce\nmrak\npotok\ncukr\npapír\ntužka\nškola\nhudba\nobraz\nbarva\npísek\nkometa\ntalíř\nvítr\nmapa\nbrána\nulice\ndvůr\nklíč\nlampička\nčaj\nnoty\nsešit\nkopec\njezero\nperla\nvlna\nles\nsad\nzvon\nmlýn\nloď\nrosa";
+            els.rows.value = 14;
+            els.cols.value = 14;
+            els.attempts.value = 220;
+            els.seed.value = "osm-2026";
+            updateStats();
+            runGenerate();
+        }
+
+        function exportTxt() {
+            if (!state.puzzle) return;
+            const lines = [];
+            lines.push("OSMISMĚRKA");
+            lines.push("");
+            for (const row of state.puzzle.grid) {
+                lines.push(row.map(cell => cell.blocked ? "." : cell.letter).join(" "));
+            }
+            lines.push("");
+            lines.push("POVINNÁ SLOVA");
+            lines.push(...state.puzzle.placements.filter(item => item.source === "required").map(item => item.word).sort((a, b) => a.localeCompare(b, "cs")));
+            lines.push("");
+            lines.push("DOPLNĚNÁ SLOVA");
+            lines.push(...state.puzzle.placements.filter(item => item.source === "optional").map(item => item.word).sort((a, b) => a.localeCompare(b, "cs")));
+            lines.push("");
+            lines.push("TAJENKA");
+            lines.push(collectSecret(state.puzzle.grid).join(""));
+
+            const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "osmisměrka.txt";
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        for (const input of [els.secret, els.required, els.optional, els.rows, els.cols, els.attempts, els.diagonal, els.backward]) {
+            input.addEventListener("input", updateStats);
+            input.addEventListener("change", updateStats);
+        }
+
+        els.generate.addEventListener("click", runGenerate);
+        els.sample.addEventListener("click", sample);
+        els.solution.addEventListener("change", () => {
+            if (state.puzzle) renderPuzzle(state.puzzle);
+        });
+        els.print.addEventListener("click", () => window.print());
+        els.export.addEventListener("click", exportTxt);
+
+        updateStats();
+        runGenerate();
+    </script>
+</body>
+
+</html>
