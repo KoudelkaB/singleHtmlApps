@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="cs">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generátor osmisměrek</title>
+    <title>Word Search Generator</title>
     <style>
         :root {
             --bg: #f4f1ea;
@@ -762,13 +762,13 @@
     <main class="app">
         <header class="topbar">
             <div class="title">
-                <h1>Generátor osmisměrek</h1>
-                <p>Tajenka zůstane ve volných políčkách po vyškrtání slov.</p>
+                <h1 id="appTitle">Word Search Generator</h1>
+                <p id="appSubtitle">The hidden phrase remains in the empty cells after the words are crossed out.</p>
             </div>
             <div class="actions">
-                <button class="primary" id="generateButton" type="button">Sestavit</button>
+                <button class="primary" id="generateButton" type="button">Generate</button>
                 <label class="print-count-control">
-                    Na list
+                    <span id="printCountLabel">Per sheet</span>
                     <select class="topbar-select" id="printCountInput">
                         <option value="1">1</option>
                         <option value="4" selected>4</option>
@@ -780,7 +780,7 @@
                         <option value="25">25</option>
                     </select>
                 </label>
-                <button class="secondary" id="printButton" type="button">Tisk</button>
+                <button class="secondary" id="printButton" type="button">Print</button>
                 <button class="warm" id="exportButton" type="button">TXT</button>
             </div>
         </header>
@@ -788,88 +788,86 @@
         <div class="layout">
             <aside class="panel">
                 <label>
-                    Tajenka
-                    <textarea id="secretInput" spellcheck="false">KDO HLEDÁ NAJDE</textarea>
+                    <span id="secretLabel">Hidden phrase</span>
+                    <textarea id="secretInput" spellcheck="false">LOOK AND FIND</textarea>
                 </label>
 
                 <label>
-                    Povinná slova
-                    <textarea id="requiredInput" spellcheck="false">PRAHA
-MOST
-ŘEKA
-KNIHA
-JARO
-SVĚTLO
-CESTA
-KÁVA</textarea>
+                    <span id="requiredLabel">Required words</span>
+                    <textarea id="requiredInput" spellcheck="false">RIVER
+BOOK
+SPRING
+LIGHT
+PATH
+COFFEE
+BRIDGE
+GARDEN</textarea>
                 </label>
 
                 <label>
-                    Volitelná slova
-                    <textarea id="optionalInput" spellcheck="false">strom
-list
-město
-vlak
-hory
-louka
-zahrada
-okno
-kámen
-mostek
-hrad
-slunce
-mrak
-potok
-cukr
-papír
-tužka
-škola
-hudba
-obraz
-barva
-písek
-kometa
-talíř
-vítr
-mapa
-brána
-ulice
-dvůr
-klíč
-lampička
-čaj
-noty
-sešit
-kopec
-jezero
-perla
-vlna
-les
-sad
-zvon
-mlýn
-loď
-rosa</textarea>
+                    <span id="optionalLabel">Optional words</span>
+                    <textarea id="optionalInput" spellcheck="false">tree
+leaf
+city
+train
+mountain
+meadow
+window
+stone
+castle
+sun
+cloud
+stream
+sugar
+paper
+pencil
+school
+music
+picture
+color
+sand
+comet
+plate
+wind
+map
+gate
+street
+yard
+key
+lamp
+tea
+notes
+notebook
+hill
+lake
+pearl
+wave
+forest
+orchard
+bell
+mill
+boat
+dew</textarea>
                 </label>
 
                 <div class="field-row">
                     <label>
-                        Řádky
+                        <span id="rowsLabel">Rows</span>
                         <input id="rowsInput" type="number" min="6" max="32" value="10">
                     </label>
                     <label>
-                        Sloupce
+                        <span id="colsLabel">Columns</span>
                         <input id="colsInput" type="number" min="6" max="32" value="10">
                     </label>
                 </div>
 
                 <div class="field-row">
                     <label>
-                        Pokusy
+                        <span id="attemptsLabel">Attempts</span>
                         <input id="attemptsInput" type="number" min="20" max="1000" step="10" value="220">
                     </label>
                     <label>
-                        Seed
+                        <span id="seedLabel">Seed</span>
                         <input id="seedInput" type="text" value="osm-2026" spellcheck="false">
                     </label>
                 </div>
@@ -877,52 +875,52 @@ rosa</textarea>
                 <div class="inline">
                     <label class="switch">
                         <input id="diagonalInput" type="checkbox" checked>
-                        Úhlopříčky
+                        <span id="diagonalLabel">Diagonals</span>
                     </label>
                     <label class="switch">
                         <input id="backwardInput" type="checkbox" checked>
-                        Pozpátku
+                        <span id="backwardLabel">Backward</span>
                     </label>
                     <label class="switch">
                         <input id="solutionInput" type="checkbox">
-                        Řešení
+                        <span id="solutionLabel">Solution</span>
                     </label>
                 </div>
 
                 <div class="stats">
                     <div class="stat">
                         <b id="statSecret">0</b>
-                        <span>písmen tajenky</span>
+                        <span id="statSecretLabel">hidden phrase letters</span>
                     </div>
                     <div class="stat">
                         <b id="statRequired">0</b>
-                        <span>povinných slov</span>
+                        <span id="statRequiredLabel">required words</span>
                     </div>
                     <div class="stat">
                         <b id="statOptional">0</b>
-                        <span>volitelných slov</span>
+                        <span id="statOptionalLabel">optional words</span>
                     </div>
                     <div class="stat">
                         <b id="statCells">0</b>
-                        <span>políček</span>
+                        <span id="statCellsLabel">cells</span>
                     </div>
                 </div>
 
                 <div id="inputMessage" class="message"></div>
-                <button class="secondary" id="resetButton" type="button">Původní ukázka</button>
+                <button class="secondary" id="resetButton" type="button">Default sample</button>
             </aside>
 
             <section class="preview">
                 <div class="status">
                     <div class="status-main">
-                        <strong id="statusTitle">Připraveno</strong>
-                        <span id="statusDetail">Zadej vstupy a sestav osmisměrku.</span>
+                        <strong id="statusTitle">Ready</strong>
+                        <span id="statusDetail">Enter inputs and generate the word search.</span>
                     </div>
-                    <span id="statusBadge" class="badge">čeká</span>
+                    <span id="statusBadge" class="badge">waiting</span>
                 </div>
 
                 <div class="workspace" id="workspace">
-                    <div class="empty">Osmisměrka se zobrazí po sestavení.</div>
+                    <div class="empty" id="emptyMessage">The word search will appear after generation.</div>
                 </div>
             </section>
         </div>
@@ -932,6 +930,151 @@ rosa</textarea>
         const alphabet = Array.from("ABCDEFGHIJKLMNOPQRSTUVWXYZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ");
         const colorClasses = ["solution-word"];
         const storageKey = "osmismerkaGenerator.settings.v1";
+        const translations = {
+            cs: {
+                appTitle: "Word Search Generator",
+                appSubtitle: "Tajenka zůstane ve volných políčkách po vyškrtání slov.",
+                generate: "Sestavit",
+                printCount: "Na list",
+                print: "Tisk",
+                secret: "Tajenka",
+                required: "Povinná slova",
+                optional: "Volitelná slova",
+                rows: "Řádky",
+                cols: "Sloupce",
+                attempts: "Pokusy",
+                seed: "Seed",
+                diagonal: "Úhlopříčky",
+                backward: "Pozpátku",
+                solution: "Řešení",
+                statSecret: "písmen tajenky",
+                statRequired: "povinných slov",
+                statOptional: "volitelných slov",
+                statCells: "políček",
+                reset: "Původní ukázka",
+                readyTitle: "Připraveno",
+                readyDetail: "Zadej vstupy a sestav osmisměrku.",
+                readyBadge: "čeká",
+                empty: "Osmisměrka se zobrazí po sestavení.",
+                emptySecret: "Tajenka nemá žádná písmena.",
+                secretTooLong: "Tajenka je delší než počet volných polí v mřížce.",
+                needRequired: "Přidej aspoň jedno povinné slovo.",
+                requiredTooLong: "Některé povinné slovo je delší než nejdelší strana mřížky.",
+                gridTooSmall: "Mřížka je pro zadanou tajenku a slova příliš malá.",
+                requiredFailed: "Povinná slova se nepodařilo do mřížky umístit.",
+                wordsTooMany: "Slova obsadila příliš mnoho polí. Zvětši mřížku nebo zkrať seznam povinných slov.",
+                noteEmptySecret: "Tajenka je prázdná.",
+                noteMissingRequired: "Chybí povinná slova.",
+                noteNoWordSpace: "Mřížka nemá prostor pro slova.",
+                noteOptionalTooLong: count => `${count} volitelných slov je pro tuto mřížku moc dlouhých a budou přeskočena.`,
+                noteNeedOptional: "Pro přesnou tajenku bude potřeba víc volitelných slov nebo menší mřížka.",
+                inputsReady: "Vstupy jsou připravené.",
+                wordsToFind: "Slova k hledání",
+                requiredWords: "Povinná slova",
+                addedWords: "Doplněná slova",
+                secretSection: "Tajenka",
+                directionsBalanced: "Směry jsou rovnoměrně rozložené.",
+                directionSpread: spread => `Rozptyl směrů je ${spread}.`,
+                exactMessage: (attempts, balance) => `Přesná osmisměrka vznikla po ${attempts} pokusech. ${balance}`,
+                partialMessage: (extra, balance) => `Tajenka je zachovaná, ale ${extra} nadbytečných polí muselo zůstat prázdných. ${balance} Pomůže větší volitelný slovník, jiná velikost nebo jiný seed.`,
+                done: "Hotovo",
+                partialDone: "Částečně sestaveno",
+                generatedDetail: (rows, cols, required, optional, spread) => `${rows} x ${cols}, ${required} povinných slov, ${optional} doplněných slov, rozptyl směrů ${spread}`,
+                exactBadge: "přesné",
+                reserveBadge: "s rezervou",
+                from: "od",
+                none: "nic",
+                generatingTitle: "Sestavuji",
+                generatingDetail: "Hledám rozmístění slov a přesný počet volných polí.",
+                runningBadge: "běží",
+                failedTitle: "Nepodařilo se sestavit",
+                errorBadge: "chyba",
+                exportTitle: "OSMISMĚRKA",
+                exportWordsTitle: "SLOVA K HLEDÁNÍ",
+                exportFilename: "osmisměrka.txt",
+                sample: {
+                    secret: "KDO HLEDÁ NAJDE",
+                    required: "PRAHA\nMOST\nŘEKA\nKNIHA\nJARO\nSVĚTLO\nCESTA\nKÁVA",
+                    optional: "strom\nlist\nměsto\nvlak\nhory\nlouka\nzahrada\nokno\nkámen\nmostek\nhrad\nslunce\nmrak\npotok\ncukr\npapír\ntužka\nškola\nhudba\nobraz\nbarva\npísek\nkometa\ntalíř\nvítr\nmapa\nbrána\nulice\ndvůr\nklíč\nlampička\nčaj\nnoty\nsešit\nkopec\njezero\nperla\nvlna\nles\nsad\nzvon\nmlýn\nloď\nrosa"
+                }
+            },
+            en: {
+                appTitle: "Word Search Generator",
+                appSubtitle: "The hidden phrase remains in the empty cells after the words are crossed out.",
+                generate: "Generate",
+                printCount: "Per sheet",
+                print: "Print",
+                secret: "Hidden phrase",
+                required: "Required words",
+                optional: "Optional words",
+                rows: "Rows",
+                cols: "Columns",
+                attempts: "Attempts",
+                seed: "Seed",
+                diagonal: "Diagonals",
+                backward: "Backward",
+                solution: "Solution",
+                statSecret: "hidden phrase letters",
+                statRequired: "required words",
+                statOptional: "optional words",
+                statCells: "cells",
+                reset: "Default sample",
+                readyTitle: "Ready",
+                readyDetail: "Enter inputs and generate the word search.",
+                readyBadge: "waiting",
+                empty: "The word search will appear after generation.",
+                emptySecret: "The hidden phrase has no letters.",
+                secretTooLong: "The hidden phrase is longer than the available empty cells in the grid.",
+                needRequired: "Add at least one required word.",
+                requiredTooLong: "A required word is longer than the longest side of the grid.",
+                gridTooSmall: "The grid is too small for the selected hidden phrase and words.",
+                requiredFailed: "The required words could not be placed in the grid.",
+                wordsTooMany: "The words used too many cells. Make the grid larger or shorten the required word list.",
+                noteEmptySecret: "The hidden phrase is empty.",
+                noteMissingRequired: "Required words are missing.",
+                noteNoWordSpace: "The grid has no room for words.",
+                noteOptionalTooLong: count => `${count} optional word(s) are too long for this grid and will be skipped.`,
+                noteNeedOptional: "An exact puzzle will need more optional words or a smaller grid.",
+                inputsReady: "Inputs are ready.",
+                wordsToFind: "Words to Find",
+                requiredWords: "Required Words",
+                addedWords: "Added Words",
+                secretSection: "Hidden Phrase",
+                directionsBalanced: "Directions are evenly balanced.",
+                directionSpread: spread => `Direction spread is ${spread}.`,
+                exactMessage: (attempts, balance) => `An exact word search was generated after ${attempts} attempt(s). ${balance}`,
+                partialMessage: (extra, balance) => `The hidden phrase is preserved, but ${extra} extra cell(s) had to stay empty. ${balance} A larger optional dictionary, another size, or another seed can help.`,
+                done: "Done",
+                partialDone: "Partially Generated",
+                generatedDetail: (rows, cols, required, optional, spread) => `${rows} x ${cols}, ${required} required word(s), ${optional} added word(s), direction spread ${spread}`,
+                exactBadge: "exact",
+                reserveBadge: "with reserve",
+                from: "from",
+                none: "none",
+                generatingTitle: "Generating",
+                generatingDetail: "Searching for word placement and the exact number of empty cells.",
+                runningBadge: "running",
+                failedTitle: "Could Not Generate",
+                errorBadge: "error",
+                exportTitle: "WORD SEARCH",
+                exportWordsTitle: "WORDS TO FIND",
+                exportFilename: "word-search.txt",
+                sample: {
+                    secret: "LOOK AND FIND",
+                    required: "RIVER\nBOOK\nSPRING\nLIGHT\nPATH\nCOFFEE\nBRIDGE\nGARDEN",
+                    optional: "tree\nleaf\ncity\ntrain\nmountain\nmeadow\nwindow\nstone\ncastle\nsun\ncloud\nstream\nsugar\npaper\npencil\nschool\nmusic\npicture\ncolor\nsand\ncomet\nplate\nwind\nmap\ngate\nstreet\nyard\nkey\nlamp\ntea\nnotes\nnotebook\nhill\nlake\npearl\nwave\nforest\norchard\nbell\nmill\nboat\ndew"
+                }
+            }
+        };
+        const detectedLocales = [
+            ...(navigator.languages || []),
+            navigator.language,
+            navigator.userLanguage,
+            Intl.DateTimeFormat().resolvedOptions().locale
+        ].filter(Boolean);
+        const language = detectedLocales.some(item => String(item).toLowerCase().startsWith("cs")) ? "cs" : "en";
+        const locale = language === "cs" ? "cs-CZ" : "en-US";
+        const text = translations[language];
         const state = {
             puzzle: null,
             busy: false,
@@ -941,6 +1084,24 @@ rosa</textarea>
         };
 
         const els = {
+            appTitle: document.getElementById("appTitle"),
+            appSubtitle: document.getElementById("appSubtitle"),
+            printCountLabel: document.getElementById("printCountLabel"),
+            secretLabel: document.getElementById("secretLabel"),
+            requiredLabel: document.getElementById("requiredLabel"),
+            optionalLabel: document.getElementById("optionalLabel"),
+            rowsLabel: document.getElementById("rowsLabel"),
+            colsLabel: document.getElementById("colsLabel"),
+            attemptsLabel: document.getElementById("attemptsLabel"),
+            seedLabel: document.getElementById("seedLabel"),
+            diagonalLabel: document.getElementById("diagonalLabel"),
+            backwardLabel: document.getElementById("backwardLabel"),
+            solutionLabel: document.getElementById("solutionLabel"),
+            statSecretLabel: document.getElementById("statSecretLabel"),
+            statRequiredLabel: document.getElementById("statRequiredLabel"),
+            statOptionalLabel: document.getElementById("statOptionalLabel"),
+            statCellsLabel: document.getElementById("statCellsLabel"),
+            emptyMessage: document.getElementById("emptyMessage"),
             secret: document.getElementById("secretInput"),
             required: document.getElementById("requiredInput"),
             optional: document.getElementById("optionalInput"),
@@ -979,7 +1140,50 @@ rosa</textarea>
             solution: "checked",
             printCount: "value"
         };
-        const defaultSettings = captureSettings();
+        const defaultSettings = makeDefaultSettings();
+
+        function makeDefaultSettings() {
+            return {
+                secret: text.sample.secret,
+                required: text.sample.required,
+                optional: text.sample.optional,
+                rows: "10",
+                cols: "10",
+                attempts: "220",
+                seed: "osm-2026",
+                diagonal: true,
+                backward: true,
+                solution: false,
+                printCount: "4"
+            };
+        }
+
+        function applyStaticText() {
+            document.documentElement.lang = language;
+            document.title = text.appTitle;
+            els.appTitle.textContent = text.appTitle;
+            els.appSubtitle.textContent = text.appSubtitle;
+            els.generate.textContent = text.generate;
+            els.printCountLabel.textContent = text.printCount;
+            els.print.textContent = text.print;
+            els.secretLabel.textContent = text.secret;
+            els.requiredLabel.textContent = text.required;
+            els.optionalLabel.textContent = text.optional;
+            els.rowsLabel.textContent = text.rows;
+            els.colsLabel.textContent = text.cols;
+            els.attemptsLabel.textContent = text.attempts;
+            els.seedLabel.textContent = text.seed;
+            els.diagonalLabel.textContent = text.diagonal;
+            els.backwardLabel.textContent = text.backward;
+            els.solutionLabel.textContent = text.solution;
+            els.statSecretLabel.textContent = text.statSecret;
+            els.statRequiredLabel.textContent = text.statRequired;
+            els.statOptionalLabel.textContent = text.statOptional;
+            els.statCellsLabel.textContent = text.statCells;
+            els.reset.textContent = text.reset;
+            els.emptyMessage.textContent = text.empty;
+            setStatus(text.readyTitle, text.readyDetail, "", text.readyBadge);
+        }
 
         function captureSettings() {
             const settings = {};
@@ -1085,7 +1289,7 @@ rosa</textarea>
         }
 
         function toLetters(value) {
-            return Array.from(value.toLocaleUpperCase("cs-CZ").normalize("NFC").replace(/[^\p{L}\p{N}]/gu, ""));
+            return Array.from(value.toLocaleUpperCase(locale).normalize("NFC").replace(/[^\p{L}\p{N}]/gu, ""));
         }
 
         function normalizeWord(value) {
@@ -1419,11 +1623,11 @@ rosa</textarea>
             const maxRequiredLength = Math.max(0, ...config.required.map(wordLength));
             const maxLine = Math.max(config.rows, config.cols);
 
-            if (!config.secretLetters.length) throw new Error("Tajenka nemá žádná písmena.");
-            if (config.secretLetters.length >= area) throw new Error("Tajenka je delší než počet volných polí v mřížce.");
-            if (config.required.length === 0) throw new Error("Přidej aspoň jedno povinné slovo.");
-            if (maxRequiredLength > maxLine) throw new Error("Některé povinné slovo je delší než nejdelší strana mřížky.");
-            if (targetCovered < config.required.length) throw new Error("Mřížka je pro zadanou tajenku a slova příliš malá.");
+            if (!config.secretLetters.length) throw new Error(text.emptySecret);
+            if (config.secretLetters.length >= area) throw new Error(text.secretTooLong);
+            if (config.required.length === 0) throw new Error(text.needRequired);
+            if (maxRequiredLength > maxLine) throw new Error(text.requiredTooLong);
+            if (targetCovered < config.required.length) throw new Error(text.gridTooSmall);
 
             let best = null;
             const dirs = config.dirs;
@@ -1470,10 +1674,10 @@ rosa</textarea>
                 }
             }
 
-            if (!best) throw new Error("Povinná slova se nepodařilo do mřížky umístit.");
+            if (!best) throw new Error(text.requiredFailed);
             const open = collectOpenCells(best.grid);
             if (open.length < config.secretLetters.length) {
-                throw new Error("Slova obsadila příliš mnoho polí. Zvětši mřížku nebo zkrať seznam povinných slov.");
+                throw new Error(text.wordsTooMany);
             }
             const extra = fillSecret(best.grid, config.secretLetters);
             return {
@@ -1586,15 +1790,15 @@ rosa</textarea>
             const requiredLetters = config.required.reduce((sum, word) => sum + wordLength(word), 0);
             const ignoredOptional = config.optional.filter(word => wordLength(word) > maxLine).length;
             const notes = [];
-            if (!config.secretLetters.length) notes.push("Tajenka je prázdná.");
-            if (!config.required.length) notes.push("Chybí povinná slova.");
-            if (target <= 0) notes.push("Mřížka nemá prostor pro slova.");
-            if (ignoredOptional) notes.push(`${ignoredOptional} volitelných slov je pro tuto mřížku moc dlouhých a budou přeskočena.`);
+            if (!config.secretLetters.length) notes.push(text.noteEmptySecret);
+            if (!config.required.length) notes.push(text.noteMissingRequired);
+            if (target <= 0) notes.push(text.noteNoWordSpace);
+            if (ignoredOptional) notes.push(text.noteOptionalTooLong(ignoredOptional));
             if (requiredLetters < target * 0.35 && config.optional.length < 8) {
-                notes.push("Pro přesnou tajenku bude potřeba víc volitelných slov nebo menší mřížka.");
+                notes.push(text.noteNeedOptional);
             }
 
-            els.inputMessage.textContent = notes.length ? notes.join(" ") : "Vstupy jsou připravené.";
+            els.inputMessage.textContent = notes.length ? notes.join(" ") : text.inputsReady;
             els.inputMessage.className = "message" + (notes.length ? "" : " success");
         }
 
@@ -1661,7 +1865,7 @@ rosa</textarea>
                 card.className = "print-card";
                 card.append(
                     makePrintBoardStage(puzzle.grid),
-                    makeSection("Slova k hledání", makePrintWordList(words))
+                    makeSection(text.wordsToFind, makePrintWordList(words))
                 );
                 sheet.append(card);
             }
@@ -1693,11 +1897,11 @@ rosa</textarea>
             const message = document.createElement("div");
             message.className = "message " + (puzzle.exact ? "success" : "");
             const balanceText = puzzle.spread <= 1
-                ? "Směry jsou rovnoměrně rozložené."
-                : `Rozptyl směrů je ${puzzle.spread}.`;
+                ? text.directionsBalanced
+                : text.directionSpread(puzzle.spread);
             message.textContent = puzzle.exact
-                ? `Přesná osmisměrka vznikla po ${puzzle.attemptsUsed} pokusech. ${balanceText}`
-                : `Tajenka je zachovaná, ale ${puzzle.extra} nadbytečných polí muselo zůstat prázdných. ${balanceText} Pomůže větší volitelný slovník, jiná velikost nebo jiný seed.`;
+                ? text.exactMessage(puzzle.attemptsUsed, balanceText)
+                : text.partialMessage(puzzle.extra, balanceText);
 
             const boardWrap = document.createElement("div");
             boardWrap.className = "board-wrap";
@@ -1706,18 +1910,18 @@ rosa</textarea>
             const side = document.createElement("aside");
             side.className = "side";
             side.append(
-                makeSection("Povinná slova", requiredList, "screen-only"),
-                makeSection("Doplněná slova", optionalList, "screen-only"),
-                makeSection("Tajenka", secret, "screen-only"),
-                makeSection("Slova k hledání", makeSimpleWordList(usedWords), "print-only")
+                makeSection(text.requiredWords, requiredList, "screen-only"),
+                makeSection(text.addedWords, optionalList, "screen-only"),
+                makeSection(text.secretSection, secret, "screen-only"),
+                makeSection(text.wordsToFind, makeSimpleWordList(usedWords), "print-only")
             );
 
             els.workspace.replaceChildren(boardWrap, side, makePrintSheet(puzzle, usedWords));
             setStatus(
-                puzzle.exact ? "Hotovo" : "Částečně sestaveno",
-                `${rows} x ${cols}, ${usedRequired.length} povinných slov, ${usedOptional.length} doplněných slov, rozptyl směrů ${puzzle.spread}`,
+                puzzle.exact ? text.done : text.partialDone,
+                text.generatedDetail(rows, cols, usedRequired.length, usedOptional.length, puzzle.spread),
                 puzzle.exact ? "ok" : "warn",
-                puzzle.exact ? "přesné" : "s rezervou"
+                puzzle.exact ? text.exactBadge : text.reserveBadge
             );
         }
 
@@ -1733,17 +1937,17 @@ rosa</textarea>
         function makeWordList(placements, kind) {
             const list = document.createElement("div");
             list.className = "word-list";
-            for (const placement of placements.slice().sort((a, b) => a.word.localeCompare(b.word, "cs"))) {
+            for (const placement of placements.slice().sort((a, b) => a.word.localeCompare(b.word, locale))) {
                 const chip = document.createElement("span");
                 chip.className = `word-chip ${kind}`;
                 chip.textContent = placement.word;
-                chip.title = `${placement.dir.label} od ${placement.row + 1}:${placement.col + 1}`;
+                chip.title = `${placement.dir.label} ${text.from} ${placement.row + 1}:${placement.col + 1}`;
                 list.append(chip);
             }
             if (!placements.length) {
                 const chip = document.createElement("span");
                 chip.className = "badge";
-                chip.textContent = "nic";
+                chip.textContent = text.none;
                 list.append(chip);
             }
             return list;
@@ -1752,7 +1956,7 @@ rosa</textarea>
         function getUsedWords(puzzle) {
             return puzzle.placements
                 .map(item => item.word)
-                .sort((a, b) => a.localeCompare(b, "cs"));
+                .sort((a, b) => a.localeCompare(b, locale));
         }
 
         function makeSimpleWordList(words) {
@@ -1793,7 +1997,7 @@ rosa</textarea>
             }
             state.busy = true;
             els.generate.disabled = true;
-            setStatus("Sestavuji", "Hledám rozmístění slov a přesný počet volných polí.", "", "běží");
+            setStatus(text.generatingTitle, text.generatingDetail, "", text.runningBadge);
 
             window.setTimeout(() => {
                 try {
@@ -1812,7 +2016,7 @@ rosa</textarea>
                 } catch (error) {
                     state.puzzle = null;
                     els.workspace.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
-                    setStatus("Nepodařilo se sestavit", error.message, "bad", "chyba");
+                    setStatus(text.failedTitle, error.message, "bad", text.errorBadge);
                 } finally {
                     state.busy = false;
                     els.generate.disabled = false;
@@ -1834,20 +2038,20 @@ rosa</textarea>
         function exportTxt() {
             if (!state.puzzle) return;
             const lines = [];
-            lines.push("OSMISMĚRKA");
+            lines.push(text.exportTitle);
             lines.push("");
             for (const row of state.puzzle.grid) {
                 lines.push(row.map(cell => cell.blocked ? "." : cell.letter).join(" "));
             }
             lines.push("");
-            lines.push("SLOVA K HLEDÁNÍ");
+            lines.push(text.exportWordsTitle);
             lines.push(...getUsedWords(state.puzzle));
 
             const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
             const url = URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = url;
-            link.download = "osmisměrka.txt";
+            link.download = text.exportFilename;
             link.click();
             URL.revokeObjectURL(url);
         }
@@ -1914,7 +2118,10 @@ rosa</textarea>
             });
         });
 
-        loadSettings();
+        applyStaticText();
+        if (!loadSettings()) {
+            applySettings(defaultSettings);
+        }
         updateStats();
         runGenerate();
     </script>
