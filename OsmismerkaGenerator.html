@@ -138,6 +138,23 @@
             gap: 8px;
             flex-wrap: wrap;
             justify-content: flex-end;
+            align-items: center;
+        }
+
+        .topbar-select {
+            width: auto;
+            min-width: 76px;
+            min-height: 38px;
+            padding: 8px 30px 8px 10px;
+        }
+
+        .print-count-control {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--muted);
+            font-size: 0.86rem;
+            font-weight: 650;
         }
 
         .primary {
@@ -326,6 +343,7 @@
             border: 2px solid var(--line-strong);
             border-radius: 8px;
             padding: 2px;
+            container-type: size;
         }
 
         .solution-arrows {
@@ -363,11 +381,11 @@
             min-height: 0;
             background: #fffdfa;
             font-family: var(--mono);
-            font-weight: 800;
+            font-weight: var(--cell-weight, 300);
             color: var(--ink);
             user-select: none;
             border-radius: 3px;
-            font-size: var(--cell-font, 5rem);
+            font-size: var(--cell-font, 1.4rem);
             line-height: 1;
         }
 
@@ -479,6 +497,14 @@
             color: #286441;
         }
 
+        .print-only {
+            display: none;
+        }
+
+        .print-sheet {
+            display: none;
+        }
+
         @media (max-width: 980px) {
 
             .layout,
@@ -529,6 +555,11 @@
         }
 
         @media print {
+            @page {
+                size: A4;
+                margin: 8mm;
+            }
+
             body {
                 background: #fff;
             }
@@ -536,9 +567,17 @@
             .topbar,
             .panel,
             .status,
+            .board-wrap,
+            .side,
             .secret,
-            .message {
+            .message,
+            .screen-only,
+            .solution-arrows {
                 display: none;
+            }
+
+            .print-only {
+                display: grid;
             }
 
             .layout,
@@ -550,24 +589,170 @@
                 box-shadow: none;
             }
 
-            .board-stage {
-                width: 18cm;
+            .workspace {
+                overflow: visible;
+            }
+
+            .print-sheet {
+                display: grid;
+                gap: 4mm;
+                width: 100%;
+            }
+
+            .print-sheet.count-1 {
+                grid-template-columns: 1fr;
+            }
+
+            .print-sheet.count-4,
+            .print-sheet.count-6 {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .print-sheet.count-9,
+            .print-sheet.count-12 {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+
+            .print-sheet.count-16,
+            .print-sheet.count-20 {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+
+            .print-sheet.count-25 {
+                grid-template-columns: repeat(5, minmax(0, 1fr));
+            }
+
+            .print-card {
+                border: 1px solid #999;
+                padding: 3mm;
+                display: grid;
+                grid-template-rows: auto auto;
+                gap: 2.5mm;
+                align-content: start;
+                justify-items: stretch;
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            .print-sheet.count-1 .print-card {
+                min-height: 260mm;
+            }
+
+            .print-sheet.count-4 .print-card {
+                min-height: 132mm;
+            }
+
+            .print-sheet.count-6 .print-card {
+                min-height: 86mm;
+            }
+
+            .print-sheet.count-9 .print-card {
+                min-height: 86mm;
+            }
+
+            .print-sheet.count-12 .print-card {
+                min-height: 63mm;
+            }
+
+            .print-sheet.count-16 .print-card,
+            .print-sheet.count-20 .print-card,
+            .print-sheet.count-25 .print-card {
+                min-height: 50mm;
+                padding: 2mm;
+                gap: 1.2mm;
+            }
+
+            .print-card .print-board-stage {
+                width: min(100%, var(--print-board-size, 100%));
                 max-width: 100%;
-                margin: 0 auto 1cm;
+                margin: 0 auto;
+                aspect-ratio: 1 / 1;
+                align-self: start;
+                justify-self: center;
+            }
+
+            .print-sheet.count-1 .print-board-stage {
+                --print-board-size: 160mm;
+            }
+
+            .print-sheet.count-4 .print-board-stage {
+                --print-board-size: 84mm;
+            }
+
+            .print-sheet.count-6 .print-board-stage {
+                --print-board-size: 60mm;
+            }
+
+            .print-sheet.count-9 .print-board-stage {
+                --print-board-size: 53mm;
+            }
+
+            .print-sheet.count-12 .print-board-stage {
+                --print-board-size: 40mm;
+            }
+
+            .print-sheet.count-16 .print-board-stage,
+            .print-sheet.count-20 .print-board-stage {
+                --print-board-size: 32mm;
+            }
+
+            .print-sheet.count-25 .print-board-stage {
+                --print-board-size: 27mm;
             }
 
             .board {
                 width: 100%;
+                height: 100%;
+                margin: 0;
+                gap: 1px;
+                border-width: 1px;
+                padding: 1px;
+            }
+
+            .print-card .cell {
+                border-radius: 1px;
+                font-weight: 500;
+            }
+
+            .print-card .section {
+                gap: 1.5mm;
+                min-width: 0;
+            }
+
+            .print-card .section h2 {
+                font-size: 9pt;
                 margin: 0;
             }
 
-            .side {
-                display: block;
+            .print-sheet.count-16 .section h2,
+            .print-sheet.count-20 .section h2,
+            .print-sheet.count-25 .section h2 {
+                font-size: 6.5pt;
             }
 
-            .word-chip {
+            .print-word-list {
+                display: block;
+                font-size: 7.5pt;
+                line-height: 1.2;
+                max-width: 100%;
+                white-space: normal;
+                overflow-wrap: break-word;
+                word-break: normal;
+            }
+
+            .print-sheet.count-9 .print-word-list,
+            .print-sheet.count-12 .print-word-list,
+            .print-sheet.count-16 .print-word-list,
+            .print-sheet.count-20 .print-word-list,
+            .print-sheet.count-25 .print-word-list {
+                font-size: 6pt;
+            }
+
+            .cell.solution-word,
+            .cell.solution-secret {
+                background: #fffdfa;
                 color: #000;
-                background: #fff;
+                outline: 0;
             }
         }
     </style>
@@ -583,6 +768,19 @@
             <div class="actions">
                 <button class="secondary" id="sampleButton" type="button">Ukázka</button>
                 <button class="primary" id="generateButton" type="button">Sestavit</button>
+                <label class="print-count-control">
+                    Na list
+                    <select class="topbar-select" id="printCountInput">
+                        <option value="1">1</option>
+                        <option value="4" selected>4</option>
+                        <option value="6">6</option>
+                        <option value="9">9</option>
+                        <option value="12">12</option>
+                        <option value="16">16</option>
+                        <option value="20">20</option>
+                        <option value="25">25</option>
+                    </select>
+                </label>
                 <button class="secondary" id="printButton" type="button">Tisk</button>
                 <button class="warm" id="exportButton" type="button">TXT</button>
             </div>
@@ -658,11 +856,11 @@ rosa</textarea>
                 <div class="field-row">
                     <label>
                         Řádky
-                        <input id="rowsInput" type="number" min="6" max="32" value="14">
+                        <input id="rowsInput" type="number" min="6" max="32" value="10">
                     </label>
                     <label>
                         Sloupce
-                        <input id="colsInput" type="number" min="6" max="32" value="14">
+                        <input id="colsInput" type="number" min="6" max="32" value="10">
                     </label>
                 </div>
 
@@ -749,6 +947,7 @@ rosa</textarea>
             diagonal: document.getElementById("diagonalInput"),
             backward: document.getElementById("backwardInput"),
             solution: document.getElementById("solutionInput"),
+            printCount: document.getElementById("printCountInput"),
             generate: document.getElementById("generateButton"),
             sample: document.getElementById("sampleButton"),
             print: document.getElementById("printButton"),
@@ -783,6 +982,10 @@ rosa</textarea>
                     seen.add(word);
                     return true;
                 });
+        }
+
+        function wordLength(word) {
+            return Array.from(word).length;
         }
 
         function hashString(value) {
@@ -1092,13 +1295,13 @@ rosa</textarea>
         function buildPuzzle(config) {
             const area = config.rows * config.cols;
             const targetCovered = area - config.secretLetters.length;
-            const maxWordLength = Math.max(0, ...config.required.concat(config.optional).map(word => Array.from(word).length));
+            const maxRequiredLength = Math.max(0, ...config.required.map(wordLength));
             const maxLine = Math.max(config.rows, config.cols);
 
             if (!config.secretLetters.length) throw new Error("Tajenka nemá žádná písmena.");
             if (config.secretLetters.length >= area) throw new Error("Tajenka je delší než počet volných polí v mřížce.");
             if (config.required.length === 0) throw new Error("Přidej aspoň jedno povinné slovo.");
-            if (maxWordLength > maxLine) throw new Error("Některé slovo je delší než nejdelší strana mřížky.");
+            if (maxRequiredLength > maxLine) throw new Error("Některé povinné slovo je delší než nejdelší strana mřížky.");
             if (targetCovered < config.required.length) throw new Error("Mřížka je pro zadanou tajenku a slova příliš malá.");
 
             let best = null;
@@ -1109,7 +1312,7 @@ rosa</textarea>
                 const rng = mulberry32(baseSeed + attempt * 2654435761);
                 const grid = createGrid(config.rows, config.cols);
                 const placements = [];
-                const optional = shuffle(config.optional, rng).filter(word => Array.from(word).length <= maxLine);
+                const optional = shuffle(config.optional, rng).filter(word => wordLength(word) <= maxLine);
 
                 if (!placeRequiredWords(grid, config.required, dirs, rng, placements)) continue;
 
@@ -1164,10 +1367,10 @@ rosa</textarea>
 
         function readConfig() {
             const secretLetters = toLetters(els.secret.value);
-            const required = parseWords(els.required.value).filter(word => Array.from(word).length > 1);
+            const required = parseWords(els.required.value).filter(word => wordLength(word) > 1);
             const requiredSet = new Set(required);
             const optional = parseWords(els.optional.value)
-                .filter(word => Array.from(word).length > 1)
+                .filter(word => wordLength(word) > 1)
                 .filter(word => !requiredSet.has(word));
             const rows = Number.parseInt(els.rows.value, 10);
             const cols = Number.parseInt(els.cols.value, 10);
@@ -1258,11 +1461,14 @@ rosa</textarea>
             els.statCells.textContent = config.rows * config.cols;
 
             const target = config.rows * config.cols - config.secretLetters.length;
-            const requiredLetters = config.required.reduce((sum, word) => sum + Array.from(word).length, 0);
+            const maxLine = Math.max(config.rows, config.cols);
+            const requiredLetters = config.required.reduce((sum, word) => sum + wordLength(word), 0);
+            const ignoredOptional = config.optional.filter(word => wordLength(word) > maxLine).length;
             const notes = [];
             if (!config.secretLetters.length) notes.push("Tajenka je prázdná.");
             if (!config.required.length) notes.push("Chybí povinná slova.");
             if (target <= 0) notes.push("Mřížka nemá prostor pro slova.");
+            if (ignoredOptional) notes.push(`${ignoredOptional} volitelných slov je pro tuto mřížku moc dlouhých a budou přeskočena.`);
             if (requiredLetters < target * 0.35 && config.optional.length < 8) {
                 notes.push("Pro přesnou tajenku bude potřeba víc volitelných slov nebo menší mřížka.");
             }
@@ -1271,19 +1477,14 @@ rosa</textarea>
             els.inputMessage.className = "message" + (notes.length ? "" : " success");
         }
 
-        function renderPuzzle(puzzle) {
-            const showSolution = els.solution.checked;
-            const grid = puzzle.grid;
+        function makeBoard(grid, showSolution) {
             const rows = grid.length;
             const cols = grid[0].length;
-            const usedRequired = puzzle.placements.filter(item => item.source === "required");
-            const usedOptional = puzzle.placements.filter(item => item.source === "optional");
-
             const board = document.createElement("div");
             board.className = "board";
             board.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
             board.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
-            board.style.setProperty("--cell-font", `${Math.max(0.7, Math.min(1.9, 11.8 / Math.max(rows, cols))).toFixed(2)}rem`);
+            board.style.setProperty("--cell-font", `min(${(66 / cols).toFixed(4)}cqw, ${(66 / rows).toFixed(4)}cqh)`);
 
             for (const row of grid) {
                 for (const cell of row) {
@@ -1297,13 +1498,66 @@ rosa</textarea>
                 }
             }
 
+            return board;
+        }
+
+        function makeBoardStage(grid, showSolution, placements) {
+            const rows = grid.length;
+            const cols = grid[0].length;
             const boardStage = document.createElement("div");
             boardStage.className = "board-stage";
             boardStage.style.aspectRatio = `${cols} / ${rows}`;
-            boardStage.append(board);
+            boardStage.append(makeBoard(grid, showSolution));
             if (showSolution) {
-                boardStage.append(makeSolutionArrows(puzzle.placements, rows, cols));
+                boardStage.append(makeSolutionArrows(placements, rows, cols));
             }
+            return boardStage;
+        }
+
+        function makePrintBoardStage(grid) {
+            const rows = grid.length;
+            const cols = grid[0].length;
+            const boardStage = document.createElement("div");
+            boardStage.className = "print-board-stage";
+            boardStage.style.aspectRatio = `${cols} / ${rows}`;
+            boardStage.append(makeBoard(grid, false));
+            return boardStage;
+        }
+
+        function getPrintCount() {
+            const allowed = [1, 4, 6, 9, 12, 16, 20, 25];
+            const value = Number(els.printCount.value);
+            return allowed.includes(value) ? value : 1;
+        }
+
+        function makePrintSheet(puzzle, words) {
+            const count = getPrintCount();
+            const sheet = document.createElement("div");
+            sheet.className = `print-sheet print-only count-${count}`;
+
+            for (let index = 0; index < count; index++) {
+                const card = document.createElement("section");
+                card.className = "print-card";
+                card.append(
+                    makePrintBoardStage(puzzle.grid),
+                    makeSection("Slova k hledání", makePrintWordList(words))
+                );
+                sheet.append(card);
+            }
+
+            return sheet;
+        }
+
+        function renderPuzzle(puzzle) {
+            const showSolution = els.solution.checked;
+            const grid = puzzle.grid;
+            const rows = grid.length;
+            const cols = grid[0].length;
+            const usedRequired = puzzle.placements.filter(item => item.source === "required");
+            const usedOptional = puzzle.placements.filter(item => item.source === "optional");
+            const usedWords = getUsedWords(puzzle);
+
+            const boardStage = makeBoardStage(grid, showSolution, puzzle.placements);
 
             const requiredList = makeWordList(usedRequired, "required");
             const optionalList = makeWordList(usedOptional, "optional");
@@ -1331,12 +1585,13 @@ rosa</textarea>
             const side = document.createElement("aside");
             side.className = "side";
             side.append(
-                makeSection("Povinná slova", requiredList),
-                makeSection("Doplněná slova", optionalList),
-                makeSection("Tajenka", secret)
+                makeSection("Povinná slova", requiredList, "screen-only"),
+                makeSection("Doplněná slova", optionalList, "screen-only"),
+                makeSection("Tajenka", secret, "screen-only"),
+                makeSection("Slova k hledání", makeSimpleWordList(usedWords), "print-only")
             );
 
-            els.workspace.replaceChildren(boardWrap, side);
+            els.workspace.replaceChildren(boardWrap, side, makePrintSheet(puzzle, usedWords));
             setStatus(
                 puzzle.exact ? "Hotovo" : "Částečně sestaveno",
                 `${rows} x ${cols}, ${usedRequired.length} povinných slov, ${usedOptional.length} doplněných slov, rozptyl směrů ${puzzle.spread}`,
@@ -1345,9 +1600,9 @@ rosa</textarea>
             );
         }
 
-        function makeSection(title, content) {
+        function makeSection(title, content, extraClass) {
             const section = document.createElement("section");
-            section.className = "section";
+            section.className = extraClass ? `section ${extraClass}` : "section";
             const h2 = document.createElement("h2");
             h2.textContent = title;
             section.append(h2, content);
@@ -1370,6 +1625,31 @@ rosa</textarea>
                 chip.textContent = "nic";
                 list.append(chip);
             }
+            return list;
+        }
+
+        function getUsedWords(puzzle) {
+            return puzzle.placements
+                .map(item => item.word)
+                .sort((a, b) => a.localeCompare(b, "cs"));
+        }
+
+        function makeSimpleWordList(words) {
+            const list = document.createElement("div");
+            list.className = "word-list";
+            for (const word of words) {
+                const chip = document.createElement("span");
+                chip.className = "word-chip";
+                chip.textContent = word;
+                list.append(chip);
+            }
+            return list;
+        }
+
+        function makePrintWordList(words) {
+            const list = document.createElement("div");
+            list.className = "print-word-list";
+            list.textContent = words.join(", ");
             return list;
         }
 
@@ -1422,8 +1702,8 @@ rosa</textarea>
             els.secret.value = "KDO HLEDÁ NAJDE";
             els.required.value = "PRAHA\nMOST\nŘEKA\nKNIHA\nJARO\nSVĚTLO\nCESTA\nKÁVA";
             els.optional.value = "strom\nlist\nměsto\nvlak\nhory\nlouka\nzahrada\nokno\nkámen\nmostek\nhrad\nslunce\nmrak\npotok\ncukr\npapír\ntužka\nškola\nhudba\nobraz\nbarva\npísek\nkometa\ntalíř\nvítr\nmapa\nbrána\nulice\ndvůr\nklíč\nlampička\nčaj\nnoty\nsešit\nkopec\njezero\nperla\nvlna\nles\nsad\nzvon\nmlýn\nloď\nrosa";
-            els.rows.value = 14;
-            els.cols.value = 14;
+            els.rows.value = 10;
+            els.cols.value = 10;
             els.attempts.value = 220;
             els.seed.value = "osm-2026";
             updateStats();
@@ -1439,14 +1719,8 @@ rosa</textarea>
                 lines.push(row.map(cell => cell.blocked ? "." : cell.letter).join(" "));
             }
             lines.push("");
-            lines.push("POVINNÁ SLOVA");
-            lines.push(...state.puzzle.placements.filter(item => item.source === "required").map(item => item.word).sort((a, b) => a.localeCompare(b, "cs")));
-            lines.push("");
-            lines.push("DOPLNĚNÁ SLOVA");
-            lines.push(...state.puzzle.placements.filter(item => item.source === "optional").map(item => item.word).sort((a, b) => a.localeCompare(b, "cs")));
-            lines.push("");
-            lines.push("TAJENKA");
-            lines.push(collectSecret(state.puzzle.grid).join(""));
+            lines.push("SLOVA K HLEDÁNÍ");
+            lines.push(...getUsedWords(state.puzzle));
 
             const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
             const url = URL.createObjectURL(blob);
@@ -1465,6 +1739,9 @@ rosa</textarea>
         els.generate.addEventListener("click", runGenerate);
         els.sample.addEventListener("click", sample);
         els.solution.addEventListener("change", () => {
+            if (state.puzzle) renderPuzzle(state.puzzle);
+        });
+        els.printCount.addEventListener("change", () => {
             if (state.puzzle) renderPuzzle(state.puzzle);
         });
         els.print.addEventListener("click", () => window.print());
