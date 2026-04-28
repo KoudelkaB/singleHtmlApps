@@ -932,7 +932,7 @@ dew</textarea>
         const storageKey = "osmismerkaGenerator.settings.v1";
         const translations = {
             cs: {
-                appTitle: "Word Search Generator",
+                appTitle: "Generátor osmisměrek",
                 appSubtitle: "Tajenka zůstane ve volných políčkách po vyškrtání slov.",
                 generate: "Sestavit",
                 printCount: "Na list",
@@ -1066,13 +1066,14 @@ dew</textarea>
                 }
             }
         };
-        const detectedLocales = [
-            ...(navigator.languages || []),
-            navigator.language,
-            navigator.userLanguage,
-            Intl.DateTimeFormat().resolvedOptions().locale
-        ].filter(Boolean);
-        const language = detectedLocales.some(item => String(item).toLowerCase().startsWith("cs")) ? "cs" : "en";
+        function getPrimaryBrowserLocale() {
+            if (navigator.languages && navigator.languages.length) {
+                return navigator.languages[0];
+            }
+            return navigator.language || navigator.userLanguage || "";
+        }
+
+        const language = String(getPrimaryBrowserLocale()).toLowerCase().startsWith("cs") ? "cs" : "en";
         const locale = language === "cs" ? "cs-CZ" : "en-US";
         const text = translations[language];
         const state = {
@@ -1140,13 +1141,15 @@ dew</textarea>
             solution: "checked",
             printCount: "value"
         };
-        const defaultSettings = makeDefaultSettings();
+        const defaultSettings = makeDefaultSettings(language);
 
-        function makeDefaultSettings() {
+        function makeDefaultSettings(targetLanguage) {
+            const sample = translations[targetLanguage].sample;
             return {
-                secret: text.sample.secret,
-                required: text.sample.required,
-                optional: text.sample.optional,
+                locale: targetLanguage,
+                secret: sample.secret,
+                required: sample.required,
+                optional: sample.optional,
                 rows: "10",
                 cols: "10",
                 attempts: "220",
@@ -1186,11 +1189,16 @@ dew</textarea>
         }
 
         function captureSettings() {
-            const settings = {};
+            const settings = { locale: language };
             for (const [key, prop] of Object.entries(persistedFields)) {
                 settings[key] = els[key][prop];
             }
             return settings;
+        }
+
+        function isDefaultSettingsForLanguage(settings, targetLanguage) {
+            const defaults = makeDefaultSettings(targetLanguage);
+            return Object.keys(persistedFields).every(key => settings[key] === defaults[key]);
         }
 
         function applySettings(settings) {
@@ -1265,6 +1273,12 @@ dew</textarea>
                 if (!raw) return false;
                 const parsed = JSON.parse(raw);
                 if (!parsed || typeof parsed !== "object") return false;
+                const savedLocale = parsed.locale
+                    || (isDefaultSettingsForLanguage(parsed, "cs") ? "cs" : "")
+                    || (isDefaultSettingsForLanguage(parsed, "en") ? "en" : "");
+                if (savedLocale && savedLocale !== language && isDefaultSettingsForLanguage(parsed, savedLocale)) {
+                    return false;
+                }
                 applySettings(parsed);
                 return true;
             } catch (error) {
