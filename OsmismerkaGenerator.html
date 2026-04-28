@@ -766,7 +766,6 @@
                 <p>Tajenka zůstane ve volných políčkách po vyškrtání slov.</p>
             </div>
             <div class="actions">
-                <button class="secondary" id="sampleButton" type="button">Ukázka</button>
                 <button class="primary" id="generateButton" type="button">Sestavit</button>
                 <label class="print-count-control">
                     Na list
@@ -910,6 +909,7 @@ rosa</textarea>
                 </div>
 
                 <div id="inputMessage" class="message"></div>
+                <button class="secondary" id="resetButton" type="button">Původní ukázka</button>
             </aside>
 
             <section class="preview">
@@ -931,9 +931,13 @@ rosa</textarea>
     <script>
         const alphabet = Array.from("ABCDEFGHIJKLMNOPQRSTUVWXYZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ");
         const colorClasses = ["solution-word"];
+        const storageKey = "osmismerkaGenerator.settings.v1";
         const state = {
             puzzle: null,
-            busy: false
+            busy: false,
+            dirtyHistoryActive: false,
+            lastGeneratedSettingsKey: "",
+            restoringHistory: false
         };
 
         const els = {
@@ -949,7 +953,7 @@ rosa</textarea>
             solution: document.getElementById("solutionInput"),
             printCount: document.getElementById("printCountInput"),
             generate: document.getElementById("generateButton"),
-            sample: document.getElementById("sampleButton"),
+            reset: document.getElementById("resetButton"),
             print: document.getElementById("printButton"),
             export: document.getElementById("exportButton"),
             workspace: document.getElementById("workspace"),
@@ -962,6 +966,123 @@ rosa</textarea>
             statOptional: document.getElementById("statOptional"),
             statCells: document.getElementById("statCells")
         };
+        const persistedFields = {
+            secret: "value",
+            required: "value",
+            optional: "value",
+            rows: "value",
+            cols: "value",
+            attempts: "value",
+            seed: "value",
+            diagonal: "checked",
+            backward: "checked",
+            solution: "checked",
+            printCount: "value"
+        };
+        const defaultSettings = captureSettings();
+
+        function captureSettings() {
+            const settings = {};
+            for (const [key, prop] of Object.entries(persistedFields)) {
+                settings[key] = els[key][prop];
+            }
+            return settings;
+        }
+
+        function applySettings(settings) {
+            for (const [key, prop] of Object.entries(persistedFields)) {
+                if (Object.prototype.hasOwnProperty.call(settings, key)) {
+                    els[key][prop] = settings[key];
+                }
+            }
+        }
+
+        function settingsKey(settings) {
+            return JSON.stringify(settings);
+        }
+
+        function makeHistoryState(kind, settings = captureSettings()) {
+            return {
+                app: "osmismerka-generator",
+                kind,
+                settings
+            };
+        }
+
+        function replaceHistoryState(kind, settings = captureSettings()) {
+            history.replaceState(makeHistoryState(kind, settings), "");
+        }
+
+        function markGeneratedHistory() {
+            const settings = captureSettings();
+            const key = settingsKey(settings);
+            const hasPreviousGeneratedState = Boolean(state.lastGeneratedSettingsKey);
+            const changedSinceLastGeneration = key !== state.lastGeneratedSettingsKey;
+
+            if (!hasPreviousGeneratedState) {
+                replaceHistoryState("generated", settings);
+            } else if (state.dirtyHistoryActive || !changedSinceLastGeneration) {
+                replaceHistoryState("generated", settings);
+            } else {
+                history.pushState(makeHistoryState("generated", settings), "");
+            }
+
+            state.lastGeneratedSettingsKey = key;
+            state.dirtyHistoryActive = false;
+        }
+
+        function markDirtyHistory() {
+            if (state.restoringHistory) return;
+
+            const settings = captureSettings();
+            if (settingsKey(settings) === state.lastGeneratedSettingsKey) {
+                return;
+            }
+
+            if (state.dirtyHistoryActive) {
+                replaceHistoryState("dirty", settings);
+            } else {
+                history.pushState(makeHistoryState("dirty", settings), "");
+                state.dirtyHistoryActive = true;
+            }
+        }
+
+        function saveSettings() {
+            try {
+                localStorage.setItem(storageKey, JSON.stringify(captureSettings()));
+            } catch (error) {
+                // Persistence is optional; the app should still work when storage is blocked.
+            }
+        }
+
+        function loadSettings() {
+            try {
+                const raw = localStorage.getItem(storageKey);
+                if (!raw) return false;
+                const parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== "object") return false;
+                applySettings(parsed);
+                return true;
+            } catch (error) {
+                return false;
+            }
+        }
+
+        function clearSavedSettings() {
+            try {
+                localStorage.removeItem(storageKey);
+            } catch (error) {
+                // Ignore storage failures for the same reason as saveSettings.
+            }
+        }
+
+        function resetSettings() {
+            clearSavedSettings();
+            applySettings(defaultSettings);
+            state.puzzle = null;
+            updateStats();
+            runGenerate();
+        }
 
         function toLetters(value) {
             return Array.from(value.toLocaleUpperCase("cs-CZ").normalize("NFC").replace(/[^\p{L}\p{N}]/gu, ""));
@@ -1663,8 +1784,13 @@ rosa</textarea>
             return letters;
         }
 
-        function runGenerate() {
-            if (state.busy) return;
+        function runGenerate(options = {}) {
+            if (state.busy) {
+                if (typeof options.after === "function") {
+                    options.after();
+                }
+                return;
+            }
             state.busy = true;
             els.generate.disabled = true;
             setStatus("Sestavuji", "Hledám rozmístění slov a přesný počet volných polí.", "", "běží");
@@ -1679,6 +1805,10 @@ rosa</textarea>
                     state.puzzle = puzzle;
                     renderPuzzle(puzzle);
                     updateStats();
+                    saveSettings();
+                    if (options.recordHistory !== false) {
+                        markGeneratedHistory();
+                    }
                 } catch (error) {
                     state.puzzle = null;
                     els.workspace.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
@@ -1686,6 +1816,9 @@ rosa</textarea>
                 } finally {
                     state.busy = false;
                     els.generate.disabled = false;
+                    if (typeof options.after === "function") {
+                        options.after();
+                    }
                 }
             }, 20);
         }
@@ -1696,18 +1829,6 @@ rosa</textarea>
                 .replaceAll("<", "&lt;")
                 .replaceAll(">", "&gt;")
                 .replaceAll('"', "&quot;");
-        }
-
-        function sample() {
-            els.secret.value = "KDO HLEDÁ NAJDE";
-            els.required.value = "PRAHA\nMOST\nŘEKA\nKNIHA\nJARO\nSVĚTLO\nCESTA\nKÁVA";
-            els.optional.value = "strom\nlist\nměsto\nvlak\nhory\nlouka\nzahrada\nokno\nkámen\nmostek\nhrad\nslunce\nmrak\npotok\ncukr\npapír\ntužka\nškola\nhudba\nobraz\nbarva\npísek\nkometa\ntalíř\nvítr\nmapa\nbrána\nulice\ndvůr\nklíč\nlampička\nčaj\nnoty\nsešit\nkopec\njezero\nperla\nvlna\nles\nsad\nzvon\nmlýn\nloď\nrosa";
-            els.rows.value = 10;
-            els.cols.value = 10;
-            els.attempts.value = 220;
-            els.seed.value = "osm-2026";
-            updateStats();
-            runGenerate();
         }
 
         function exportTxt() {
@@ -1731,22 +1852,69 @@ rosa</textarea>
             URL.revokeObjectURL(url);
         }
 
-        for (const input of [els.secret, els.required, els.optional, els.rows, els.cols, els.attempts, els.diagonal, els.backward]) {
-            input.addEventListener("input", updateStats);
-            input.addEventListener("change", updateStats);
+        for (const input of [els.secret, els.required, els.optional, els.rows, els.cols, els.attempts, els.seed]) {
+            input.addEventListener("change", () => {
+                updateStats();
+                saveSettings();
+                markDirtyHistory();
+            });
         }
 
-        els.generate.addEventListener("click", runGenerate);
-        els.sample.addEventListener("click", sample);
+        for (const input of [els.diagonal, els.backward]) {
+            input.addEventListener("change", () => {
+                updateStats();
+                saveSettings();
+                markDirtyHistory();
+            });
+        }
+
+        els.generate.addEventListener("click", () => {
+            saveSettings();
+            runGenerate();
+        });
+        els.reset.addEventListener("click", resetSettings);
         els.solution.addEventListener("change", () => {
+            saveSettings();
+            markDirtyHistory();
             if (state.puzzle) renderPuzzle(state.puzzle);
         });
         els.printCount.addEventListener("change", () => {
+            saveSettings();
+            markDirtyHistory();
             if (state.puzzle) renderPuzzle(state.puzzle);
         });
-        els.print.addEventListener("click", () => window.print());
-        els.export.addEventListener("click", exportTxt);
+        els.print.addEventListener("click", () => {
+            saveSettings();
+            window.print();
+        });
+        els.export.addEventListener("click", () => {
+            saveSettings();
+            exportTxt();
+        });
+        window.addEventListener("beforeunload", saveSettings);
+        window.addEventListener("popstate", event => {
+            const historyState = event.state;
+            if (!historyState || historyState.app !== "osmismerka-generator" || !historyState.settings) {
+                return;
+            }
 
+            state.restoringHistory = true;
+            applySettings(historyState.settings);
+            updateStats();
+            saveSettings();
+            state.dirtyHistoryActive = historyState.kind === "dirty";
+            if (historyState.kind === "generated") {
+                state.lastGeneratedSettingsKey = settingsKey(historyState.settings);
+            }
+            runGenerate({
+                recordHistory: false,
+                after: () => {
+                    state.restoringHistory = false;
+                }
+            });
+        });
+
+        loadSettings();
         updateStats();
         runGenerate();
     </script>
