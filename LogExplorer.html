@@ -1222,6 +1222,20 @@
                 a row to add a new filter that keeps only that source. Profiles persist locally, can be saved by name,
                 exported as JSON, and imported by button or file drop.
             </p>
+            <p>Single click smart-selects the structure under the pointer: identifiers, numbers with unit suffixes,
+                decimals, IPs, versions, paths, URLs, GUID-like values, nested identifiers, dates, times, datetimes,
+                and whitespace with nearby line endings. Clicking a quote character selects the quoted text without the
+                quotes. Clicking a bracket character, including an HTML/XML tag bracket, selects the content between
+                the matching delimiters without the delimiters. Clicking inside an existing selection grows it from
+                token to delimiter content, then to the delimiters themselves, then to enclosing JSON/XML/HTML
+                structures where applicable; clicking the same delimiter again also grows content to include the
+                delimiters. Ctrl+click inside that selection does the opposite and shrinks back toward the clicked part.
+                Ctrl+click outside a selection picks the smallest useful part, such as a GUID group or datetime
+                component. Click the line-number gutter or press <code>Ctrl+Esc</code> to clear selection quickly.
+                Clicking <code>=</code>, <code>==</code>, <code>===</code>, <code>=&gt;</code>, <code>!=</code>,
+                <code>&lt;=</code>, or <code>&gt;=</code> selects the surrounding expression inside comma, semicolon,
+                or bracket-separated lists.
+            </p>
         </div>
     </div>
 
@@ -3806,7 +3820,137 @@
                 };
             }
 
-            function addRegexCandidates(candidates, line, regex, type, col) {
+            function pointToTextOffset(stage, point) {
+                const indexedStage = ensureStageIndex(stage);
+                const row = clamp(point.row, 0, Math.max(0, indexedStage.lineCount - 1));
+                const line = getStageLine(indexedStage, row);
+                return indexedStage.lineStarts[row] + clamp(point.col, 0, line.length);
+            }
+
+            function textOffsetToPoint(stage, offset) {
+                const indexedStage = ensureStageIndex(stage);
+                const clampedOffset = clamp(offset, 0, indexedStage.text.length);
+                if (!indexedStage.lineStarts.length) {
+                    return { row: 0, col: 0 };
+                }
+                if (clampedOffset >= indexedStage.text.length) {
+                    const lastRow = indexedStage.lineCount - 1;
+                    return { row: lastRow, col: getStageLine(indexedStage, lastRow).length };
+                }
+                const row = findLineIndexForOffset(indexedStage.lineStarts, clampedOffset);
+                return { row, col: clamp(clampedOffset - indexedStage.lineStarts[row], 0, getStageLine(indexedStage, row).length) };
+            }
+
+            function selectionToTextRange(stage, selection) {
+                const normalized = normalizeSelection(selection);
+                if (!normalized) return null;
+                return {
+                    start: pointToTextOffset(stage, { row: normalized.startRow, col: normalized.startCol }),
+                    end: pointToTextOffset(stage, { row: normalized.endRow, col: normalized.endCol })
+                };
+            }
+
+            function normalizeTextRange(stage, range) {
+                const indexedStage = ensureStageIndex(stage);
+                const start = clamp(Math.min(range.start, range.end), 0, indexedStage.text.length);
+                const end = clamp(Math.max(range.start, range.end), 0, indexedStage.text.length);
+                return { start, end, type: range.type || "", precedence: range.precedence || 0 };
+            }
+
+            function textRangeLength(range) {
+                return Math.max(0, range.end - range.start);
+            }
+
+            function rangesEqual(left, right) {
+                return !!left && !!right && left.start === right.start && left.end === right.end;
+            }
+
+            function rangeContainsOffset(range, offset) {
+                return !!range && offset >= range.start && offset < range.end && range.end > range.start;
+            }
+
+            function selectionRangeContainsOffset(range, offset) {
+                return !!range && offset >= range.start && offset <= range.end && range.end > range.start;
+            }
+
+            function rangeContainsRange(outer, inner) {
+                return !!outer && !!inner && outer.start <= inner.start && outer.end >= inner.end;
+            }
+
+            function applyTextRangeSelection(stage, range) {
+                const normalizedRange = normalizeTextRange(stage, range);
+                const start = textOffsetToPoint(stage, normalizedRange.start);
+                const end = textOffsetToPoint(stage, normalizedRange.end);
+                state.selection = {
+                    startRow: start.row,
+                    startCol: start.col,
+                    endRow: end.row,
+                    endCol: end.col
+                };
+                setCursor(end, stage);
+            }
+
+            function isEscapedAt(text, index) {
+                let slashCount = 0;
+                for (let cursor = index - 1; cursor >= 0 && text[cursor] === "\\"; cursor--) {
+                    slashCount++;
+                }
+                return slashCount % 2 === 1;
+            }
+
+            function isQuoteCharacter(char) {
+                return char === "\"" || char === "'" || char === "`";
+            }
+
+            function findNearestQuoteContentRange(stage, point, directOnly) {
+                const line = getStageLine(stage, point.row);
+                const col = clamp(point.col, 0, Math.max(0, line.length - 1));
+                const quote = line[col];
+                if (directOnly && !isQuoteCharacter(quote)) {
+                    return null;
+                }
+                const quoteChars = directOnly ? [quote] : ["\"", "'", "`"];
+                const lineStart = ensureStageIndex(stage).lineStarts[point.row];
+                for (const quoteChar of quoteChars) {
+                    let left = -1;
+                    let right = -1;
+                    const searchLeftFrom = directOnly ? col - 1 : Math.min(point.col - 1, line.length - 1);
+                    for (let index = searchLeftFrom; index >= 0; index--) {
+                        if (line[index] === quoteChar && !isEscapedAt(line, index)) {
+                            left = index;
+                            break;
+                        }
+                    }
+                    const searchRightFrom = directOnly ? col + 1 : Math.max(point.col, 0);
+                    for (let index = searchRightFrom; index < line.length; index++) {
+                        if (line[index] === quoteChar && !isEscapedAt(line, index)) {
+                            right = index;
+                            break;
+                        }
+                    }
+                    if (directOnly && line[col] === quoteChar && !isEscapedAt(line, col)) {
+                        if (left !== -1 && right !== -1) {
+                            const useRight = right - col <= col - left;
+                            return useRight
+                                ? { start: lineStart + col + 1, end: lineStart + right, type: "quoted-content", delimiterStart: lineStart + col, delimiterEnd: lineStart + right + 1 }
+                                : { start: lineStart + left + 1, end: lineStart + col, type: "quoted-content", delimiterStart: lineStart + left, delimiterEnd: lineStart + col + 1 };
+                        }
+                        if (right !== -1) {
+                            return { start: lineStart + col + 1, end: lineStart + right, type: "quoted-content", delimiterStart: lineStart + col, delimiterEnd: lineStart + right + 1 };
+                        }
+                        if (left !== -1) {
+                            return { start: lineStart + left + 1, end: lineStart + col, type: "quoted-content", delimiterStart: lineStart + left, delimiterEnd: lineStart + col + 1 };
+                        }
+                    } else if (!directOnly && left !== -1 && right !== -1 && point.col > left && point.col < right) {
+                        return { start: lineStart + left + 1, end: lineStart + right, type: "quoted-content", delimiterStart: lineStart + left, delimiterEnd: lineStart + right + 1 };
+                    }
+                }
+                return null;
+            }
+
+            function addLineRegexCandidates(candidates, stage, row, col, regex, type, precedence, matchGroup) {
+                const line = getStageLine(stage, row);
+                const lineStart = ensureStageIndex(stage).lineStarts[row];
                 regex.lastIndex = 0;
                 let match;
                 while ((match = regex.exec(line))) {
@@ -3814,92 +3958,790 @@
                         regex.lastIndex++;
                         continue;
                     }
-                    const start = match.index;
-                    const end = start + match[0].length;
-                    if ((col >= start && col < end) || (col === end && end > start)) {
-                        candidates.push({ start, end, type });
+                    const groupText = matchGroup ? match[matchGroup] : match[0];
+                    if (!groupText) {
+                        continue;
+                    }
+                    const groupOffset = matchGroup ? match[0].indexOf(groupText) : 0;
+                    const start = match.index + groupOffset;
+                    const end = start + groupText.length;
+                    if (col >= start && col < end) {
+                        candidates.push({ start: lineStart + start, end: lineStart + end, type, precedence });
                     }
                 }
             }
 
-            function addBracketCandidates(candidates, line, col) {
-                const pairs = {
-                    "(": ")",
-                    "[": "]",
-                    "{": "}",
-                    "<": ">"
-                };
-                const stacks = {
-                    "(": [],
-                    "[": [],
-                    "{": [],
-                    "<": []
-                };
-                for (let index = 0; index < line.length; index++) {
-                    const char = line[index];
-                    if (pairs[char]) {
-                        stacks[char].push(index);
-                        continue;
-                    }
-                    const openChar = Object.keys(pairs).find((key) => pairs[key] === char);
-                    if (!openChar || !stacks[openChar].length) {
-                        continue;
-                    }
-                    const start = stacks[openChar].pop();
-                    const end = index + 1;
-                    if ((col >= start && col < end) || (col === end && end > start)) {
-                        let type = "bracket";
-                        if ((openChar === "{" || openChar === "[") && /[:,\[\]\{\}"]/.test(line.slice(start, end))) {
-                            type = "json";
-                        } else if (openChar === "<" && /^<\/?[A-Za-z_]/.test(line.slice(start, end))) {
-                            type = "xml";
+            function chooseGuidGroupRange(stage, point) {
+                const line = getStageLine(stage, point.row);
+                const lineStart = ensureStageIndex(stage).lineStarts[point.row];
+                const guidMatchers = [
+                    { regex: /\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\b/g, group: 0 },
+                    { regex: /(^|[^A-Za-z0-9-])([A-Z0-9]{4,8}(?:-[A-Z0-9]{4,8}){2,})(?![A-Za-z0-9-])/ig, group: 2 }
+                ];
+                for (const matcher of guidMatchers) {
+                    matcher.regex.lastIndex = 0;
+                    let match;
+                    while ((match = matcher.regex.exec(line))) {
+                        if (!match[0]) {
+                            matcher.regex.lastIndex++;
+                            continue;
                         }
-                        candidates.push({ start, end, type });
+                        const token = matcher.group ? match[matcher.group] : match[0];
+                        if (!token) {
+                            continue;
+                        }
+                        const tokenStart = match.index + (matcher.group ? match[0].indexOf(token) : 0);
+                        const tokenEnd = tokenStart + token.length;
+                        if (point.col < tokenStart || point.col >= tokenEnd) {
+                            continue;
+                        }
+                        let groupStart = point.col;
+                        let groupEnd = point.col + 1;
+                        if (line[point.col] === "-") {
+                            groupStart = point.col + 1 < tokenEnd ? point.col + 1 : point.col - 1;
+                            groupEnd = groupStart + 1;
+                        }
+                        while (groupStart > tokenStart && line[groupStart - 1] !== "-") {
+                            groupStart--;
+                        }
+                        while (groupEnd < tokenEnd && line[groupEnd] !== "-") {
+                            groupEnd++;
+                        }
+                        if (groupStart < groupEnd) {
+                            return { start: lineStart + groupStart, end: lineStart + groupEnd, type: "guid-group", precedence: 3 };
+                        }
                     }
                 }
+                return null;
             }
 
-            function selectionCandidatePriority(type) {
-                const priorities = {
-                    word: 10,
-                    number: 20,
-                    "time-span": 30,
-                    "date-time": 40,
-                    identifier: 50,
-                    path: 60,
-                    url: 70,
-                    quoted: 80,
-                    bracket: 90,
-                    json: 100,
-                    xml: 110
-                };
-                return priorities[type] || 0;
+            function chooseDateTimeComponentRange(stage, point) {
+                const line = getStageLine(stage, point.row);
+                const lineStart = ensureStageIndex(stage).lineStarts[point.row];
+                const dateTimeMatchers = [
+                    /\b\d{4}-\d{2}-\d{2}[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?\b/g,
+                    /\b\d{4}[\/.-]\d{1,2}[\/.-]\d{1,2}\s+\d{1,2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:\s*(?:AM|PM))?\b/ig,
+                    /\b\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:\s*(?:AM|PM))?\b/ig,
+                    /\b\d{4}[\/.-]\d{1,2}[\/.-]\d{1,2}\b/g,
+                    /\b\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\b/g,
+                    /\b\d{1,2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:\s*(?:AM|PM))?\b/ig
+                ];
+                for (const regex of dateTimeMatchers) {
+                    regex.lastIndex = 0;
+                    let match;
+                    while ((match = regex.exec(line))) {
+                        if (!match[0]) {
+                            regex.lastIndex++;
+                            continue;
+                        }
+                        const tokenStart = match.index;
+                        const tokenEnd = tokenStart + match[0].length;
+                        if (point.col < tokenStart || point.col >= tokenEnd) {
+                            continue;
+                        }
+                        let componentStart = point.col;
+                        let componentEnd = point.col + 1;
+                        if (!/\d/.test(line[componentStart])) {
+                            let nextDigit = componentStart + 1;
+                            while (nextDigit < tokenEnd && !/\d/.test(line[nextDigit])) {
+                                nextDigit++;
+                            }
+                            let previousDigit = componentStart - 1;
+                            while (previousDigit >= tokenStart && !/\d/.test(line[previousDigit])) {
+                                previousDigit--;
+                            }
+                            if (nextDigit < tokenEnd) {
+                                componentStart = nextDigit;
+                            } else if (previousDigit >= tokenStart) {
+                                componentStart = previousDigit;
+                            } else {
+                                continue;
+                            }
+                            componentEnd = componentStart + 1;
+                        }
+                        while (componentStart > tokenStart && /\d/.test(line[componentStart - 1])) {
+                            componentStart--;
+                        }
+                        while (componentEnd < tokenEnd && /\d/.test(line[componentEnd])) {
+                            componentEnd++;
+                        }
+                        return { start: lineStart + componentStart, end: lineStart + componentEnd, type: "date-time-component", precedence: 4 };
+                    }
+                }
+                return null;
             }
 
-            function chooseStructuralRange(line, col, preferMinimal) {
+            function chooseLineTokenRange(stage, point, preferMinimal) {
+                const line = getStageLine(stage, point.row);
+                if (point.col < 0 || point.col >= line.length) {
+                    return null;
+                }
+                if (preferMinimal) {
+                    const dateTimeComponent = chooseDateTimeComponentRange(stage, point);
+                    if (dateTimeComponent) {
+                        return dateTimeComponent;
+                    }
+                    const guidGroup = chooseGuidGroupRange(stage, point);
+                    if (guidGroup) {
+                        return guidGroup;
+                    }
+                }
                 const candidates = [];
-                addRegexCandidates(candidates, line, /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, "quoted", col);
-                addRegexCandidates(candidates, line, /\b(?:https?|ftp):\/\/[^\s"'<>]+/g, "url", col);
-                addRegexCandidates(candidates, line, /(?:[A-Za-z]:\\[^\s"'<>|]+|\\\\[^\s"'<>|]+|(?:\.{1,2}[\\/])?[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+)/g, "path", col);
-                addRegexCandidates(candidates, line, /\b\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})?)?\b|\b\d{1,2}\.\d{1,2}\.\d{4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?\b/g, "date-time", col);
-                addRegexCandidates(candidates, line, /\b-?(?:(?:\d+)\.)?\d{1,2}:\d{2}(?::\d{2})?(?:\.\d{1,3})?\b/g, "time-span", col);
-                addRegexCandidates(candidates, line, /\b-?\d+(?:[.,]\d+)?(?:e[+-]?\d+)?\b/ig, "number", col);
-                addRegexCandidates(candidates, line, /\b[A-Za-z_][\w]*(?:(?:\.|::)[A-Za-z_][\w-]*)+\b/g, "identifier", col);
-                addRegexCandidates(candidates, line, /\b[A-Za-z_][\w-]*\b/g, "word", col);
-                addRegexCandidates(candidates, line, /<\/?[A-Za-z_:][^>]*>/g, "xml", col);
-                addBracketCandidates(candidates, line, col);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /\b\d{4}-\d{2}-\d{2}[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?\b/g, "date-time", 4);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /\b\d{4}[\/.-]\d{1,2}[\/.-]\d{1,2}\s+\d{1,2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:\s*(?:AM|PM))?\b/ig, "date-time", 4);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /\b\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:\s*(?:AM|PM))?\b/ig, "date-time", 4);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\b/g, "guid", 3);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /(^|[^A-Za-z0-9-])([A-Z0-9]{4,8}(?:-[A-Z0-9]{4,8}){2,})(?![A-Za-z0-9-])/ig, "guid-like", 3, 2);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b/g, "ip", 3);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /\b\d+(?:\.\d+){2,}(?:[-+][A-Za-z0-9][A-Za-z0-9.-]*)?\b/g, "version", 3);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /\b(?:https?|ftp):\/\/[^\s"'<>]+/ig, "url", 3);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /(?:[A-Za-z]:\\[^\s"'<>|]+|\\\\[^\s"'<>|]+|(?:[\\/]|\.{1,2}[\\/])?[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+)/g, "path", 3);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /\b[A-Za-z_][A-Za-z0-9_]*(?:(?:::|\.)[A-Za-z_][A-Za-z0-9_]*)+\b/g, "nested-identifier", 3);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /\b\d{4}[\/.-]\d{1,2}[\/.-]\d{1,2}\b/g, "date", 3);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /\b\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\b/g, "date", 3);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /\b\d{1,2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:\s*(?:AM|PM))?\b/ig, "time", 3);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /(^|[^A-Za-z0-9_])([+-]?(?:(?:\d+\.\d*|\.\d+)(?:e[+-]?\d+)?|\d+e[+-]?\d+))/ig, "decimal", 2, 2);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /(^|[^A-Za-z0-9_])([+-]?(?:0x[0-9A-Fa-f]+|\d+))/g, "integer", 1, 2);
+                addLineRegexCandidates(candidates, stage, point.row, point.col, /(^|[^A-Za-z_])([A-Za-z_][A-Za-z0-9_]*)/g, "identifier", 1, 2);
                 if (!candidates.length) {
                     return null;
                 }
                 candidates.sort((left, right) => {
-                    const leftLength = left.end - left.start;
-                    const rightLength = right.end - right.start;
+                    const leftLength = textRangeLength(left);
+                    const rightLength = textRangeLength(right);
                     if (preferMinimal) {
-                        return leftLength - rightLength || selectionCandidatePriority(left.type) - selectionCandidatePriority(right.type) || left.start - right.start;
+                        return leftLength - rightLength || left.precedence - right.precedence || left.start - right.start;
                     }
-                    return selectionCandidatePriority(right.type) - selectionCandidatePriority(left.type) || rightLength - leftLength || left.start - right.start;
+                    return right.precedence - left.precedence || rightLength - leftLength || left.start - right.start;
                 });
                 return candidates[0];
+            }
+
+            function chooseWhitespaceRange(stage, point) {
+                const indexedStage = ensureStageIndex(stage);
+                const line = getStageLine(indexedStage, point.row);
+                const lineStart = indexedStage.lineStarts[point.row];
+                const lineEnd = indexedStage.lineEnds[point.row];
+                if (line.length === 0) {
+                    return { start: lineStart, end: point.row < indexedStage.lineCount - 1 ? lineEnd + 1 : lineEnd, type: "whitespace" };
+                }
+                if (point.col >= line.length) {
+                    let start = line.length;
+                    while (start > 0 && /[ \t]/.test(line[start - 1])) {
+                        start--;
+                    }
+                    if (start < line.length) {
+                        return { start: lineStart + start, end: point.row < indexedStage.lineCount - 1 ? lineEnd + 1 : lineEnd, type: "whitespace" };
+                    }
+                    return { start: lineEnd, end: lineEnd, type: "caret" };
+                }
+                if (!/[ \t]/.test(line[point.col])) {
+                    return null;
+                }
+                let start = point.col;
+                let end = point.col + 1;
+                while (start > 0 && /[ \t]/.test(line[start - 1])) {
+                    start--;
+                }
+                while (end < line.length && /[ \t]/.test(line[end])) {
+                    end++;
+                }
+                let rangeStart = lineStart + start;
+                let rangeEnd = lineStart + end;
+                if (start === 0 && point.row > 0) {
+                    rangeStart--;
+                }
+                if (end === line.length && point.row < indexedStage.lineCount - 1) {
+                    rangeEnd++;
+                }
+                return { start: rangeStart, end: rangeEnd, type: "whitespace" };
+            }
+
+            function scanBracketPairs(stage) {
+                const indexedStage = ensureStageIndex(stage);
+                if (indexedStage.selectionBracketPairs) {
+                    return indexedStage.selectionBracketPairs;
+                }
+                const text = indexedStage.text;
+                const openToClose = { "(": ")", "[": "]", "{": "}" };
+                const closeToOpen = { ")": "(", "]": "[", "}": "{" };
+                const stack = [];
+                const pairs = [];
+                let quote = "";
+                for (let index = 0; index < text.length; index++) {
+                    const char = text[index];
+                    if (quote) {
+                        if (char === "\n") {
+                            quote = "";
+                            continue;
+                        }
+                        if (char === quote && !isEscapedAt(text, index)) {
+                            quote = "";
+                        }
+                        continue;
+                    }
+                    if (isQuoteCharacter(char)) {
+                        quote = char;
+                        continue;
+                    }
+                    if (openToClose[char]) {
+                        stack.push({ char, index });
+                        continue;
+                    }
+                    const expectedOpen = closeToOpen[char];
+                    if (!expectedOpen) {
+                        continue;
+                    }
+                    for (let stackIndex = stack.length - 1; stackIndex >= 0; stackIndex--) {
+                        if (stack[stackIndex].char === expectedOpen) {
+                            const open = stack.splice(stackIndex, 1)[0];
+                            pairs.push({
+                                start: open.index,
+                                end: index + 1,
+                                contentStart: open.index + 1,
+                                contentEnd: index,
+                                type: char === "}" || char === "]" ? "json-bracket" : "bracket"
+                            });
+                            break;
+                        }
+                    }
+                }
+                indexedStage.selectionBracketPairs = pairs;
+                return pairs;
+            }
+
+            function getBracketPairAtDelimiter(stage, offset) {
+                const text = ensureStageIndex(stage).text;
+                const char = text[offset];
+                if (!"()[]{}".includes(char)) {
+                    return null;
+                }
+                const pairs = scanBracketPairs(stage);
+                return pairs.find((pair) => pair.start === offset || pair.end - 1 === offset) || null;
+            }
+
+            function isAngleTagContent(content) {
+                const trimmed = String(content || "").trim();
+                return !!trimmed && (
+                    /^\/?[A-Za-z_][\w:.-]*(?:\s|\/|$)/.test(trimmed) ||
+                    /^![A-Za-z][\s\S]*/.test(trimmed) ||
+                    /^\?xml\b/i.test(trimmed) ||
+                    /^!--[\s\S]*--$/.test(trimmed)
+                );
+            }
+
+            function scanAngleTagPairs(stage) {
+                const indexedStage = ensureStageIndex(stage);
+                if (indexedStage.selectionAngleTagPairs) {
+                    return indexedStage.selectionAngleTagPairs;
+                }
+                const text = indexedStage.text;
+                const pairs = [];
+                for (let index = 0; index < text.length; index++) {
+                    if (text[index] !== "<") {
+                        continue;
+                    }
+                    let quote = "";
+                    let end = -1;
+                    for (let cursor = index + 1; cursor < text.length; cursor++) {
+                        const char = text[cursor];
+                        if (quote) {
+                            if (char === quote && !isEscapedAt(text, cursor)) {
+                                quote = "";
+                            }
+                            continue;
+                        }
+                        if (char === "\"" || char === "'") {
+                            quote = char;
+                            continue;
+                        }
+                        if (char === ">") {
+                            end = cursor;
+                            break;
+                        }
+                        if (char === "<") {
+                            break;
+                        }
+                    }
+                    if (end === -1) {
+                        continue;
+                    }
+                    if (!isAngleTagContent(text.slice(index + 1, end))) {
+                        continue;
+                    }
+                    pairs.push({
+                        start: index,
+                        end: end + 1,
+                        contentStart: index + 1,
+                        contentEnd: end,
+                        type: "angle-tag"
+                    });
+                    index = end;
+                }
+                indexedStage.selectionAngleTagPairs = pairs;
+                return pairs;
+            }
+
+            function getAngleTagPairAtDelimiter(stage, offset) {
+                const text = ensureStageIndex(stage).text;
+                const char = text[offset];
+                if (char !== "<" && char !== ">") {
+                    return null;
+                }
+                return scanAngleTagPairs(stage).find((pair) => pair.start === offset || pair.end - 1 === offset) || null;
+            }
+
+            function parseXmlStructures(stage) {
+                const indexedStage = ensureStageIndex(stage);
+                if (indexedStage.selectionXmlStructures) {
+                    return indexedStage.selectionXmlStructures;
+                }
+                const text = indexedStage.text;
+                const tagRegex = /<\?xml\b[^?]*\?>|< !--[\s\S ]*?- ->|<!\[CDATA\[[\s\S]*?\]\]>|<\/?([A-Za-z_][\w:.-]*)(?:\s[^<>]*)?\/?>/g;
+                const stack = [];
+                const elements = [];
+                const tags = [];
+                let match;
+                while ((match = tagRegex.exec(text))) {
+                    const raw = match[0];
+                    const start = match.index;
+                    const end = start + raw.length;
+                    if (raw.startsWith("<?") || raw.startsWith("<!--") || raw.startsWith("<!")) {
+                        tags.push({ start, end, kind: "meta", raw });
+                        continue;
+                    }
+                    const name = match[1] || "";
+                    const closing = raw.startsWith("</");
+                    const selfClosing = /\/>$/.test(raw);
+                    tags.push({ start, end, kind: closing ? "close" : selfClosing ? "self" : "open", name, raw });
+                    if (!closing && !selfClosing) {
+                        stack.push({ name, start, end });
+                        continue;
+                    }
+                    if (selfClosing) {
+                        elements.push({ start, end, openTagEnd: end, closeStart: end, contentStart: end, contentEnd: end, name, selfClosing: true });
+                        continue;
+                    }
+                    for (let stackIndex = stack.length - 1; stackIndex >= 0; stackIndex--) {
+                        if (stack[stackIndex].name === name) {
+                            const open = stack.splice(stackIndex, 1)[0];
+                            elements.push({ start: open.start, end, openTagEnd: open.end, closeStart: start, contentStart: open.end, contentEnd: start, name, selfClosing: false });
+                            break;
+                        }
+                    }
+                }
+                elements.sort((left, right) => left.start - right.start || right.end - left.end);
+                indexedStage.selectionXmlStructures = { elements, tags };
+                return indexedStage.selectionXmlStructures;
+            }
+
+            function findXmlElementForTagOffset(stage, offset) {
+                const structures = parseXmlStructures(stage);
+                return structures.elements.find((element) =>
+                    offset === element.start ||
+                    offset === element.openTagEnd - 1 ||
+                    offset === element.closeStart ||
+                    offset === element.end - 1
+                ) || null;
+            }
+
+            function findTopLevelAssignmentBoundary(line, operatorStart, operatorEnd, direction) {
+                const openBrackets = "([{<";
+                const closeBrackets = ")]}>";
+                let quote = "";
+                let depth = 0;
+                if (direction < 0) {
+                    for (let index = operatorStart - 1; index >= 0; index--) {
+                        const char = line[index];
+                        if (quote) {
+                            if (char === quote && !isEscapedAt(line, index)) {
+                                quote = "";
+                            }
+                            continue;
+                        }
+                        if (isQuoteCharacter(char)) {
+                            quote = char;
+                            continue;
+                        }
+                        if (closeBrackets.includes(char)) {
+                            depth++;
+                            continue;
+                        }
+                        if (openBrackets.includes(char)) {
+                            if (depth === 0) {
+                                return index + 1;
+                            }
+                            depth--;
+                            continue;
+                        }
+                        if (depth === 0 && (char === "," || char === ";")) {
+                            return index + 1;
+                        }
+                    }
+                    return 0;
+                }
+                for (let index = operatorEnd; index < line.length; index++) {
+                    const char = line[index];
+                    if (quote) {
+                        if (char === quote && !isEscapedAt(line, index)) {
+                            quote = "";
+                        }
+                        continue;
+                    }
+                    if (isQuoteCharacter(char)) {
+                        quote = char;
+                        continue;
+                    }
+                    if (openBrackets.includes(char)) {
+                        depth++;
+                        continue;
+                    }
+                    if (closeBrackets.includes(char)) {
+                        if (depth === 0) {
+                            return index;
+                        }
+                        depth--;
+                        continue;
+                    }
+                    if (depth === 0 && (char === "," || char === ";")) {
+                        return index;
+                    }
+                }
+                return line.length;
+            }
+
+            function findTopLevelExpressionEnd(stage, startOffset) {
+                const text = ensureStageIndex(stage).text;
+                const openBrackets = "([{<";
+                const closeBrackets = ")]}>";
+                let quote = "";
+                let depth = 0;
+                for (let index = startOffset; index < text.length; index++) {
+                    const char = text[index];
+                    if (quote) {
+                        if (char === "\n") {
+                            quote = "";
+                            continue;
+                        }
+                        if (char === quote && !isEscapedAt(text, index)) {
+                            quote = "";
+                        }
+                        continue;
+                    }
+                    if (isQuoteCharacter(char)) {
+                        quote = char;
+                        continue;
+                    }
+                    if (openBrackets.includes(char)) {
+                        depth++;
+                        continue;
+                    }
+                    if (closeBrackets.includes(char)) {
+                        if (depth === 0) {
+                            return index;
+                        }
+                        depth--;
+                        continue;
+                    }
+                    if (depth === 0 && (char === "," || char === ";")) {
+                        return index;
+                    }
+                    if (depth === 0 && char === "\n") {
+                        let next = index + 1;
+                        while (next < text.length && /[ \t]/.test(text[next])) {
+                            next++;
+                        }
+                        if (text[next] !== ".") {
+                            return index;
+                        }
+                    }
+                }
+                return text.length;
+            }
+
+            function getAssignmentOperators() {
+                return ["===", "!==", "==", "=>", "!=", "<=", ">=", "="];
+            }
+
+            function isAssignmentOperatorBoundary(line, start, end, operator) {
+                const operatorChars = "=!<>";
+                if (operator === "=") {
+                    return !operatorChars.includes(line[start - 1] || "") && !operatorChars.includes(line[end] || "");
+                }
+                return !operatorChars.includes(line[start - 1] || "") && !operatorChars.includes(line[end] || "");
+            }
+
+            function findAssignmentOperatorAt(line, col) {
+                const operators = getAssignmentOperators();
+                for (const operator of operators) {
+                    let searchFrom = 0;
+                    let index = line.indexOf(operator, searchFrom);
+                    while (index !== -1) {
+                        const end = index + operator.length;
+                        if (col >= index && col < end) {
+                            if (!isAssignmentOperatorBoundary(line, index, end, operator)) {
+                                break;
+                            }
+                            return { start: index, end, operator };
+                        }
+                        searchFrom = index + 1;
+                        index = line.indexOf(operator, searchFrom);
+                    }
+                }
+                return null;
+            }
+
+            function findBracketPairAdjacentToOperator(stage, operatorStart, operatorEnd, side) {
+                const text = ensureStageIndex(stage).text;
+                const pairs = scanBracketPairs(stage);
+                if (side === "before") {
+                    let bracketEnd = operatorStart;
+                    while (bracketEnd > 0 && /\s/.test(text[bracketEnd - 1])) {
+                        bracketEnd--;
+                    }
+                    return pairs.find((pair) => pair.end === bracketEnd) || null;
+                }
+                let bracketStart = operatorEnd;
+                while (bracketStart < text.length && /\s/.test(text[bracketStart])) {
+                    bracketStart++;
+                }
+                return pairs.find((pair) => pair.start === bracketStart) || null;
+            }
+
+            function chooseAssignmentRangeForOperator(stage, operator) {
+                const indexedStage = ensureStageIndex(stage);
+                const operatorStartPoint = textOffsetToPoint(stage, operator.start);
+                const line = getStageLine(stage, operatorStartPoint.row);
+                const lineStart = indexedStage.lineStarts[operatorStartPoint.row];
+                const localOperatorStart = operator.start - lineStart;
+                const localOperatorEnd = operator.end - lineStart;
+                let start = lineStart + findTopLevelAssignmentBoundary(line, localOperatorStart, localOperatorEnd, -1);
+                let end = findTopLevelExpressionEnd(stage, operator.end);
+                while (start < end && /\s/.test(indexedStage.text[start])) {
+                    start++;
+                }
+                while (end > start && /\s/.test(indexedStage.text[end - 1])) {
+                    end--;
+                }
+                const beforePair = findBracketPairAdjacentToOperator(stage, operator.start, operator.end, "before");
+                if (beforePair) {
+                    start = Math.min(start, beforePair.start);
+                }
+                return start < end && start <= operator.start && operator.end <= end
+                    ? { start, end, type: "assignment", operator: operator.operator }
+                    : null;
+            }
+
+            function chooseAssignmentRange(stage, point) {
+                const line = getStageLine(stage, point.row);
+                const operator = findAssignmentOperatorAt(line, point.col);
+                if (!operator) return null;
+                const lineStart = ensureStageIndex(stage).lineStarts[point.row];
+                return chooseAssignmentRangeForOperator(stage, {
+                    start: lineStart + operator.start,
+                    end: lineStart + operator.end,
+                    operator: operator.operator
+                });
+            }
+
+            function chooseDirectStructureRange(stage, point) {
+                const offset = pointToTextOffset(stage, point);
+                const text = ensureStageIndex(stage).text;
+                const char = text[offset];
+                if ("=!<>".includes(char)) {
+                    const assignmentRange = chooseAssignmentRange(stage, point);
+                    if (assignmentRange) {
+                        return assignmentRange;
+                    }
+                }
+                if (isQuoteCharacter(char)) {
+                    return findNearestQuoteContentRange(stage, point, true);
+                }
+                if (char === "<" || char === ">") {
+                    const anglePair = getAngleTagPairAtDelimiter(stage, offset);
+                    if (anglePair) {
+                        return { start: anglePair.contentStart, end: anglePair.contentEnd, type: "angle-tag-content" };
+                    }
+                    const element = findXmlElementForTagOffset(stage, offset);
+                    if (element) {
+                        return { start: element.contentStart, end: element.contentEnd, type: "xml-content" };
+                    }
+                    return null;
+                }
+                const bracketPair = getBracketPairAtDelimiter(stage, offset);
+                if (bracketPair) {
+                    return { start: bracketPair.contentStart, end: bracketPair.contentEnd, type: bracketPair.type + "-content" };
+                }
+                return null;
+            }
+
+            function getXmlExpansionRanges(stage, currentRange) {
+                const structures = parseXmlStructures(stage);
+                const ranges = [];
+                const elements = structures.elements;
+                for (const element of elements) {
+                    const content = { start: element.contentStart, end: element.contentEnd, type: "xml-content" };
+                    const full = { start: element.start, end: element.end, type: "xml-element" };
+                    if (rangesEqual(currentRange, content)) {
+                        ranges.push(full);
+                    } else if (rangeContainsRange(content, currentRange) && !rangesEqual(content, currentRange)) {
+                        ranges.push(content);
+                    }
+                    if (rangesEqual(currentRange, full)) {
+                        const topLevel = elements.filter((candidate) =>
+                            !elements.some((other) => other !== candidate && other.start < candidate.start && other.end > candidate.end)
+                        );
+                        if (topLevel.length === 1 && topLevel[0] === element) {
+                            const header = ensureStageIndex(stage).text.match(/^\s*<\?xml\b[^?]*\?>\s*/);
+                            if (header && header[0].length <= element.start) {
+                                ranges.push({ start: 0, end: element.end, type: "xml-document" });
+                            }
+                        } else if (topLevel.length > 1 && topLevel.includes(element)) {
+                            const sorted = topLevel.slice().sort((left, right) => left.start - right.start);
+                            let first = sorted.indexOf(element);
+                            let last = first;
+                            const text = ensureStageIndex(stage).text;
+                            while (first > 0 && /^\s*$/.test(text.slice(sorted[first - 1].end, sorted[first].start))) {
+                                first--;
+                            }
+                            while (last < sorted.length - 1 && /^\s*$/.test(text.slice(sorted[last].end, sorted[last + 1].start))) {
+                                last++;
+                            }
+                            if (last > first) {
+                                ranges.push({ start: sorted[first].start, end: sorted[last].end, type: "xml-sequence" });
+                            }
+                        }
+                    }
+                }
+                return ranges;
+            }
+
+            function getStructuralRangesAtPoint(stage, point) {
+                const offset = pointToTextOffset(stage, point);
+                const ranges = [];
+                const quoteRange = findNearestQuoteContentRange(stage, point, false);
+                if (quoteRange) {
+                    ranges.push(quoteRange, { start: quoteRange.delimiterStart, end: quoteRange.delimiterEnd, type: "quoted" });
+                }
+                for (const pair of scanBracketPairs(stage)) {
+                    const content = { start: pair.contentStart, end: pair.contentEnd, type: pair.type + "-content" };
+                    const full = { start: pair.start, end: pair.end, type: pair.type };
+                    if (rangeContainsOffset(content, offset)) {
+                        ranges.push(content);
+                    }
+                    if (rangeContainsOffset(full, offset)) {
+                        ranges.push(full);
+                    }
+                }
+                for (const pair of scanAngleTagPairs(stage)) {
+                    const content = { start: pair.contentStart, end: pair.contentEnd, type: "angle-tag-content" };
+                    const full = { start: pair.start, end: pair.end, type: "angle-tag" };
+                    if (rangeContainsOffset(content, offset)) {
+                        ranges.push(content);
+                    }
+                    if (rangeContainsOffset(full, offset)) {
+                        ranges.push(full);
+                    }
+                }
+                for (const element of parseXmlStructures(stage).elements) {
+                    const content = { start: element.contentStart, end: element.contentEnd, type: "xml-content" };
+                    const full = { start: element.start, end: element.end, type: "xml-element" };
+                    if (rangeContainsOffset(content, offset)) {
+                        ranges.push(content);
+                    }
+                    if (rangeContainsOffset(full, offset)) {
+                        ranges.push(full);
+                    }
+                }
+                const token = chooseLineTokenRange(stage, point, true);
+                if (token && rangeContainsOffset(token, offset)) {
+                    ranges.push(token);
+                }
+                return ranges.filter((range) => range.end >= range.start);
+            }
+
+            function chooseExpansionRange(stage, point, currentRange) {
+                const offset = pointToTextOffset(stage, point);
+                const pointRanges = getStructuralRangesAtPoint(stage, point);
+                const directRanges = pointRanges
+                    .filter((range) => rangeContainsOffset(range, offset) && rangeContainsRange(range, currentRange) && !rangesEqual(range, currentRange));
+                const xmlRanges = getXmlExpansionRanges(stage, currentRange);
+                directRanges.push(...xmlRanges);
+                directRanges.sort((left, right) => textRangeLength(left) - textRangeLength(right) || left.start - right.start);
+                return directRanges[0] || null;
+            }
+
+            function chooseShrinkRange(stage, point, currentRange) {
+                const offset = pointToTextOffset(stage, point);
+                const candidates = getStructuralRangesAtPoint(stage, point)
+                    .filter((range) =>
+                        rangeContainsRange(currentRange, range) &&
+                        rangeContainsOffset(range, offset) &&
+                        !rangesEqual(range, currentRange) &&
+                        textRangeLength(range) < textRangeLength(currentRange)
+                    );
+                candidates.sort((left, right) => textRangeLength(right) - textRangeLength(left) || left.start - right.start);
+                return candidates[0] || null;
+            }
+
+            function chooseStructuralRange(stage, point, preferMinimal) {
+                const direct = chooseDirectStructureRange(stage, point);
+                if (direct) {
+                    return normalizeTextRange(stage, direct);
+                }
+                const whitespace = chooseWhitespaceRange(stage, point);
+                if (whitespace) {
+                    return normalizeTextRange(stage, whitespace);
+                }
+                const token = chooseLineTokenRange(stage, point, preferMinimal);
+                return token ? normalizeTextRange(stage, token) : null;
+            }
+
+            function chooseRepeatedDelimiterExpansion(stage, point, currentRange) {
+                const clickedOffset = pointToTextOffset(stage, point);
+                const text = ensureStageIndex(stage).text;
+                const leftQuote = text[currentRange.start - 1];
+                const rightQuote = text[currentRange.end];
+                if ((clickedOffset === currentRange.start - 1 || clickedOffset === currentRange.end) &&
+                    isQuoteCharacter(leftQuote) &&
+                    leftQuote === rightQuote &&
+                    !isEscapedAt(text, currentRange.start - 1) &&
+                    !isEscapedAt(text, currentRange.end)) {
+                    return { start: currentRange.start - 1, end: currentRange.end + 1, type: "quoted" };
+                }
+                const bracketPair = getBracketPairAtDelimiter(stage, clickedOffset);
+                if (bracketPair &&
+                    currentRange.start === bracketPair.contentStart &&
+                    currentRange.end === bracketPair.contentEnd) {
+                    return { start: bracketPair.start, end: bracketPair.end, type: bracketPair.type };
+                }
+                const anglePair = getAngleTagPairAtDelimiter(stage, clickedOffset);
+                if (anglePair &&
+                    currentRange.start === anglePair.contentStart &&
+                    currentRange.end === anglePair.contentEnd) {
+                    return { start: anglePair.start, end: anglePair.end, type: "angle-tag" };
+                }
+                const direct = chooseDirectStructureRange(stage, point);
+                if (!direct || !rangesEqual(normalizeTextRange(stage, direct), currentRange)) {
+                    return null;
+                }
+                if (direct.type === "quoted-content" && direct.delimiterStart != null && direct.delimiterEnd != null) {
+                    return { start: direct.delimiterStart, end: direct.delimiterEnd, type: "quoted" };
+                }
+                const candidates = getStructuralRangesAtPoint(stage, point)
+                    .filter((range) =>
+                        rangeContainsOffset(range, clickedOffset) &&
+                        rangeContainsRange(range, currentRange) &&
+                        !rangesEqual(range, currentRange) &&
+                        textRangeLength(range) > textRangeLength(currentRange)
+                    );
+                candidates.sort((left, right) => textRangeLength(left) - textRangeLength(right) || left.start - right.start);
+                return candidates[0] || null;
+            }
+
+            function isViewportGutterClick(event) {
+                const rect = elements.viewerViewport.getBoundingClientRect();
+                return event.clientX >= rect.left && event.clientX < rect.left + state.view.gutterWidth;
             }
 
             function beginSelection(event) {
@@ -3928,9 +4770,26 @@
                     return;
                 }
                 event.preventDefault();
+                if (!event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && isViewportGutterClick(event)) {
+                    endSelection();
+                    clearSelection();
+                    return;
+                }
                 const point = getRowAndColumnFromPointer(event, stage);
-                const line = getStageLine(stage, point.row);
-                const structuralRange = chooseStructuralRange(line, point.col, event.ctrlKey);
+                const currentRange = selectionToTextRange(stage, state.selection);
+                const clickedOffset = pointToTextOffset(stage, point);
+                let selectionGrowthRange = null;
+                if (!event.shiftKey && currentRange) {
+                    if (!event.ctrlKey) {
+                        selectionGrowthRange = chooseRepeatedDelimiterExpansion(stage, point, currentRange);
+                    }
+                    if (!selectionGrowthRange && selectionRangeContainsOffset(currentRange, clickedOffset)) {
+                        selectionGrowthRange = event.ctrlKey
+                            ? chooseShrinkRange(stage, point, currentRange)
+                            : chooseExpansionRange(stage, point, currentRange);
+                    }
+                }
+                const structuralRange = selectionGrowthRange || chooseStructuralRange(stage, point, event.ctrlKey);
                 const anchor = event.shiftKey ? selectionAnchorPoint() : { row: point.row, col: point.col };
                 state.pointerSelection = {
                     anchor,
@@ -3938,16 +4797,17 @@
                     moved: false
                 };
                 if (event.shiftKey) {
-                    const targetPoint = structuralRange && comparePoints(anchor, { row: point.row, col: structuralRange.start }) <= 0
-                        ? { row: point.row, col: structuralRange.end }
+                    const rangeStartPoint = structuralRange ? textOffsetToPoint(stage, structuralRange.start) : null;
+                    const rangeEndPoint = structuralRange ? textOffsetToPoint(stage, structuralRange.end) : null;
+                    const targetPoint = structuralRange && comparePoints(anchor, rangeStartPoint) <= 0
+                        ? rangeEndPoint
                         : structuralRange
-                            ? { row: point.row, col: structuralRange.start }
+                            ? rangeStartPoint
                             : point;
                     applySelectionFromPoints(anchor, targetPoint);
                     setCursor(targetPoint, stage);
                 } else if (structuralRange) {
-                    state.selection = { startRow: point.row, startCol: structuralRange.start, endRow: point.row, endCol: structuralRange.end };
-                    setCursor({ row: point.row, col: structuralRange.end }, stage);
+                    applyTextRangeSelection(stage, structuralRange);
                 } else {
                     state.selection = { startRow: point.row, startCol: point.col, endRow: point.row, endCol: point.col };
                     setCursor(point, stage);
@@ -5155,6 +6015,13 @@
                     if (!selection) return;
                     event.preventDefault();
                     copySelection().catch(handleError);
+                    return;
+                }
+                if (event.ctrlKey && event.key === "Escape") {
+                    if (state.selection) {
+                        event.preventDefault();
+                        clearSelection();
+                    }
                     return;
                 }
                 if (!event.ctrlKey && !event.altKey && event.key === "Enter") {
