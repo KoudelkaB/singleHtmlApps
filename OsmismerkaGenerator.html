@@ -354,6 +354,11 @@
             pointer-events: none;
             z-index: 4;
             overflow: visible;
+            display: none;
+        }
+
+        .board-stage.show-solution .solution-arrows {
+            display: block;
         }
 
         .solution-arrow {
@@ -389,12 +394,12 @@
             line-height: 1;
         }
 
-        .cell.solution-word {
+        .board-stage.show-solution .cell.solution-word {
             background: var(--accent-soft);
             color: #173f42;
         }
 
-        .cell.solution-secret {
+        .board-stage.show-solution .cell.solution-secret {
             background: var(--warm-soft);
             color: #7f341e;
             outline: 2px solid rgba(185, 93, 50, 0.35);
@@ -928,7 +933,6 @@ dew</textarea>
 
     <script>
         const alphabet = Array.from("ABCDEFGHIJKLMNOPQRSTUVWXYZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ");
-        const colorClasses = ["solution-word"];
         const storageKey = "osmismerkaGenerator.settings.v1";
         const translations = {
             cs: {
@@ -1084,6 +1088,7 @@ dew</textarea>
             restoringHistory: false,
             statsTimer: 0,
             settingsTimer: 0,
+            saveTimer: 0,
             printSheet: null,
             generationId: 0
         };
@@ -1299,6 +1304,9 @@ dew</textarea>
         }
 
         function resetSettings() {
+            window.clearTimeout(state.statsTimer);
+            window.clearTimeout(state.settingsTimer);
+            window.clearTimeout(state.saveTimer);
             clearSavedSettings();
             applySettings(defaultSettings);
             state.puzzle = null;
@@ -1821,10 +1829,11 @@ dew</textarea>
             els.inputMessage.className = "message" + (notes.length ? "" : " success");
         }
 
-        function makeBoard(grid, showSolution) {
+        function makeBoard(grid) {
             const rows = grid.length;
             const cols = grid[0].length;
             const board = document.createElement("div");
+            const fragment = document.createDocumentFragment();
             board.className = "board";
             board.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
             board.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
@@ -1834,14 +1843,15 @@ dew</textarea>
                 for (const cell of row) {
                     const div = document.createElement("div");
                     div.className = "cell";
-                    if (showSolution && cell.word) div.classList.add(colorClasses[0]);
-                    if (showSolution && cell.secret) div.classList.add("solution-secret");
+                    if (cell.word) div.classList.add("solution-word");
+                    if (cell.secret) div.classList.add("solution-secret");
                     if (cell.blocked) div.classList.add("blocked");
                     div.textContent = cell.blocked ? "" : cell.letter;
-                    board.append(div);
+                    fragment.append(div);
                 }
             }
 
+            board.append(fragment);
             return board;
         }
 
@@ -1850,11 +1860,9 @@ dew</textarea>
             const cols = grid[0].length;
             const boardStage = document.createElement("div");
             boardStage.className = "board-stage";
+            boardStage.classList.toggle("show-solution", showSolution);
             boardStage.style.aspectRatio = `${cols} / ${rows}`;
-            boardStage.append(makeBoard(grid, showSolution));
-            if (showSolution) {
-                boardStage.append(makeSolutionArrows(placements, rows, cols));
-            }
+            boardStage.append(makeBoard(grid), makeSolutionArrows(placements, rows, cols));
             return boardStage;
         }
 
@@ -1864,8 +1872,15 @@ dew</textarea>
             const boardStage = document.createElement("div");
             boardStage.className = "print-board-stage";
             boardStage.style.aspectRatio = `${cols} / ${rows}`;
-            boardStage.append(makeBoard(grid, false));
+            boardStage.append(makeBoard(grid));
             return boardStage;
+        }
+
+        function setSolutionVisible(showSolution) {
+            const boardStage = els.workspace.querySelector(".board-stage");
+            if (boardStage) {
+                boardStage.classList.toggle("show-solution", showSolution);
+            }
         }
 
         function getPrintCount() {
@@ -2228,6 +2243,11 @@ dew</textarea>
             }, delay);
         }
 
+        function scheduleSettingsSave(delay = 120) {
+            window.clearTimeout(state.saveTimer);
+            state.saveTimer = window.setTimeout(saveSettings, delay);
+        }
+
         function flushSettingsCommit() {
             window.clearTimeout(state.settingsTimer);
             saveSettings();
@@ -2249,25 +2269,26 @@ dew</textarea>
 
         for (const input of [els.diagonal, els.backward]) {
             input.addEventListener("change", () => {
-                flushStatsUpdate();
-                flushSettingsCommit();
+                scheduleStatsUpdate();
+                scheduleSettingsCommit();
             });
         }
 
         els.generate.addEventListener("click", () => {
             flushStatsUpdate();
             window.clearTimeout(state.settingsTimer);
+            window.clearTimeout(state.saveTimer);
             saveSettings();
             runGenerate();
         });
         els.reset.addEventListener("click", resetSettings);
         els.solution.addEventListener("change", () => {
-            saveSettings();
-            if (state.puzzle) renderPuzzle(state.puzzle);
+            setSolutionVisible(els.solution.checked);
+            scheduleSettingsSave();
         });
         els.printCount.addEventListener("change", () => {
-            saveSettings();
             clearPrintSheet();
+            scheduleSettingsSave();
         });
         els.print.addEventListener("click", () => {
             saveSettings();
@@ -2282,6 +2303,7 @@ dew</textarea>
         window.addEventListener("afterprint", clearPrintSheet);
         window.addEventListener("beforeunload", () => {
             window.clearTimeout(state.settingsTimer);
+            window.clearTimeout(state.saveTimer);
             saveSettings();
         });
         window.addEventListener("popstate", event => {
