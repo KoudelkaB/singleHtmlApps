@@ -1081,7 +1081,11 @@ dew</textarea>
             busy: false,
             dirtyHistoryActive: false,
             lastGeneratedSettingsKey: "",
-            restoringHistory: false
+            restoringHistory: false,
+            statsTimer: 0,
+            settingsTimer: 0,
+            printSheet: null,
+            generationId: 0
         };
 
         const els = {
@@ -1209,8 +1213,9 @@ dew</textarea>
             }
         }
 
-        function settingsKey(settings) {
-            return JSON.stringify(settings);
+        function generationSettingsKey(settings) {
+            const { solution, printCount, ...generationSettings } = settings;
+            return JSON.stringify(generationSettings);
         }
 
         function makeHistoryState(kind, settings = captureSettings()) {
@@ -1225,9 +1230,8 @@ dew</textarea>
             history.replaceState(makeHistoryState(kind, settings), "");
         }
 
-        function markGeneratedHistory() {
-            const settings = captureSettings();
-            const key = settingsKey(settings);
+        function markGeneratedHistory(settings = captureSettings()) {
+            const key = generationSettingsKey(settings);
             const hasPreviousGeneratedState = Boolean(state.lastGeneratedSettingsKey);
             const changedSinceLastGeneration = key !== state.lastGeneratedSettingsKey;
 
@@ -1247,7 +1251,7 @@ dew</textarea>
             if (state.restoringHistory) return;
 
             const settings = captureSettings();
-            if (settingsKey(settings) === state.lastGeneratedSettingsKey) {
+            if (generationSettingsKey(settings) === state.lastGeneratedSettingsKey) {
                 return;
             }
 
@@ -1298,6 +1302,7 @@ dew</textarea>
             clearSavedSettings();
             applySettings(defaultSettings);
             state.puzzle = null;
+            clearPrintSheet();
             updateStats();
             runGenerate();
         }
@@ -1631,17 +1636,17 @@ dew</textarea>
             return grid.map(row => row.map(cell => ({ ...cell })));
         }
 
-        function buildPuzzle(config) {
+        function buildPuzzle(config, messages = text) {
             const area = config.rows * config.cols;
             const targetCovered = area - config.secretLetters.length;
             const maxRequiredLength = Math.max(0, ...config.required.map(wordLength));
             const maxLine = Math.max(config.rows, config.cols);
 
-            if (!config.secretLetters.length) throw new Error(text.emptySecret);
-            if (config.secretLetters.length >= area) throw new Error(text.secretTooLong);
-            if (config.required.length === 0) throw new Error(text.needRequired);
-            if (maxRequiredLength > maxLine) throw new Error(text.requiredTooLong);
-            if (targetCovered < config.required.length) throw new Error(text.gridTooSmall);
+            if (!config.secretLetters.length) throw new Error(messages.emptySecret);
+            if (config.secretLetters.length >= area) throw new Error(messages.secretTooLong);
+            if (config.required.length === 0) throw new Error(messages.needRequired);
+            if (maxRequiredLength > maxLine) throw new Error(messages.requiredTooLong);
+            if (targetCovered < config.required.length) throw new Error(messages.gridTooSmall);
 
             let best = null;
             const dirs = config.dirs;
@@ -1688,10 +1693,10 @@ dew</textarea>
                 }
             }
 
-            if (!best) throw new Error(text.requiredFailed);
+            if (!best) throw new Error(messages.requiredFailed);
             const open = collectOpenCells(best.grid);
             if (open.length < config.secretLetters.length) {
-                throw new Error(text.wordsTooMany);
+                throw new Error(messages.wordsTooMany);
             }
             const extra = fillSecret(best.grid, config.secretLetters);
             return {
@@ -1869,6 +1874,19 @@ dew</textarea>
             return allowed.includes(value) ? value : 1;
         }
 
+        function clearPrintSheet() {
+            if (!state.printSheet) return;
+            state.printSheet.remove();
+            state.printSheet = null;
+        }
+
+        function preparePrintSheet() {
+            if (!state.puzzle) return;
+            clearPrintSheet();
+            state.printSheet = makePrintSheet(state.puzzle, getUsedWords(state.puzzle));
+            els.workspace.append(state.printSheet);
+        }
+
         function makePrintSheet(puzzle, words) {
             const count = getPrintCount();
             const sheet = document.createElement("div");
@@ -1930,7 +1948,8 @@ dew</textarea>
                 makeSection(text.wordsToFind, makeSimpleWordList(usedWords), "print-only")
             );
 
-            els.workspace.replaceChildren(boardWrap, side, makePrintSheet(puzzle, usedWords));
+            clearPrintSheet();
+            els.workspace.replaceChildren(boardWrap, side);
             setStatus(
                 puzzle.exact ? text.done : text.partialDone,
                 text.generatedDetail(rows, cols, usedRequired.length, usedOptional.length, puzzle.spread),
@@ -2002,6 +2021,104 @@ dew</textarea>
             return letters;
         }
 
+        function getBuildErrorMessages() {
+            return {
+                emptySecret: text.emptySecret,
+                secretTooLong: text.secretTooLong,
+                needRequired: text.needRequired,
+                requiredTooLong: text.requiredTooLong,
+                gridTooSmall: text.gridTooSmall,
+                requiredFailed: text.requiredFailed,
+                wordsTooMany: text.wordsTooMany
+            };
+        }
+
+        function makeGeneratorWorker() {
+            const functions = [
+                wordLength,
+                hashString,
+                mulberry32,
+                randomInt,
+                shuffle,
+                createGrid,
+                inBounds,
+                inspectPlacement,
+                findCandidates,
+                applyPlacement,
+                undoPlacement,
+                countCovered,
+                directionKey,
+                directionCounts,
+                directionBalanceScore,
+                directionSpread,
+                placeRequiredWords,
+                optionalCandidates,
+                finishWithBacktracking,
+                placeOptionalWords,
+                collectOpenCells,
+                fillSecret,
+                clonePuzzleGrid,
+                buildPuzzle
+            ].map(fn => fn.toString()).join("\n\n");
+
+            const source = `
+                ${functions}
+
+                self.onmessage = event => {
+                    try {
+                        self.postMessage({
+                            ok: true,
+                            puzzle: buildPuzzle(event.data.config, event.data.messages)
+                        });
+                    } catch (error) {
+                        self.postMessage({
+                            ok: false,
+                            message: error && error.message ? error.message : String(error)
+                        });
+                    }
+                };
+            `;
+            const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+            const worker = new Worker(url);
+            worker.objectUrl = url;
+            return worker;
+        }
+
+        function buildPuzzleOffThread(config) {
+            if (!window.Worker) {
+                return Promise.resolve(buildPuzzle(config));
+            }
+
+            return new Promise((resolve, reject) => {
+                let worker;
+                try {
+                    worker = makeGeneratorWorker();
+                } catch (error) {
+                    resolve(buildPuzzle(config));
+                    return;
+                }
+
+                const disposeWorker = () => {
+                    worker.terminate();
+                    URL.revokeObjectURL(worker.objectUrl);
+                };
+
+                worker.onmessage = event => {
+                    disposeWorker();
+                    if (event.data && event.data.ok) {
+                        resolve(event.data.puzzle);
+                    } else {
+                        reject(new Error((event.data && event.data.message) || text.requiredFailed));
+                    }
+                };
+                worker.onerror = error => {
+                    disposeWorker();
+                    reject(new Error(error.message || text.requiredFailed));
+                };
+                worker.postMessage({ config, messages: getBuildErrorMessages() });
+            });
+        }
+
         function runGenerate(options = {}) {
             if (state.busy) {
                 if (typeof options.after === "function") {
@@ -2014,30 +2131,53 @@ dew</textarea>
             setStatus(text.generatingTitle, text.generatingDetail, "", text.runningBadge);
 
             window.setTimeout(() => {
+                const generationId = ++state.generationId;
+                let config;
+                let generatedSettings;
+                let generatedKey;
                 try {
-                    const config = readConfig();
+                    config = readConfig();
                     els.rows.value = config.rows;
                     els.cols.value = config.cols;
                     els.attempts.value = config.attempts;
-                    const puzzle = buildPuzzle(config);
-                    state.puzzle = puzzle;
-                    renderPuzzle(puzzle);
-                    updateStats();
-                    saveSettings();
-                    if (options.recordHistory !== false) {
-                        markGeneratedHistory();
-                    }
+                    generatedSettings = captureSettings();
+                    generatedKey = generationSettingsKey(generatedSettings);
                 } catch (error) {
                     state.puzzle = null;
+                    clearPrintSheet();
                     els.workspace.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
                     setStatus(text.failedTitle, error.message, "bad", text.errorBadge);
-                } finally {
                     state.busy = false;
                     els.generate.disabled = false;
                     if (typeof options.after === "function") {
                         options.after();
                     }
+                    return;
                 }
+
+                buildPuzzleOffThread(config).then(puzzle => {
+                    if (generationId !== state.generationId) return;
+                    state.puzzle = puzzle;
+                    renderPuzzle(puzzle);
+                    updateStats();
+                    saveSettings();
+                    if (options.recordHistory !== false && generationSettingsKey(captureSettings()) === generatedKey) {
+                        markGeneratedHistory(generatedSettings);
+                    }
+                }).catch(error => {
+                    if (generationId !== state.generationId) return;
+                    state.puzzle = null;
+                    clearPrintSheet();
+                    els.workspace.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+                    setStatus(text.failedTitle, error.message, "bad", text.errorBadge);
+                }).finally(() => {
+                    if (generationId !== state.generationId) return;
+                    state.busy = false;
+                    els.generate.disabled = false;
+                    if (typeof options.after === "function") {
+                        options.after();
+                    }
+                });
             }, 20);
         }
 
@@ -2070,46 +2210,80 @@ dew</textarea>
             URL.revokeObjectURL(url);
         }
 
-        for (const input of [els.secret, els.required, els.optional, els.rows, els.cols, els.attempts, els.seed]) {
-            input.addEventListener("change", () => {
-                updateStats();
+        function scheduleStatsUpdate(delay = 120) {
+            window.clearTimeout(state.statsTimer);
+            state.statsTimer = window.setTimeout(updateStats, delay);
+        }
+
+        function flushStatsUpdate() {
+            window.clearTimeout(state.statsTimer);
+            updateStats();
+        }
+
+        function scheduleSettingsCommit(delay = 240) {
+            window.clearTimeout(state.settingsTimer);
+            state.settingsTimer = window.setTimeout(() => {
                 saveSettings();
                 markDirtyHistory();
+            }, delay);
+        }
+
+        function flushSettingsCommit() {
+            window.clearTimeout(state.settingsTimer);
+            saveSettings();
+            markDirtyHistory();
+        }
+
+        function scheduleInputUpdate() {
+            scheduleStatsUpdate();
+            scheduleSettingsCommit();
+        }
+
+        for (const input of [els.secret, els.required, els.optional, els.rows, els.cols, els.attempts, els.seed]) {
+            input.addEventListener("input", scheduleInputUpdate);
+            input.addEventListener("change", () => {
+                flushStatsUpdate();
+                flushSettingsCommit();
             });
         }
 
         for (const input of [els.diagonal, els.backward]) {
             input.addEventListener("change", () => {
-                updateStats();
-                saveSettings();
-                markDirtyHistory();
+                flushStatsUpdate();
+                flushSettingsCommit();
             });
         }
 
         els.generate.addEventListener("click", () => {
+            flushStatsUpdate();
+            window.clearTimeout(state.settingsTimer);
             saveSettings();
             runGenerate();
         });
         els.reset.addEventListener("click", resetSettings);
         els.solution.addEventListener("change", () => {
             saveSettings();
-            markDirtyHistory();
             if (state.puzzle) renderPuzzle(state.puzzle);
         });
         els.printCount.addEventListener("change", () => {
             saveSettings();
-            markDirtyHistory();
-            if (state.puzzle) renderPuzzle(state.puzzle);
+            clearPrintSheet();
         });
         els.print.addEventListener("click", () => {
             saveSettings();
+            preparePrintSheet();
             window.print();
         });
         els.export.addEventListener("click", () => {
             saveSettings();
             exportTxt();
         });
-        window.addEventListener("beforeunload", saveSettings);
+        window.addEventListener("beforeprint", preparePrintSheet);
+        window.addEventListener("afterprint", clearPrintSheet);
+        window.addEventListener("beforeunload", () => {
+            window.clearTimeout(state.settingsTimer);
+            saveSettings();
+        });
         window.addEventListener("popstate", event => {
             const historyState = event.state;
             if (!historyState || historyState.app !== "osmismerka-generator" || !historyState.settings) {
@@ -2118,11 +2292,11 @@ dew</textarea>
 
             state.restoringHistory = true;
             applySettings(historyState.settings);
-            updateStats();
+            flushStatsUpdate();
             saveSettings();
             state.dirtyHistoryActive = historyState.kind === "dirty";
             if (historyState.kind === "generated") {
-                state.lastGeneratedSettingsKey = settingsKey(historyState.settings);
+                state.lastGeneratedSettingsKey = generationSettingsKey(historyState.settings);
             }
             runGenerate({
                 recordHistory: false,
