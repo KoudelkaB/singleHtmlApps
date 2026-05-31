@@ -1,0 +1,2367 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Browser for Chrome</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f6f1e8;
+            --panel: rgba(255, 252, 246, 0.92);
+            --panel-strong: #fffaf0;
+            --line: rgba(69, 57, 45, 0.14);
+            --line-strong: rgba(69, 57, 45, 0.26);
+            --text: #2f241b;
+            --muted: #786552;
+            --accent: #0f8b6d;
+            --accent-strong: #0b6c55;
+            --accent-soft: rgba(15, 139, 109, 0.14);
+            --warm: #ca6b2c;
+            --danger: #b94a3f;
+            --shadow: 0 20px 48px rgba(57, 42, 27, 0.12);
+            --radius: 18px;
+            --radius-small: 12px;
+            --sidebar-width: 320px;
+            --preview-width: 240px;
+            --preview-height: 180px;
+            --image-scale: 100;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            background:
+                radial-gradient(circle at top left, rgba(202, 107, 44, 0.16), transparent 28%),
+                radial-gradient(circle at bottom right, rgba(15, 139, 109, 0.12), transparent 32%),
+                linear-gradient(180deg, #faf6ef 0%, var(--bg) 100%);
+            color: var(--text);
+            font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        button,
+        input,
+        select {
+            font: inherit;
+        }
+
+        button {
+            cursor: pointer;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: var(--panel-strong);
+            color: var(--text);
+            padding: 0.6rem 1rem;
+            transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            border-color: var(--line-strong);
+        }
+
+        button.primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+            color: #fff;
+            border-color: transparent;
+        }
+
+        button.ghost {
+            background: rgba(255, 255, 255, 0.55);
+        }
+
+        button.warn {
+            background: rgba(185, 74, 63, 0.1);
+            color: var(--danger);
+        }
+
+        button:disabled {
+            opacity: 0.56;
+            cursor: default;
+            transform: none;
+        }
+
+        .app-shell {
+            display: grid;
+            grid-template-columns: minmax(280px, var(--sidebar-width)) minmax(0, 1fr);
+            gap: 1rem;
+            padding: 1rem;
+            min-height: 100vh;
+        }
+
+        .sidebar,
+        .main-panel {
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid rgba(255, 255, 255, 0.7);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(12px);
+        }
+
+        .hero {
+            padding: 1.2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::after {
+            content: "";
+            position: absolute;
+            inset: auto -4rem -4rem auto;
+            width: 10rem;
+            height: 10rem;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(202, 107, 44, 0.18), transparent 72%);
+            pointer-events: none;
+        }
+
+        .hero h1 {
+            margin: 0;
+            font-size: clamp(1.8rem, 3vw, 2.6rem);
+            letter-spacing: 0.02em;
+        }
+
+        .hero p {
+            margin: 0.45rem 0 0;
+            color: var(--muted);
+            line-height: 1.45;
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: end;
+            padding: 1rem 1.1rem;
+        }
+
+        .toolbar-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            min-width: 10rem;
+        }
+
+        .toolbar-group.grow {
+            flex: 1 1 14rem;
+        }
+
+        .toolbar-group.inline {
+            flex-direction: row;
+            align-items: center;
+            gap: 0.6rem;
+            min-width: auto;
+        }
+
+        .toolbar-group label,
+        .sidebar-section h2,
+        .panel-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+        }
+
+        input[type="text"],
+        select {
+            width: 100%;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.75);
+            color: var(--text);
+            padding: 0.7rem 0.8rem;
+        }
+
+        input[type="checkbox"] {
+            width: 1rem;
+            height: 1rem;
+            accent-color: var(--accent);
+        }
+
+        .status-line {
+            padding: 0 1.1rem 1rem;
+            color: var(--muted);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            border-radius: 999px;
+            padding: 0.35rem 0.7rem;
+            background: rgba(255, 255, 255, 0.65);
+            border: 1px solid var(--line);
+        }
+
+        .drop-zone {
+            margin: 0 1.1rem 1.1rem;
+            border: 2px dashed rgba(15, 139, 109, 0.35);
+            border-radius: var(--radius);
+            padding: 1.1rem;
+            background: linear-gradient(135deg, rgba(15, 139, 109, 0.08), rgba(202, 107, 44, 0.08));
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+        }
+
+        .drop-zone.drag-over {
+            border-color: var(--accent-strong);
+            background: linear-gradient(135deg, rgba(15, 139, 109, 0.16), rgba(202, 107, 44, 0.12));
+            transform: translateY(-1px);
+        }
+
+        .drop-zone strong {
+            font-size: 1.05rem;
+        }
+
+        .drop-zone p {
+            margin: 0;
+            color: var(--muted);
+        }
+
+        .drop-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+        }
+
+        .sidebar-section {
+            padding: 1rem 1rem 1.1rem;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.8rem;
+        }
+
+        .sidebar-section h2 {
+            margin: 0;
+        }
+
+        .sidebar-note {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.45;
+        }
+
+        .recent-list,
+        .folder-tree {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            min-height: 0;
+            overflow: auto;
+        }
+
+        .recent-button,
+        .folder-button {
+            width: 100%;
+            text-align: left;
+            border-radius: 12px;
+            padding: 0.75rem 0.85rem;
+            border: 1px solid transparent;
+            background: rgba(255, 255, 255, 0.58);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.8rem;
+        }
+
+        .recent-button:hover,
+        .folder-button:hover {
+            border-color: var(--line-strong);
+        }
+
+        .recent-button.active,
+        .folder-button.active {
+            background: var(--accent-soft);
+            border-color: rgba(15, 139, 109, 0.4);
+        }
+
+        .folder-button {
+            padding-left: calc(0.85rem + var(--indent, 0) * 1rem);
+        }
+
+        .folder-button .folder-label,
+        .recent-button .recent-label {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.18rem;
+        }
+
+        .folder-name,
+        .recent-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .folder-meta,
+        .recent-meta,
+        .image-meta,
+        .group-meta {
+            color: var(--muted);
+            font-size: 0.85rem;
+        }
+
+        .recent-actions {
+            display: flex;
+            gap: 0.4rem;
+        }
+
+        .recent-actions button {
+            padding: 0.4rem 0.7rem;
+        }
+
+        .main-panel {
+            min-width: 0;
+        }
+
+        .gallery-card {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .gallery-header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.7rem;
+            padding: 1rem 1.1rem 0.8rem;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .gallery-header h2 {
+            margin: 0;
+            font-size: 1.15rem;
+        }
+
+        .gallery-header p {
+            margin: 0.25rem 0 0;
+            color: var(--muted);
+        }
+
+        .folder-navigator {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            padding: 0.85rem 1.1rem 1rem;
+            border-bottom: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.42);
+        }
+
+        .folder-nav-bar,
+        .folder-nav-group,
+        .folder-nav-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.55rem;
+            align-items: center;
+        }
+
+        .folder-nav-current {
+            font-weight: 700;
+        }
+
+        .folder-nav-label {
+            color: var(--muted);
+            font-size: 0.86rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .folder-nav-button {
+            border-radius: 999px;
+            padding: 0.42rem 0.8rem;
+            background: rgba(255, 255, 255, 0.76);
+        }
+
+        .folder-nav-button.active {
+            background: var(--accent-soft);
+            border-color: rgba(15, 139, 109, 0.4);
+        }
+
+        .gallery-scroll {
+            min-height: 0;
+            overflow: auto;
+            padding: 1rem 1.1rem 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.1rem;
+        }
+
+        .group-card {
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.5);
+            padding: 0.9rem;
+        }
+
+        .group-head {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 0.6rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .group-head h3 {
+            margin: 0;
+            font-size: 1rem;
+        }
+
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--preview-width)), 1fr));
+            gap: 0.85rem;
+            align-items: start;
+        }
+
+        .image-grid[data-zoom-mode="percent"] {
+            display: flex;
+            flex-wrap: wrap;
+        }
+
+        .image-card {
+            display: flex;
+            flex-direction: column;
+            gap: 0.55rem;
+            padding: 0.65rem;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.78);
+            border: 1px solid rgba(69, 57, 45, 0.1);
+        }
+
+        .image-grid[data-zoom-mode="percent"] .image-card {
+            flex: 0 0 auto;
+            width: max-content;
+            max-width: none;
+        }
+
+        .image-frame {
+            width: 100%;
+            min-height: 4rem;
+            height: var(--preview-height);
+            border-radius: 12px;
+            background:
+                linear-gradient(45deg, rgba(69, 57, 45, 0.06) 25%, transparent 25%),
+                linear-gradient(-45deg, rgba(69, 57, 45, 0.06) 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, rgba(69, 57, 45, 0.06) 75%),
+                linear-gradient(-45deg, transparent 75%, rgba(69, 57, 45, 0.06) 75%);
+            background-size: 18px 18px;
+            background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: auto;
+            position: relative;
+        }
+
+        .image-frame[data-lightbox-path] {
+            cursor: zoom-in;
+        }
+
+        .image-frame img {
+            display: block;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+            pointer-events: none;
+        }
+
+        .image-card[data-zoom-mode="percent"] .image-frame {
+            width: calc(var(--intrinsic-width, 200) * var(--image-scale) * 1px / 100 + 0.7rem);
+            height: calc(var(--intrinsic-height, 150) * var(--image-scale) * 1px / 100 + 0.7rem);
+            justify-content: flex-start;
+            align-items: flex-start;
+            padding: 0.35rem;
+            overflow: hidden;
+        }
+
+        .image-card[data-zoom-mode="percent"] .image-frame img {
+            max-width: none;
+            max-height: none;
+            width: calc(var(--intrinsic-width, 200) * var(--image-scale) * 1px / 100);
+            height: calc(var(--intrinsic-height, 150) * var(--image-scale) * 1px / 100);
+            min-width: 32px;
+            min-height: 32px;
+        }
+
+        .image-title {
+            font-weight: 700;
+            word-break: break-word;
+        }
+
+        .image-path {
+            color: var(--muted);
+            font-size: 0.86rem;
+            word-break: break-word;
+        }
+
+        .image-actions {
+            display: flex;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+        }
+
+        .image-actions button {
+            padding: 0.45rem 0.8rem;
+        }
+
+        .empty-state {
+            padding: 1.6rem;
+            border-radius: 16px;
+            border: 1px dashed var(--line-strong);
+            color: var(--muted);
+            text-align: center;
+            background: rgba(255, 255, 255, 0.45);
+        }
+
+        .hint {
+            color: var(--muted);
+            font-size: 0.86rem;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        body.lightbox-open {
+            overflow: hidden;
+        }
+
+        .lightbox {
+            position: fixed;
+            inset: 0;
+            z-index: 40;
+            display: flex;
+            align-items: stretch;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .lightbox-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(28, 22, 16, 0.82);
+            -webkit-backdrop-filter: blur(8px);
+            backdrop-filter: blur(8px);
+        }
+
+        .lightbox-shell {
+            position: relative;
+            z-index: 1;
+            width: 100vw;
+            height: 100dvh;
+            border-radius: 0;
+            overflow: hidden;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .lightbox-toolbar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 3;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 0.8rem;
+            padding: 1rem 1.1rem 1.2rem;
+            border-bottom: none;
+            background: linear-gradient(180deg, rgba(24, 18, 12, 0.72), rgba(24, 18, 12, 0.34), transparent);
+        }
+
+        .lightbox-title {
+            margin: 0;
+            font-size: 1.1rem;
+            color: #fff;
+        }
+
+        .lightbox-subtitle,
+        .lightbox-counter {
+            margin: 0.2rem 0 0;
+            color: rgba(255, 248, 239, 0.82);
+            font-size: 0.9rem;
+            word-break: break-word;
+        }
+
+        .lightbox-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.55rem;
+            align-items: center;
+        }
+
+        .lightbox-scale-control {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            color: rgba(255, 248, 239, 0.9);
+            font-size: 0.9rem;
+        }
+
+        .lightbox-scale-control select {
+            width: auto;
+            min-width: 5.5rem;
+            background: rgba(255, 255, 255, 0.18);
+            color: #fff;
+            border-color: rgba(255, 255, 255, 0.24);
+        }
+
+        .lightbox-scale-control select option {
+            color: var(--text);
+            background: var(--panel-strong);
+        }
+
+        .lightbox-zoom-readout {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.45rem 0.8rem;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.24);
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+
+        .lightbox-viewport {
+            position: relative;
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at top left, rgba(15, 139, 109, 0.1), transparent 24%),
+                radial-gradient(circle at bottom right, rgba(202, 107, 44, 0.14), transparent 30%),
+                linear-gradient(180deg, rgba(26, 21, 16, 0.98), rgba(32, 26, 20, 0.98));
+        }
+
+        .lightbox-image-wrap {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+            padding: 4.8rem 4.8rem 2rem;
+            cursor: grab;
+            touch-action: none;
+        }
+
+        .lightbox-image-wrap.dragging {
+            cursor: grabbing;
+        }
+
+        .lightbox-image {
+            position: absolute;
+            display: block;
+            object-fit: contain;
+            max-width: none;
+            max-height: none;
+            width: calc(var(--lightbox-intrinsic-width, 100) * var(--lightbox-scale, 100) * 1px / 100);
+            height: calc(var(--lightbox-intrinsic-height, 100) * var(--lightbox-scale, 100) * 1px / 100);
+            left: var(--lightbox-left, 0px);
+            top: var(--lightbox-top, 0px);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.3);
+            border-radius: 0;
+            background: transparent;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .lightbox-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3rem;
+            height: 3rem;
+            padding: 0;
+            border-radius: 50%;
+            font-size: 1.4rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 250, 242, 0.22);
+            color: #fff;
+            border-color: rgba(255, 255, 255, 0.26);
+        }
+
+        .lightbox-nav.prev {
+            left: 1rem;
+        }
+
+        .lightbox-nav.next {
+            right: 1rem;
+        }
+
+        @media (max-width: 980px) {
+            .lightbox-image-wrap {
+                padding: 5.8rem 3.8rem 1.2rem;
+            }
+        }
+
+        @media (max-width: 980px) {
+            .app-shell {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                order: 2;
+            }
+
+            .main-panel {
+                order: 1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <section class="card hero">
+                <h1>Image Browser</h1>
+                <p>Chrome-only directory browser for SVG, PNG, JPG and JPEG images. Drop a folder, reopen it later from
+                    history, and browse recursively with live filtering and zoom.</p>
+            </section>
+
+            <section class="card sidebar-section">
+                <h2>Recent Directories</h2>
+                <p class="sidebar-note">Recent folders are stored with File System Access handles in IndexedDB. Click
+                    one after reload to reopen it without dropping again.</p>
+                <div id="recentList" class="recent-list"></div>
+            </section>
+
+            <section class="card sidebar-section">
+                <h2>Folders</h2>
+                <p class="sidebar-note">Select a folder to scope the gallery. Flat mode merges all matching images from
+                    the chosen subtree into one grid.</p>
+                <div id="folderTree" class="folder-tree"></div>
+            </section>
+        </aside>
+
+        <main class="main-panel">
+            <section class="card">
+                <div class="toolbar">
+                    <div class="toolbar-group inline">
+                        <button id="openDirectoryButton" class="primary" type="button">Open directory</button>
+                        <button id="rescanButton" type="button" disabled>Rescan</button>
+                    </div>
+                    <div class="toolbar-group grow">
+                        <label for="filterInput">Filter by relative path substrings</label>
+                        <input id="filterInput" type="text" placeholder="100 apple">
+                    </div>
+                    <div class="toolbar-group">
+                        <label for="sortSelect">Sort by</label>
+                        <select id="sortSelect">
+                            <option value="path">Path alphabet</option>
+                            <option value="modified">Change time</option>
+                            <option value="created">Creation time</option>
+                            <option value="area">Image area</option>
+                            <option value="pixels">Longest edge</option>
+                            <option value="bytes">File size</option>
+                        </select>
+                    </div>
+                    <div class="toolbar-group">
+                        <label for="sortDirectionSelect">Direction</label>
+                        <select id="sortDirectionSelect">
+                            <option value="asc">Ascending</option>
+                            <option value="desc">Descending</option>
+                        </select>
+                    </div>
+                    <div class="toolbar-group">
+                        <label for="zoomModeSelect">Zoom mode</label>
+                        <select id="zoomModeSelect">
+                            <option value="preview">Preview picture size</option>
+                            <option value="percent">Image percent</option>
+                        </select>
+                    </div>
+                    <div class="toolbar-group">
+                        <label for="zoomValueRange">Zoom</label>
+                        <input id="zoomValueRange" type="range" min="40" max="320" step="10" value="100">
+                    </div>
+                    <div class="toolbar-group inline">
+                        <label for="flattenToggle">Flat mode</label>
+                        <input id="flattenToggle" type="checkbox">
+                    </div>
+                </div>
+                <div class="status-line">
+                    <div class="status-pill" id="directorySummary">No directory loaded.</div>
+                    <div class="status-pill" id="selectionSummary">Drop a directory or use Open directory.</div>
+                    <div class="status-pill" id="zoomSummary">Ctrl + mouse wheel changes zoom.</div>
+                </div>
+                <div id="dropZone" class="drop-zone">
+                    <strong>Drop a directory anywhere here</strong>
+                    <p>Uses Chrome's File System Access API. When reopening a recent directory, Chrome may ask for
+                        permission again if it was not already granted.</p>
+                    <div class="drop-actions">
+                        <button id="dropOpenButton" class="ghost" type="button">Pick directory</button>
+                        <button id="clearHistoryButton" class="warn" type="button">Clear history</button>
+                    </div>
+                    <div id="browserCompatibilityHint" class="hint hidden">This app needs a Chromium browser with File
+                        System Access support.</div>
+                </div>
+            </section>
+
+            <section class="card gallery-card">
+                <div class="gallery-header">
+                    <div>
+                        <h2 id="galleryTitle">Gallery</h2>
+                        <p id="gallerySubtitle">Images will appear here in a left-to-right wrapping grid.</p>
+                    </div>
+                    <div class="hint" id="sortHint">Creation time falls back to change time when Chrome does not expose
+                        original creation timestamps.</div>
+                </div>
+                <div id="folderNavigator" class="folder-navigator"></div>
+                <div id="galleryScroll" class="gallery-scroll"></div>
+            </section>
+        </main>
+    </div>
+
+    <div id="lightbox" class="lightbox hidden" tabindex="-1" role="dialog" aria-modal="true"
+        aria-label="Fullscreen image viewer">
+        <div class="lightbox-backdrop" data-lightbox-close="true"></div>
+        <div class="lightbox-shell">
+            <div class="lightbox-toolbar">
+                <div>
+                    <h2 id="lightboxTitle" class="lightbox-title">Image</h2>
+                    <p id="lightboxSubtitle" class="lightbox-subtitle"></p>
+                    <p id="lightboxCounter" class="lightbox-counter"></p>
+                </div>
+                <div class="lightbox-actions">
+                    <label class="lightbox-scale-control" for="lightboxScaleSelect">
+                        <span>Max size</span>
+                        <select id="lightboxScaleSelect">
+                            <option value="100">100%</option>
+                            <option value="150">150%</option>
+                            <option value="200">200%</option>
+                            <option value="300">300%</option>
+                            <option value="400" selected>400%</option>
+                            <option value="600">600%</option>
+                            <option value="800">800%</option>
+                            <option value="1200">1200%</option>
+                            <option value="0">Unlimited</option>
+                        </select>
+                    </label>
+                    <div id="lightboxZoomReadout" class="lightbox-zoom-readout">Zoom 100%</div>
+                    <button id="lightboxPrevButton" type="button">Previous</button>
+                    <button id="lightboxNextButton" type="button">Next</button>
+                    <button id="lightboxCloseButton" class="primary" type="button">Close</button>
+                </div>
+            </div>
+            <div id="lightboxViewport" class="lightbox-viewport">
+                <button id="lightboxPrevSideButton" class="lightbox-nav prev" type="button"
+                    aria-label="Previous image">&#8592;</button>
+                <div class="lightbox-image-wrap">
+                    <img id="lightboxImage" class="lightbox-image" alt="" draggable="false">
+                </div>
+                <button id="lightboxNextSideButton" class="lightbox-nav next" type="button"
+                    aria-label="Next image">&#8594;</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const IMAGE_EXTENSIONS = new Set(["svg", "png", "jpg", "jpeg"]);
+            const HISTORY_STORAGE_KEY = "image-browser-chrome-history-v1";
+            const SETTINGS_STORAGE_KEY = "image-browser-chrome-settings-v1";
+            const SESSION_STORAGE_KEY = "image-browser-chrome-session-v1";
+            const MAX_HISTORY = 10;
+            const DB_NAME = "image-browser-chrome-db";
+            const DB_VERSION = 1;
+            const HANDLE_STORE = "directoryHandles";
+
+            const elements = {
+                openDirectoryButton: document.getElementById("openDirectoryButton"),
+                dropOpenButton: document.getElementById("dropOpenButton"),
+                rescanButton: document.getElementById("rescanButton"),
+                clearHistoryButton: document.getElementById("clearHistoryButton"),
+                filterInput: document.getElementById("filterInput"),
+                sortSelect: document.getElementById("sortSelect"),
+                sortDirectionSelect: document.getElementById("sortDirectionSelect"),
+                flattenToggle: document.getElementById("flattenToggle"),
+                zoomModeSelect: document.getElementById("zoomModeSelect"),
+                zoomValueRange: document.getElementById("zoomValueRange"),
+                dropZone: document.getElementById("dropZone"),
+                browserCompatibilityHint: document.getElementById("browserCompatibilityHint"),
+                recentList: document.getElementById("recentList"),
+                folderTree: document.getElementById("folderTree"),
+                directorySummary: document.getElementById("directorySummary"),
+                selectionSummary: document.getElementById("selectionSummary"),
+                zoomSummary: document.getElementById("zoomSummary"),
+                galleryTitle: document.getElementById("galleryTitle"),
+                gallerySubtitle: document.getElementById("gallerySubtitle"),
+                folderNavigator: document.getElementById("folderNavigator"),
+                galleryScroll: document.getElementById("galleryScroll"),
+                lightbox: document.getElementById("lightbox"),
+                lightboxScaleSelect: document.getElementById("lightboxScaleSelect"),
+                lightboxZoomReadout: document.getElementById("lightboxZoomReadout"),
+                lightboxTitle: document.getElementById("lightboxTitle"),
+                lightboxSubtitle: document.getElementById("lightboxSubtitle"),
+                lightboxCounter: document.getElementById("lightboxCounter"),
+                lightboxImage: document.getElementById("lightboxImage"),
+                lightboxImageWrap: document.querySelector(".lightbox-image-wrap"),
+                lightboxViewport: document.getElementById("lightboxViewport"),
+                lightboxCloseButton: document.getElementById("lightboxCloseButton"),
+                lightboxPrevButton: document.getElementById("lightboxPrevButton"),
+                lightboxNextButton: document.getElementById("lightboxNextButton"),
+                lightboxPrevSideButton: document.getElementById("lightboxPrevSideButton"),
+                lightboxNextSideButton: document.getElementById("lightboxNextSideButton")
+            };
+
+            const state = {
+                currentDirectoryId: "",
+                currentDirectoryName: "",
+                currentHandle: null,
+                history: [],
+                pendingSessionDirectoryId: "",
+                pendingSessionFolderPath: "",
+                folders: [],
+                folderMap: new Map(),
+                folderHandleMap: new Map(),
+                images: [],
+                selectedFolderPath: "",
+                filterText: "",
+                sortKey: "path",
+                sortDirection: "asc",
+                flatten: false,
+                zoomMode: "preview",
+                zoomValue: 100,
+                treeLoading: false,
+                imageLoading: false,
+                scanToken: 0,
+                imageLoadToken: 0,
+                lightboxOpen: false,
+                lightboxRelativePath: "",
+                lightboxWheelUntil: 0,
+                lightboxScale: 400,
+                lightboxZoomPercent: 100,
+                lightboxZoomAuto: true,
+                lightboxView: null,
+                lightboxDrag: null
+            };
+
+            let galleryRenderScheduled = false;
+            let folderRenderScheduled = false;
+
+            function isSupported() {
+                return typeof window.showDirectoryPicker === "function"
+                    && window.indexedDB
+                    && typeof DataTransferItem !== "undefined"
+                    && typeof DataTransferItem.prototype.getAsFileSystemHandle === "function";
+            }
+
+            function escapeHtml(value) {
+                return String(value)
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/\"/g, "&quot;")
+                    .replace(/'/g, "&#39;");
+            }
+
+            function formatBytes(bytes) {
+                if (!Number.isFinite(bytes) || bytes < 0) {
+                    return "-";
+                }
+                if (bytes === 0) {
+                    return "0 B";
+                }
+                const units = ["B", "KB", "MB", "GB", "TB"];
+                let value = bytes;
+                let index = 0;
+                while (value >= 1024 && index < units.length - 1) {
+                    value /= 1024;
+                    index += 1;
+                }
+                return value.toFixed(value >= 10 || index === 0 ? 0 : 1) + " " + units[index];
+            }
+
+            function formatTimestamp(timestamp) {
+                if (!Number.isFinite(timestamp) || timestamp <= 0) {
+                    return "Unknown";
+                }
+                const date = new Date(timestamp);
+                return date.toLocaleString();
+            }
+
+            function normalizePath(parts) {
+                return parts.filter(Boolean).join("/");
+            }
+
+            function splitFilterTokens(value) {
+                return value.toLowerCase().split(/\s+/).map((token) => token.trim()).filter(Boolean);
+            }
+
+            function getFolderLabel(folderPath) {
+                if (!folderPath) {
+                    return state.currentDirectoryName || "Root";
+                }
+                const parts = folderPath.split("/");
+                return parts[parts.length - 1] || folderPath;
+            }
+
+            function getParentFolderPath(folderPath) {
+                if (!folderPath) {
+                    return "";
+                }
+                const parts = folderPath.split("/");
+                return normalizePath(parts.slice(0, -1));
+            }
+
+            function getDirectChildFolders(folderPath) {
+                const parentDepth = folderPath ? folderPath.split("/").length : 0;
+                return state.folders.filter((folder) => {
+                    if (folder.path === folderPath) {
+                        return false;
+                    }
+                    if (folder.depth !== parentDepth + 1) {
+                        return false;
+                    }
+                    return getParentFolderPath(folder.path) === folderPath;
+                });
+            }
+
+            function getSiblingFolders(folderPath) {
+                if (!folderPath) {
+                    return [];
+                }
+                const parentPath = getParentFolderPath(folderPath);
+                return getDirectChildFolders(parentPath).filter((folder) => folder.path !== folderPath);
+            }
+
+            function loadHistory() {
+                try {
+                    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+                    const parsed = raw ? JSON.parse(raw) : [];
+                    state.history = Array.isArray(parsed) ? parsed.filter((item) => item && item.id && item.name) : [];
+                } catch (error) {
+                    console.warn("Failed to load directory history.", error);
+                    state.history = [];
+                }
+            }
+
+            function saveHistory() {
+                localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(0, MAX_HISTORY)));
+            }
+
+            function loadSettings() {
+                try {
+                    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+                    const parsed = raw ? JSON.parse(raw) : null;
+                    if (!parsed || typeof parsed !== "object") {
+                        return;
+                    }
+                    if (typeof parsed.filterText === "string") state.filterText = parsed.filterText;
+                    if (typeof parsed.sortKey === "string") state.sortKey = parsed.sortKey;
+                    if (typeof parsed.sortDirection === "string") state.sortDirection = parsed.sortDirection;
+                    if (typeof parsed.flatten === "boolean") state.flatten = parsed.flatten;
+                    if (typeof parsed.zoomMode === "string") state.zoomMode = parsed.zoomMode;
+                    if (Number.isFinite(parsed.zoomValue)) state.zoomValue = clamp(parsed.zoomValue, 40, 320);
+                    if (Number.isFinite(parsed.lightboxScale)) state.lightboxScale = parsed.lightboxScale <= 0
+                        ? 0
+                        : clamp(parsed.lightboxScale, 100, 1200);
+                } catch (error) {
+                    console.warn("Failed to load settings.", error);
+                }
+            }
+
+            function loadSessionSnapshot() {
+                try {
+                    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+                    const parsed = raw ? JSON.parse(raw) : null;
+                    if (!parsed || typeof parsed !== "object") {
+                        return;
+                    }
+                    if (typeof parsed.currentDirectoryId === "string") {
+                        state.pendingSessionDirectoryId = parsed.currentDirectoryId;
+                    }
+                    if (typeof parsed.selectedFolderPath === "string") {
+                        state.pendingSessionFolderPath = parsed.selectedFolderPath;
+                    }
+                } catch (error) {
+                    console.warn("Failed to load session snapshot.", error);
+                }
+            }
+
+            function saveSettings() {
+                localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
+                    filterText: state.filterText,
+                    sortKey: state.sortKey,
+                    sortDirection: state.sortDirection,
+                    flatten: state.flatten,
+                    zoomMode: state.zoomMode,
+                    zoomValue: state.zoomValue,
+                    lightboxScale: state.lightboxScale
+                }));
+            }
+
+            function saveSessionSnapshot() {
+                localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+                    currentDirectoryId: state.currentDirectoryId,
+                    selectedFolderPath: state.selectedFolderPath
+                }));
+            }
+
+            function syncControls() {
+                elements.filterInput.value = state.filterText;
+                elements.sortSelect.value = state.sortKey;
+                elements.sortDirectionSelect.value = state.sortDirection;
+                elements.flattenToggle.checked = state.flatten;
+                elements.zoomModeSelect.value = state.zoomMode;
+                elements.zoomValueRange.value = String(state.zoomValue);
+                elements.lightboxScaleSelect.value = String(state.lightboxScale);
+                updateZoomCss();
+            }
+
+            function scheduleGalleryRender() {
+                if (galleryRenderScheduled) {
+                    return;
+                }
+                galleryRenderScheduled = true;
+                requestAnimationFrame(() => {
+                    galleryRenderScheduled = false;
+                    renderGallery();
+                });
+            }
+
+            function scheduleFolderRender() {
+                if (folderRenderScheduled) {
+                    return;
+                }
+                folderRenderScheduled = true;
+                requestAnimationFrame(() => {
+                    folderRenderScheduled = false;
+                    renderFolderTree();
+                    renderFolderNavigator();
+                });
+            }
+
+            function clamp(value, minimum, maximum) {
+                return Math.max(minimum, Math.min(maximum, value));
+            }
+
+            function getWheelZoomIntensity(event) {
+                const dominantDelta = Math.max(Math.abs(event.deltaX || 0), Math.abs(event.deltaY || 0));
+                const unitSize = event.deltaMode === 1
+                    ? 3
+                    : event.deltaMode === 2
+                        ? 24
+                        : 100;
+                return clamp(dominantDelta / unitSize, 0.35, 4);
+            }
+
+            function getNextWheelZoomValue(currentZoom, event, minimum, maximum) {
+                const factor = Math.pow(1.4, getWheelZoomIntensity(event));
+                const nextZoom = event.deltaY < 0
+                    ? currentZoom * factor
+                    : currentZoom / factor;
+                return clamp(nextZoom, minimum, maximum);
+            }
+
+            function setZoomValue(nextValue) {
+                state.zoomValue = clamp(Math.round(nextValue / 10) * 10, 40, 320);
+                elements.zoomValueRange.value = String(state.zoomValue);
+                updateZoomCss();
+                saveSettings();
+                renderGallery();
+            }
+
+            function updateZoomCss() {
+                const previewWidth = Math.round(240 * state.zoomValue / 100);
+                const previewHeight = Math.round(180 * state.zoomValue / 100);
+                document.documentElement.style.setProperty("--preview-width", previewWidth + "px");
+                document.documentElement.style.setProperty("--preview-height", previewHeight + "px");
+                document.documentElement.style.setProperty("--image-scale", String(state.zoomValue));
+                const zoomModeLabel = state.zoomMode === "preview"
+                    ? "Preview size " + state.zoomValue + "%"
+                    : "Image size " + state.zoomValue + "%";
+                elements.zoomSummary.textContent = zoomModeLabel + " | Ctrl + mouse wheel changes zoom.";
+            }
+
+            function openDatabase() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(DB_NAME, DB_VERSION);
+                    request.onupgradeneeded = () => {
+                        const database = request.result;
+                        if (!database.objectStoreNames.contains(HANDLE_STORE)) {
+                            database.createObjectStore(HANDLE_STORE);
+                        }
+                    };
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error || new Error("Failed to open IndexedDB."));
+                });
+            }
+
+            async function saveHandle(id, handle) {
+                const database = await openDatabase();
+                return new Promise((resolve, reject) => {
+                    const transaction = database.transaction(HANDLE_STORE, "readwrite");
+                    transaction.objectStore(HANDLE_STORE).put(handle, id);
+                    transaction.oncomplete = () => {
+                        database.close();
+                        resolve();
+                    };
+                    transaction.onerror = () => {
+                        database.close();
+                        reject(transaction.error || new Error("Failed to save handle."));
+                    };
+                });
+            }
+
+            async function loadHandle(id) {
+                const database = await openDatabase();
+                return new Promise((resolve, reject) => {
+                    const transaction = database.transaction(HANDLE_STORE, "readonly");
+                    const request = transaction.objectStore(HANDLE_STORE).get(id);
+                    request.onsuccess = () => resolve(request.result || null);
+                    request.onerror = () => reject(request.error || new Error("Failed to load handle."));
+                    transaction.oncomplete = () => database.close();
+                    transaction.onerror = () => database.close();
+                });
+            }
+
+            async function deleteHandle(id) {
+                const database = await openDatabase();
+                return new Promise((resolve, reject) => {
+                    const transaction = database.transaction(HANDLE_STORE, "readwrite");
+                    transaction.objectStore(HANDLE_STORE).delete(id);
+                    transaction.oncomplete = () => {
+                        database.close();
+                        resolve();
+                    };
+                    transaction.onerror = () => {
+                        database.close();
+                        reject(transaction.error || new Error("Failed to delete handle."));
+                    };
+                });
+            }
+
+            async function clearAllHandles() {
+                const database = await openDatabase();
+                return new Promise((resolve, reject) => {
+                    const transaction = database.transaction(HANDLE_STORE, "readwrite");
+                    transaction.objectStore(HANDLE_STORE).clear();
+                    transaction.oncomplete = () => {
+                        database.close();
+                        resolve();
+                    };
+                    transaction.onerror = () => {
+                        database.close();
+                        reject(transaction.error || new Error("Failed to clear handles."));
+                    };
+                });
+            }
+
+            async function verifyDirectoryPermission(handle, writeMode) {
+                if (!handle) {
+                    return false;
+                }
+                const options = writeMode ? { mode: "readwrite" } : { mode: "read" };
+                if (await handle.queryPermission(options) === "granted") {
+                    return true;
+                }
+                return (await handle.requestPermission(options)) === "granted";
+            }
+
+            function createHistoryEntry(handle) {
+                return {
+                    id: "dir-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+                    name: handle.name,
+                    addedAt: Date.now()
+                };
+            }
+
+            async function rememberDirectory(handle) {
+                let existing = null;
+                for (const item of state.history) {
+                    const savedHandle = await loadHandle(item.id).catch(() => null);
+                    if (savedHandle && typeof savedHandle.isSameEntry === "function") {
+                        const isSame = await savedHandle.isSameEntry(handle).catch(() => false);
+                        if (isSame) {
+                            existing = item;
+                            break;
+                        }
+                    }
+                }
+                const entry = existing || createHistoryEntry(handle);
+                await saveHandle(entry.id, handle);
+                state.history = [
+                    { id: entry.id, name: handle.name, addedAt: Date.now() },
+                    ...state.history.filter((item) => item.id !== entry.id)
+                ].slice(0, MAX_HISTORY);
+                saveHistory();
+                saveSessionSnapshot();
+                renderRecentList();
+                return entry;
+            }
+
+            async function removeRecentDirectory(id) {
+                state.history = state.history.filter((item) => item.id !== id);
+                saveHistory();
+                await deleteHandle(id).catch((error) => console.warn("Failed to delete saved handle.", error));
+                if (state.currentDirectoryId === id) {
+                    resetCurrentDirectory();
+                }
+                saveSessionSnapshot();
+                renderRecentList();
+            }
+
+            async function clearHistory() {
+                state.history = [];
+                saveHistory();
+                await clearAllHandles().catch((error) => console.warn("Failed to clear IndexedDB handles.", error));
+                saveSessionSnapshot();
+                renderRecentList();
+            }
+
+            function resetCurrentDirectory() {
+                revokeImageUrls();
+                state.currentDirectoryId = "";
+                state.currentDirectoryName = "";
+                state.currentHandle = null;
+                state.folders = [];
+                state.folderMap = new Map();
+                state.folderHandleMap = new Map();
+                state.images = [];
+                state.selectedFolderPath = "";
+                state.treeLoading = false;
+                state.imageLoading = false;
+                elements.rescanButton.disabled = true;
+                saveSessionSnapshot();
+                renderFolderTree();
+                renderFolderNavigator();
+                renderGallery();
+                updateStatus();
+            }
+
+            function revokeImageUrls() {
+                state.images.forEach((image) => {
+                    if (image.objectUrl) {
+                        URL.revokeObjectURL(image.objectUrl);
+                    }
+                });
+            }
+
+            async function openDirectoryPicker() {
+                const handle = await window.showDirectoryPicker({ mode: "read" });
+                await openDirectoryHandle(handle, "picked");
+            }
+
+            async function openRecentDirectory(id) {
+                const handle = await loadHandle(id);
+                if (!handle) {
+                    await removeRecentDirectory(id);
+                    return;
+                }
+                await openDirectoryHandle(handle, "recent", id);
+            }
+
+            async function openDirectoryHandle(handle, source, knownId) {
+                if (!handle || handle.kind !== "directory") {
+                    throw new Error("A directory handle is required.");
+                }
+                const permissionGranted = await verifyDirectoryPermission(handle, false);
+                if (!permissionGranted) {
+                    throw new Error("Directory access was not granted.");
+                }
+                let matchedEntry = null;
+                if (source !== "recent") {
+                    matchedEntry = await rememberDirectory(handle);
+                }
+                if (!matchedEntry && knownId) {
+                    matchedEntry = state.history.find((item) => item.id === knownId) || null;
+                }
+                state.currentDirectoryId = matchedEntry ? matchedEntry.id : "";
+                state.currentDirectoryName = handle.name;
+                state.currentHandle = handle;
+                elements.rescanButton.disabled = false;
+                saveSessionSnapshot();
+                await scanDirectory();
+            }
+
+            async function extractDroppedDirectory(event) {
+                const items = Array.from(event.dataTransfer ? event.dataTransfer.items : []);
+                for (const item of items) {
+                    if (typeof item.getAsFileSystemHandle !== "function") {
+                        continue;
+                    }
+                    const handle = await item.getAsFileSystemHandle();
+                    if (handle && handle.kind === "directory") {
+                        return handle;
+                    }
+                }
+                return null;
+            }
+
+            async function scanDirectory() {
+                if (!state.currentHandle) {
+                    return;
+                }
+                revokeImageUrls();
+                state.scanToken += 1;
+                state.imageLoadToken += 1;
+                const scanToken = state.scanToken;
+                const rootFolder = { path: "", depth: 0, imageCount: 0, totalImageCount: 0 };
+                state.treeLoading = true;
+                state.imageLoading = true;
+                state.folders = [rootFolder];
+                state.folderMap = new Map([["", rootFolder]]);
+                state.folderHandleMap = new Map([["", state.currentHandle]]);
+                state.images = [];
+                state.selectedFolderPath = "";
+                renderFolderTree();
+                renderFolderNavigator();
+                updateStatus("Scanning directory...");
+                renderGallery();
+
+                discoverFolderTree(state.currentHandle, [], scanToken)
+                    .then(() => {
+                        if (scanToken !== state.scanToken) {
+                            return;
+                        }
+                        state.treeLoading = false;
+                        if (state.pendingSessionDirectoryId
+                            && state.pendingSessionDirectoryId === state.currentDirectoryId
+                            && state.pendingSessionFolderPath
+                            && state.folderHandleMap.has(state.pendingSessionFolderPath)
+                            && state.selectedFolderPath !== state.pendingSessionFolderPath) {
+                            state.selectedFolderPath = state.pendingSessionFolderPath;
+                            state.pendingSessionDirectoryId = "";
+                            state.pendingSessionFolderPath = "";
+                            saveSessionSnapshot();
+                            refreshVisibleImages().catch(handleError);
+                            return;
+                        }
+                        renderFolderTree();
+                        renderFolderNavigator();
+                        updateStatus();
+                    })
+                    .catch((error) => {
+                        if (scanToken === state.scanToken) {
+                            state.treeLoading = false;
+                        }
+                        handleError(error);
+                    });
+
+                await refreshVisibleImages();
+            }
+
+            function ensureFolderRecord(path, depth, handle) {
+                let folder = state.folderMap.get(path);
+                if (!folder) {
+                    folder = {
+                        path,
+                        depth,
+                        imageCount: 0,
+                        totalImageCount: 0
+                    };
+                    state.folderMap.set(path, folder);
+                    state.folders.push(folder);
+                }
+                if (handle) {
+                    state.folderHandleMap.set(path, handle);
+                }
+                return folder;
+            }
+
+            function incrementFolderImageCounts(folderPath) {
+                const directFolder = state.folderMap.get(folderPath);
+                if (directFolder) {
+                    directFolder.imageCount += 1;
+                }
+                let currentPath = folderPath;
+                while (true) {
+                    const folder = state.folderMap.get(currentPath);
+                    if (folder) {
+                        folder.totalImageCount += 1;
+                    }
+                    if (!currentPath) {
+                        break;
+                    }
+                    currentPath = getParentFolderPath(currentPath);
+                }
+            }
+
+            async function discoverFolderTree(directoryHandle, parts, scanToken) {
+                const currentPath = normalizePath(parts);
+                ensureFolderRecord(currentPath, parts.length, directoryHandle);
+                for await (const [name, childHandle] of directoryHandle.entries()) {
+                    if (scanToken !== state.scanToken) {
+                        return;
+                    }
+                    if (childHandle.kind === "directory") {
+                        const childParts = parts.concat(name);
+                        const childPath = normalizePath(childParts);
+                        ensureFolderRecord(childPath, childParts.length, childHandle);
+                        scheduleFolderRender();
+                        await discoverFolderTree(childHandle, childParts, scanToken);
+                        continue;
+                    }
+                    const extension = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
+                    if (!IMAGE_EXTENSIONS.has(extension)) {
+                        continue;
+                    }
+                    incrementFolderImageCounts(currentPath);
+                }
+                scheduleFolderRender();
+            }
+
+            async function loadImageEntry(childHandle, parts, name, loadToken) {
+                const folderPath = normalizePath(parts);
+                const relativePath = normalizePath(parts.concat(name));
+                const file = await childHandle.getFile();
+                if (loadToken !== state.imageLoadToken) {
+                    return;
+                }
+                const objectUrl = URL.createObjectURL(file);
+                const dimensions = await readImageDimensions(file, objectUrl);
+                if (loadToken !== state.imageLoadToken) {
+                    URL.revokeObjectURL(objectUrl);
+                    return;
+                }
+                const area = dimensions.width > 0 && dimensions.height > 0
+                    ? dimensions.width * dimensions.height
+                    : 0;
+                state.images.push({
+                    name,
+                    extension: name.includes(".") ? name.split(".").pop().toLowerCase() : "",
+                    folderPath,
+                    relativePath,
+                    handle: childHandle,
+                    file,
+                    objectUrl,
+                    bytes: file.size,
+                    modifiedMs: file.lastModified || 0,
+                    createdMs: file.lastModified || 0,
+                    width: dimensions.width,
+                    height: dimensions.height,
+                    area,
+                    longestEdge: Math.max(dimensions.width, dimensions.height)
+                });
+                scheduleGalleryRender();
+            }
+
+            async function loadImagesForScope(directoryHandle, parts, recursive, loadToken) {
+                const currentPath = normalizePath(parts);
+                ensureFolderRecord(currentPath, parts.length, directoryHandle);
+                for await (const [name, childHandle] of directoryHandle.entries()) {
+                    if (loadToken !== state.imageLoadToken) {
+                        return;
+                    }
+                    if (childHandle.kind === "directory") {
+                        const childParts = parts.concat(name);
+                        ensureFolderRecord(normalizePath(childParts), childParts.length, childHandle);
+                        if (recursive) {
+                            await loadImagesForScope(childHandle, childParts, true, loadToken);
+                        }
+                        continue;
+                    }
+                    const extension = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
+                    if (!IMAGE_EXTENSIONS.has(extension)) {
+                        continue;
+                    }
+                    await loadImageEntry(childHandle, parts, name, loadToken);
+                }
+            }
+
+            async function refreshVisibleImages() {
+                revokeImageUrls();
+                state.images = [];
+                state.imageLoading = true;
+                state.imageLoadToken += 1;
+                const loadToken = state.imageLoadToken;
+                renderGallery();
+
+                const selectedHandle = state.folderHandleMap.get(state.selectedFolderPath);
+                if (!selectedHandle) {
+                    state.imageLoading = false;
+                    renderGallery();
+                    return;
+                }
+
+                try {
+                    const parts = state.selectedFolderPath ? state.selectedFolderPath.split("/") : [];
+                    await loadImagesForScope(selectedHandle, parts, state.flatten, loadToken);
+                } finally {
+                    if (loadToken === state.imageLoadToken) {
+                        state.imageLoading = false;
+                        saveSessionSnapshot();
+                        renderGallery();
+                        updateStatus();
+                    }
+                }
+            }
+
+            function readImageDimensions(file, objectUrl) {
+                return new Promise((resolve) => {
+                    const image = new Image();
+                    image.onload = () => {
+                        resolve({ width: image.naturalWidth || 0, height: image.naturalHeight || 0 });
+                    };
+                    image.onerror = () => {
+                        resolve({ width: 0, height: 0 });
+                    };
+                    image.src = objectUrl;
+                });
+            }
+
+            function getSortedVisibleImages() {
+                return getFilteredImages().slice().sort(compareImages);
+            }
+
+            function getFilteredImages() {
+                const filterTokens = splitFilterTokens(state.filterText);
+                return state.images.filter((image) => {
+                    const candidate = image.relativePath.toLowerCase();
+                    return filterTokens.every((token) => candidate.includes(token));
+                });
+            }
+
+            function compareImages(left, right) {
+                const direction = state.sortDirection === "desc" ? -1 : 1;
+                let comparison = 0;
+                if (state.sortKey === "path") {
+                    comparison = left.relativePath.localeCompare(right.relativePath, undefined, { sensitivity: "base" });
+                } else if (state.sortKey === "modified") {
+                    comparison = (left.modifiedMs - right.modifiedMs) || left.relativePath.localeCompare(right.relativePath, undefined, { sensitivity: "base" });
+                } else if (state.sortKey === "created") {
+                    comparison = (left.createdMs - right.createdMs) || left.relativePath.localeCompare(right.relativePath, undefined, { sensitivity: "base" });
+                } else if (state.sortKey === "area") {
+                    comparison = (left.area - right.area) || (left.longestEdge - right.longestEdge) || left.relativePath.localeCompare(right.relativePath, undefined, { sensitivity: "base" });
+                } else if (state.sortKey === "pixels") {
+                    comparison = (left.longestEdge - right.longestEdge) || (left.area - right.area) || left.relativePath.localeCompare(right.relativePath, undefined, { sensitivity: "base" });
+                } else if (state.sortKey === "bytes") {
+                    comparison = (left.bytes - right.bytes) || left.relativePath.localeCompare(right.relativePath, undefined, { sensitivity: "base" });
+                }
+                return comparison * direction;
+            }
+
+            function groupImages(images) {
+                if (state.flatten) {
+                    return [{
+                        key: "flat",
+                        title: state.selectedFolderPath ? state.selectedFolderPath : (state.currentDirectoryName || "All images"),
+                        description: images.length + " image" + (images.length === 1 ? "" : "s"),
+                        images
+                    }];
+                }
+
+                return [{
+                    key: state.selectedFolderPath || "root",
+                    title: getFolderLabel(state.selectedFolderPath),
+                    description: images.length + " image" + (images.length === 1 ? "" : "s") + " in this folder",
+                    images
+                }];
+            }
+
+            function renderFolderNavigator() {
+                if (!state.currentHandle) {
+                    elements.folderNavigator.innerHTML = "";
+                    elements.folderNavigator.classList.add("hidden");
+                    return;
+                }
+                elements.folderNavigator.classList.remove("hidden");
+                const currentPath = state.selectedFolderPath;
+                const parentPath = getParentFolderPath(currentPath);
+                const childFolders = getDirectChildFolders(currentPath);
+                const siblingFolders = getSiblingFolders(currentPath);
+                const currentLabel = currentPath || "/";
+                const flattenNote = state.flatten
+                    ? "Flat mode includes images from the current folder and all of its descendants."
+                    : "Grouped mode shows only images directly inside the current folder. Use the folder buttons to move through the tree.";
+                elements.folderNavigator.innerHTML = "<div class=\"folder-nav-bar\">"
+                    + "<button class=\"folder-nav-button" + (currentPath === "" ? " active" : "") + "\" type=\"button\" data-folder-select=\"\">Root</button>"
+                    + (currentPath !== "" ? "<button class=\"folder-nav-button\" type=\"button\" data-folder-select=\"" + escapeHtml(parentPath) + "\">Up</button>" : "")
+                    + "<span class=\"folder-nav-current\">Current folder: " + escapeHtml(currentLabel) + "</span>"
+                    + "<span class=\"hint\">" + escapeHtml(flattenNote) + "</span>"
+                    + "</div>"
+                    + (siblingFolders.length
+                        ? "<div class=\"folder-nav-group\"><span class=\"folder-nav-label\">Siblings</span><div class=\"folder-nav-buttons\">" + siblingFolders.map((folder) => "<button class=\"folder-nav-button\" type=\"button\" data-folder-select=\"" + escapeHtml(folder.path) + "\">" + escapeHtml(getFolderLabel(folder.path)) + " (" + folder.totalImageCount + ")</button>").join("") + "</div></div>"
+                        : "")
+                    + (childFolders.length
+                        ? "<div class=\"folder-nav-group\"><span class=\"folder-nav-label\">Subfolders</span><div class=\"folder-nav-buttons\">" + childFolders.map((folder) => "<button class=\"folder-nav-button\" type=\"button\" data-folder-select=\"" + escapeHtml(folder.path) + "\">" + escapeHtml(getFolderLabel(folder.path)) + " (" + folder.totalImageCount + ")</button>").join("") + "</div></div>"
+                        : "<div class=\"folder-nav-group\"><span class=\"folder-nav-label\">Subfolders</span><span class=\"hint\">No subfolders here.</span></div>");
+            }
+
+            function buildImageCard(image) {
+                const relativeFolder = image.folderPath || ".";
+                const dimensions = image.width > 0 && image.height > 0
+                    ? image.width + " x " + image.height
+                    : "Unknown size";
+                return "<article class=\"image-card\" data-zoom-mode=\"" + escapeHtml(state.zoomMode) + "\" style=\"--intrinsic-width: " + (image.width || 200) + "; --intrinsic-height: " + (image.height || 150) + ";\">"
+                    + "<div class=\"image-frame\" data-lightbox-path=\"" + escapeHtml(image.relativePath) + "\"><img loading=\"lazy\" alt=\"" + escapeHtml(image.relativePath) + "\" src=\"" + escapeHtml(image.objectUrl) + "\"></div>"
+                    + "<div class=\"image-title\">" + escapeHtml(image.name) + "</div>"
+                    + "<div class=\"image-path\">" + escapeHtml(image.relativePath) + "</div>"
+                    + "<div class=\"image-meta\">" + escapeHtml(dimensions) + " | " + escapeHtml(formatBytes(image.bytes)) + " | changed " + escapeHtml(formatTimestamp(image.modifiedMs)) + "</div>"
+                    + "<div class=\"image-actions\"><button type=\"button\" data-open-path=\"" + escapeHtml(image.relativePath) + "\">Open image</button><button type=\"button\" data-folder-path=\"" + escapeHtml(relativeFolder === "." ? "" : image.folderPath) + "\">Open folder</button></div>"
+                    + "</article>";
+            }
+
+            function renderRecentList() {
+                if (!state.history.length) {
+                    elements.recentList.innerHTML = "<div class=\"empty-state\">No recent directories yet.</div>";
+                    return;
+                }
+                elements.recentList.innerHTML = state.history.map((item) => {
+                    const activeClass = item.id === state.currentDirectoryId ? " active" : "";
+                    return "<div class=\"recent-entry\">"
+                        + "<button class=\"recent-button" + activeClass + "\" type=\"button\" data-recent-id=\"" + escapeHtml(item.id) + "\">"
+                        + "<span class=\"recent-label\"><span class=\"recent-name\">" + escapeHtml(item.name) + "</span><span class=\"recent-meta\">Saved " + escapeHtml(formatTimestamp(item.addedAt)) + "</span></span>"
+                        + "</button>"
+                        + "<div class=\"recent-actions\"><button class=\"ghost\" type=\"button\" data-recent-open=\"" + escapeHtml(item.id) + "\">Open</button><button class=\"warn\" type=\"button\" data-recent-remove=\"" + escapeHtml(item.id) + "\">Forget</button></div>"
+                        + "</div>";
+                }).join("");
+            }
+
+            function renderFolderTree() {
+                if (!state.folders.length) {
+                    elements.folderTree.innerHTML = "<div class=\"empty-state\">Load a directory to build the folder tree.</div>";
+                    return;
+                }
+                elements.folderTree.innerHTML = state.folders.slice().sort((left, right) => left.path.localeCompare(right.path)).map((folder) => {
+                    const activeClass = folder.path === state.selectedFolderPath ? " active" : "";
+                    const label = folder.path === "" ? (state.currentDirectoryName || "Root") : getFolderLabel(folder.path);
+                    const caption = folder.path === "" ? "/" : folder.path;
+                    return "<button class=\"folder-button" + activeClass + "\" type=\"button\" data-folder-select=\"" + escapeHtml(folder.path) + "\" style=\"--indent: " + folder.depth + ";\">"
+                        + "<span class=\"folder-label\"><span class=\"folder-name\">" + escapeHtml(label) + "</span><span class=\"folder-meta\">" + escapeHtml(caption) + " | " + folder.totalImageCount + " image" + (folder.totalImageCount === 1 ? "" : "s") + (state.treeLoading ? " scanned so far" : "") + "</span></span>"
+                        + "</button>";
+                }).join("");
+            }
+
+            function renderGallery() {
+                if (!state.currentHandle) {
+                    elements.galleryTitle.textContent = "Gallery";
+                    elements.gallerySubtitle.textContent = "Drop a directory or reopen a recent one.";
+                    elements.galleryScroll.innerHTML = "<div class=\"empty-state\">No directory is open.</div>";
+                    renderFolderNavigator();
+                    renderLightbox();
+                    return;
+                }
+                const filteredImages = getSortedVisibleImages();
+                const groups = groupImages(filteredImages);
+                renderFolderNavigator();
+                elements.galleryTitle.textContent = state.selectedFolderPath ? state.selectedFolderPath : state.currentDirectoryName;
+                elements.gallerySubtitle.textContent = filteredImages.length + " image" + (filteredImages.length === 1 ? "" : "s") + " visible" + (state.flatten ? " from this subtree." : " directly in the current folder.") + (state.imageLoading ? " Loading more..." : "");
+                if (!filteredImages.length) {
+                    elements.galleryScroll.innerHTML = state.imageLoading
+                        ? "<div class=\"empty-state\">Loading images from the current " + (state.flatten ? "subtree" : "folder") + "...</div>"
+                        : "<div class=\"empty-state\">No images match the current folder and filter.</div>";
+                    renderLightbox();
+                    return;
+                }
+                elements.galleryScroll.innerHTML = (state.imageLoading ? "<div class=\"hint\">Loading more images...</div>" : "") + groups.map((group) => {
+                    return "<section class=\"group-card\">"
+                        + "<div class=\"group-head\"><h3>" + escapeHtml(group.title) + "</h3><div class=\"group-meta\">" + escapeHtml(group.description) + "</div></div>"
+                        + "<div class=\"image-grid\" data-zoom-mode=\"" + escapeHtml(state.zoomMode) + "\">" + group.images.map(buildImageCard).join("") + "</div>"
+                        + "</section>";
+                }).join("");
+                renderLightbox();
+            }
+
+            function updateStatus(message) {
+                if (!state.currentHandle) {
+                    elements.directorySummary.textContent = "No directory loaded.";
+                    elements.selectionSummary.textContent = message || "Drop a directory or use Open directory.";
+                    return;
+                }
+                const folderLabel = state.selectedFolderPath || "/";
+                elements.directorySummary.textContent = "Directory: " + state.currentDirectoryName + " | " + state.images.length + " image" + (state.images.length === 1 ? "" : "s");
+                elements.selectionSummary.textContent = message || "Folder: " + folderLabel + " | sort " + state.sortKey + " " + state.sortDirection + (state.flatten ? " | flat" : " | grouped") + (state.treeLoading ? " | scanning tree" : "") + (state.imageLoading ? " | loading images" : "");
+            }
+
+            async function openImageByRelativePath(relativePath) {
+                const image = state.images.find((entry) => entry.relativePath === relativePath);
+                if (!image) {
+                    return;
+                }
+                const blobUrl = URL.createObjectURL(image.file);
+                window.open(blobUrl, "_blank", "noopener");
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+            }
+
+            function getLightboxContext() {
+                const images = getSortedVisibleImages();
+                const index = images.findIndex((image) => image.relativePath === state.lightboxRelativePath);
+                return {
+                    images,
+                    index,
+                    image: index >= 0 ? images[index] : null
+                };
+            }
+
+            function getLightboxScaleLimit() {
+                return state.lightboxScale <= 0 ? Infinity : state.lightboxScale;
+            }
+
+            function getLightboxAvailableSize() {
+                const styles = getComputedStyle(elements.lightboxImageWrap);
+                const availableWidth = elements.lightboxImageWrap.clientWidth
+                    - parseFloat(styles.paddingLeft || "0")
+                    - parseFloat(styles.paddingRight || "0");
+                const availableHeight = elements.lightboxImageWrap.clientHeight
+                    - parseFloat(styles.paddingTop || "0")
+                    - parseFloat(styles.paddingBottom || "0");
+                return {
+                    width: Math.max(1, availableWidth),
+                    height: Math.max(1, availableHeight)
+                };
+            }
+
+            function getLightboxPadding() {
+                const styles = getComputedStyle(elements.lightboxImageWrap);
+                return {
+                    left: parseFloat(styles.paddingLeft || "0"),
+                    top: parseFloat(styles.paddingTop || "0")
+                };
+            }
+
+            function getCurrentLightboxImageSize() {
+                const width = Number(elements.lightboxImage.style.getPropertyValue("--lightbox-intrinsic-width") || 0) * (state.lightboxZoomPercent || 100) / 100;
+                const height = Number(elements.lightboxImage.style.getPropertyValue("--lightbox-intrinsic-height") || 0) * (state.lightboxZoomPercent || 100) / 100;
+                return {
+                    width: Number.isFinite(width) && width > 0 ? width : elements.lightboxImage.getBoundingClientRect().width,
+                    height: Number.isFinite(height) && height > 0 ? height : elements.lightboxImage.getBoundingClientRect().height
+                };
+            }
+
+            function getAutoLightboxZoomPercent(image) {
+                if (!image || !image.width || !image.height) {
+                    return Math.min(100, getLightboxScaleLimit());
+                }
+                const available = getLightboxAvailableSize();
+                const fitPercent = Math.min(
+                    (available.width / image.width) * 100,
+                    (available.height / image.height) * 100
+                );
+                const safeFitPercent = Number.isFinite(fitPercent) && fitPercent > 0 ? fitPercent : 100;
+                return Math.min(safeFitPercent, getLightboxScaleLimit());
+            }
+
+            function centerLightboxImage() {
+                const available = getLightboxAvailableSize();
+                const imageSize = getCurrentLightboxImageSize();
+                state.lightboxView = {
+                    offsetX: (available.width - imageSize.width) / 2,
+                    offsetY: (available.height - imageSize.height) / 2
+                };
+                applyLightboxPlacement();
+            }
+
+            function restoreLightboxView() {
+                if (!state.lightboxView) {
+                    centerLightboxImage();
+                    return;
+                }
+                applyLightboxPlacement();
+            }
+
+            function applyLightboxPlacement() {
+                const padding = getLightboxPadding();
+                const offsetX = state.lightboxView && Number.isFinite(state.lightboxView.offsetX) ? state.lightboxView.offsetX : 0;
+                const offsetY = state.lightboxView && Number.isFinite(state.lightboxView.offsetY) ? state.lightboxView.offsetY : 0;
+                elements.lightboxImage.style.setProperty("--lightbox-left", (padding.left + offsetX) + "px");
+                elements.lightboxImage.style.setProperty("--lightbox-top", (padding.top + offsetY) + "px");
+            }
+
+            function resetLightboxZoom() {
+                const context = getLightboxContext();
+                state.lightboxZoomPercent = getAutoLightboxZoomPercent(context.image);
+            }
+
+            function updateLightboxZoomReadout() {
+                const roundedZoom = Math.round(state.lightboxZoomPercent || 100);
+                elements.lightboxZoomReadout.textContent = state.lightboxZoomAuto
+                    ? "Zoom " + roundedZoom + "% | fit"
+                    : "Zoom " + roundedZoom + "%";
+                elements.lightboxZoomReadout.title = state.lightboxZoomAuto
+                    ? "Image is auto-fitted to fullscreen. Double click to reset here after manual zoom."
+                    : "Manual zoom active. Double click to return to fullscreen auto-fit.";
+            }
+
+            function resetLightboxToFit() {
+                state.lightboxZoomAuto = true;
+                state.lightboxZoomPercent = NaN;
+                state.lightboxView = null;
+                state.lightboxDrag = null;
+                elements.lightboxImageWrap.classList.remove("dragging");
+                renderLightbox();
+            }
+
+            function zoomLightboxAtPoint(nextZoomPercent, clientX, clientY) {
+                const wrapRect = elements.lightboxImageWrap.getBoundingClientRect();
+                const padding = getLightboxPadding();
+                const imageSizeBefore = getCurrentLightboxImageSize();
+                const previousZoom = state.lightboxZoomPercent || 100;
+                const nextZoom = clamp(Math.round(nextZoomPercent), 10, 20000);
+                if (nextZoom === previousZoom) {
+                    return;
+                }
+                const currentView = state.lightboxView || { offsetX: 0, offsetY: 0 };
+                const relativeX = imageSizeBefore.width > 0
+                    ? (clientX - wrapRect.left - padding.left - currentView.offsetX) / imageSizeBefore.width
+                    : 0.5;
+                const relativeY = imageSizeBefore.height > 0
+                    ? (clientY - wrapRect.top - padding.top - currentView.offsetY) / imageSizeBefore.height
+                    : 0.5;
+                state.lightboxZoomPercent = nextZoom;
+                elements.lightboxImage.style.setProperty("--lightbox-scale", String(state.lightboxZoomPercent));
+                updateLightboxZoomReadout();
+                const imageSizeAfter = {
+                    width: imageSizeBefore.width * nextZoom / previousZoom,
+                    height: imageSizeBefore.height * nextZoom / previousZoom
+                };
+                const clampedRelativeX = clamp(relativeX, 0, 1);
+                const clampedRelativeY = clamp(relativeY, 0, 1);
+                state.lightboxView = {
+                    offsetX: clientX - wrapRect.left - padding.left - clampedRelativeX * imageSizeAfter.width,
+                    offsetY: clientY - wrapRect.top - padding.top - clampedRelativeY * imageSizeAfter.height
+                };
+                applyLightboxPlacement();
+            }
+
+            function closeLightbox() {
+                state.lightboxOpen = false;
+                state.lightboxRelativePath = "";
+                state.lightboxZoomAuto = true;
+                state.lightboxView = null;
+                state.lightboxDrag = null;
+                document.body.classList.remove("lightbox-open");
+                elements.lightbox.classList.add("hidden");
+                elements.lightboxImageWrap.classList.remove("dragging");
+                elements.lightboxImage.removeAttribute("src");
+                elements.lightboxImage.alt = "";
+                if (document.fullscreenElement === elements.lightbox && document.exitFullscreen) {
+                    document.exitFullscreen().catch(() => undefined);
+                }
+            }
+
+            function renderLightbox() {
+                if (!state.lightboxOpen) {
+                    closeLightbox();
+                    return;
+                }
+                const context = getLightboxContext();
+                if (!context.image) {
+                    closeLightbox();
+                    return;
+                }
+                const image = context.image;
+                const countLabel = (context.index + 1) + " / " + context.images.length;
+                const dimensionLabel = image.width > 0 && image.height > 0
+                    ? image.width + " x " + image.height
+                    : "Unknown size";
+                state.lightboxRelativePath = image.relativePath;
+                elements.lightboxTitle.textContent = image.name;
+                elements.lightboxSubtitle.textContent = image.relativePath + " | " + dimensionLabel + " | " + formatBytes(image.bytes);
+                elements.lightboxCounter.textContent = countLabel + " | Use Left/Right arrows, mouse wheel, or the buttons.";
+                elements.lightboxScaleSelect.value = String(state.lightboxScale);
+                if (state.lightboxZoomAuto || !Number.isFinite(state.lightboxZoomPercent) || state.lightboxZoomPercent <= 0) {
+                    resetLightboxZoom();
+                }
+                updateLightboxZoomReadout();
+                elements.lightboxImage.src = image.objectUrl;
+                elements.lightboxImage.alt = image.relativePath;
+                elements.lightboxImage.style.setProperty("--lightbox-intrinsic-width", String(image.width || 200));
+                elements.lightboxImage.style.setProperty("--lightbox-intrinsic-height", String(image.height || 150));
+                elements.lightboxImage.style.setProperty("--lightbox-scale", String(state.lightboxZoomPercent));
+                elements.lightbox.classList.remove("hidden");
+                document.body.classList.add("lightbox-open");
+                const disableNavigation = context.images.length <= 1;
+                elements.lightboxPrevButton.disabled = disableNavigation;
+                elements.lightboxNextButton.disabled = disableNavigation;
+                elements.lightboxPrevSideButton.disabled = disableNavigation;
+                elements.lightboxNextSideButton.disabled = disableNavigation;
+                if (state.lightboxZoomAuto) {
+                    centerLightboxImage();
+                } else if (!state.lightboxDrag) {
+                    restoreLightboxView();
+                }
+            }
+
+            function openLightbox(relativePath) {
+                state.lightboxOpen = true;
+                state.lightboxRelativePath = relativePath;
+                state.lightboxZoomAuto = true;
+                state.lightboxZoomPercent = NaN;
+                state.lightboxView = null;
+                renderLightbox();
+                elements.lightbox.focus();
+                if (elements.lightbox.requestFullscreen && document.fullscreenElement !== elements.lightbox) {
+                    elements.lightbox.requestFullscreen({ navigationUI: "hide" }).catch(() => undefined);
+                }
+            }
+
+            function stepLightbox(direction) {
+                const context = getLightboxContext();
+                if (!context.images.length || context.index < 0) {
+                    return;
+                }
+                const nextIndex = (context.index + direction + context.images.length) % context.images.length;
+                state.lightboxRelativePath = context.images[nextIndex].relativePath;
+                state.lightboxZoomAuto = true;
+                state.lightboxZoomPercent = NaN;
+                state.lightboxView = null;
+                renderLightbox();
+            }
+
+            function attachEventListeners() {
+                elements.openDirectoryButton.addEventListener("click", () => {
+                    openDirectoryPicker().catch(handleError);
+                });
+                elements.dropOpenButton.addEventListener("click", () => {
+                    openDirectoryPicker().catch(handleError);
+                });
+                elements.rescanButton.addEventListener("click", () => {
+                    scanDirectory().catch(handleError);
+                });
+                elements.clearHistoryButton.addEventListener("click", () => {
+                    clearHistory().catch(handleError);
+                });
+                elements.filterInput.addEventListener("input", () => {
+                    state.filterText = elements.filterInput.value.trim();
+                    saveSettings();
+                    renderGallery();
+                    updateStatus();
+                });
+                elements.sortSelect.addEventListener("change", () => {
+                    state.sortKey = elements.sortSelect.value;
+                    saveSettings();
+                    renderGallery();
+                    updateStatus();
+                });
+                elements.sortDirectionSelect.addEventListener("change", () => {
+                    state.sortDirection = elements.sortDirectionSelect.value;
+                    saveSettings();
+                    renderGallery();
+                    updateStatus();
+                });
+                elements.flattenToggle.addEventListener("change", () => {
+                    state.flatten = elements.flattenToggle.checked;
+                    saveSettings();
+                    refreshVisibleImages().catch(handleError);
+                    updateStatus();
+                });
+                elements.zoomModeSelect.addEventListener("change", () => {
+                    state.zoomMode = elements.zoomModeSelect.value;
+                    saveSettings();
+                    updateZoomCss();
+                    renderGallery();
+                });
+                elements.zoomValueRange.addEventListener("input", () => {
+                    setZoomValue(Number(elements.zoomValueRange.value));
+                });
+                elements.lightboxScaleSelect.addEventListener("change", () => {
+                    const rawValue = Number(elements.lightboxScaleSelect.value);
+                    state.lightboxScale = rawValue <= 0 ? 0 : clamp(rawValue || 400, 100, 1200);
+                    state.lightboxZoomAuto = true;
+                    state.lightboxZoomPercent = NaN;
+                    saveSettings();
+                    renderLightbox();
+                });
+                elements.recentList.addEventListener("click", (event) => {
+                    const openButton = event.target.closest("[data-recent-open]");
+                    if (openButton) {
+                        openRecentDirectory(openButton.getAttribute("data-recent-open")).catch(handleError);
+                        return;
+                    }
+                    const removeButton = event.target.closest("[data-recent-remove]");
+                    if (removeButton) {
+                        removeRecentDirectory(removeButton.getAttribute("data-recent-remove")).catch(handleError);
+                        return;
+                    }
+                    const recentButton = event.target.closest("[data-recent-id]");
+                    if (recentButton) {
+                        openRecentDirectory(recentButton.getAttribute("data-recent-id")).catch(handleError);
+                    }
+                });
+                elements.folderTree.addEventListener("click", (event) => {
+                    const folderButton = event.target.closest("[data-folder-select]");
+                    if (!folderButton) {
+                        return;
+                    }
+                    state.selectedFolderPath = folderButton.getAttribute("data-folder-select") || "";
+                    renderFolderTree();
+                    refreshVisibleImages().catch(handleError);
+                    updateStatus();
+                });
+                elements.folderNavigator.addEventListener("click", (event) => {
+                    const folderButton = event.target.closest("[data-folder-select]");
+                    if (!folderButton) {
+                        return;
+                    }
+                    state.selectedFolderPath = folderButton.getAttribute("data-folder-select") || "";
+                    renderFolderTree();
+                    refreshVisibleImages().catch(handleError);
+                    updateStatus();
+                });
+                elements.galleryScroll.addEventListener("pointerup", (event) => {
+                    if (event.button !== 0) {
+                        return;
+                    }
+                    const lightboxTarget = event.target.closest("[data-lightbox-path]");
+                    if (!lightboxTarget) {
+                        return;
+                    }
+                    event.preventDefault();
+                    openLightbox(lightboxTarget.getAttribute("data-lightbox-path"));
+                });
+                elements.galleryScroll.addEventListener("click", (event) => {
+                    const lightboxTarget = event.target.closest("[data-lightbox-path]");
+                    if (lightboxTarget) {
+                        event.preventDefault();
+                        openLightbox(lightboxTarget.getAttribute("data-lightbox-path"));
+                        return;
+                    }
+                    const openImageButton = event.target.closest("[data-open-path]");
+                    if (openImageButton) {
+                        openImageByRelativePath(openImageButton.getAttribute("data-open-path")).catch(handleError);
+                        return;
+                    }
+                    const folderButton = event.target.closest("[data-folder-path]");
+                    if (folderButton) {
+                        state.selectedFolderPath = folderButton.getAttribute("data-folder-path") || "";
+                        renderFolderTree();
+                        refreshVisibleImages().catch(handleError);
+                        updateStatus();
+                    }
+                });
+
+                elements.lightbox.addEventListener("click", (event) => {
+                    if (event.target.closest("[data-lightbox-close]")) {
+                        closeLightbox();
+                    }
+                });
+                elements.lightboxCloseButton.addEventListener("click", closeLightbox);
+                elements.lightboxPrevButton.addEventListener("click", () => stepLightbox(-1));
+                elements.lightboxNextButton.addEventListener("click", () => stepLightbox(1));
+                elements.lightboxPrevSideButton.addEventListener("click", () => stepLightbox(-1));
+                elements.lightboxNextSideButton.addEventListener("click", () => stepLightbox(1));
+                elements.lightboxImageWrap.addEventListener("pointerdown", (event) => {
+                    if (!state.lightboxOpen || event.button !== 0) {
+                        return;
+                    }
+                    const currentView = state.lightboxView || { offsetX: 0, offsetY: 0 };
+                    state.lightboxDrag = {
+                        pointerId: event.pointerId,
+                        startX: event.clientX,
+                        startY: event.clientY,
+                        offsetX: currentView.offsetX,
+                        offsetY: currentView.offsetY
+                    };
+                    elements.lightboxImageWrap.classList.add("dragging");
+                    elements.lightboxImageWrap.setPointerCapture(event.pointerId);
+                });
+                elements.lightboxImageWrap.addEventListener("pointermove", (event) => {
+                    if (!state.lightboxDrag || state.lightboxDrag.pointerId !== event.pointerId) {
+                        return;
+                    }
+                    event.preventDefault();
+                    const deltaX = event.clientX - state.lightboxDrag.startX;
+                    const deltaY = event.clientY - state.lightboxDrag.startY;
+                    state.lightboxView = {
+                        offsetX: state.lightboxDrag.offsetX + deltaX,
+                        offsetY: state.lightboxDrag.offsetY + deltaY
+                    };
+                    applyLightboxPlacement();
+                });
+                ["pointerup", "pointercancel"].forEach((type) => {
+                    elements.lightboxImageWrap.addEventListener(type, (event) => {
+                        if (!state.lightboxDrag || state.lightboxDrag.pointerId !== event.pointerId) {
+                            return;
+                        }
+                        state.lightboxDrag = null;
+                        elements.lightboxImageWrap.classList.remove("dragging");
+                        elements.lightboxImageWrap.releasePointerCapture(event.pointerId);
+                    });
+                });
+                elements.lightboxImageWrap.addEventListener("dblclick", (event) => {
+                    event.preventDefault();
+                    resetLightboxToFit();
+                });
+                elements.lightboxImage.addEventListener("dragstart", (event) => {
+                    event.preventDefault();
+                });
+                elements.lightboxViewport.addEventListener("wheel", (event) => {
+                    if (!state.lightboxOpen) {
+                        return;
+                    }
+                    if (event.ctrlKey) {
+                        event.preventDefault();
+                        state.lightboxZoomAuto = false;
+                        const currentZoom = Number.isFinite(state.lightboxZoomPercent) && state.lightboxZoomPercent > 0
+                            ? state.lightboxZoomPercent
+                            : 100;
+                        const nextZoom = getNextWheelZoomValue(currentZoom, event, 10, 20000);
+                        zoomLightboxAtPoint(nextZoom, event.clientX, event.clientY);
+                        return;
+                    }
+                    const now = Date.now();
+                    if (now < state.lightboxWheelUntil) {
+                        event.preventDefault();
+                        return;
+                    }
+                    if (Math.abs(event.deltaY) < 8 && Math.abs(event.deltaX) < 8) {
+                        return;
+                    }
+                    event.preventDefault();
+                    state.lightboxWheelUntil = now + 180;
+                    stepLightbox(event.deltaY > 0 || event.deltaX > 0 ? 1 : -1);
+                }, { passive: false });
+
+                ["dragenter", "dragover"].forEach((type) => {
+                    document.addEventListener(type, (event) => {
+                        event.preventDefault();
+                        elements.dropZone.classList.add("drag-over");
+                    });
+                });
+
+                ["dragleave", "dragend"].forEach((type) => {
+                    document.addEventListener(type, (event) => {
+                        if (event.target === document.documentElement || event.target === document.body) {
+                            elements.dropZone.classList.remove("drag-over");
+                        }
+                    });
+                });
+
+                document.addEventListener("drop", (event) => {
+                    event.preventDefault();
+                    elements.dropZone.classList.remove("drag-over");
+                    extractDroppedDirectory(event).then((handle) => {
+                        if (!handle) {
+                            throw new Error("Drop a directory, not a file.");
+                        }
+                        return openDirectoryHandle(handle, "drop");
+                    }).catch(handleError);
+                });
+
+                document.addEventListener("wheel", (event) => {
+                    if (state.lightboxOpen) {
+                        return;
+                    }
+                    if (!event.ctrlKey) {
+                        return;
+                    }
+                    event.preventDefault();
+                    setZoomValue(getNextWheelZoomValue(state.zoomValue, event, 40, 320));
+                }, { passive: false });
+
+                document.addEventListener("keydown", (event) => {
+                    if (!state.lightboxOpen) {
+                        return;
+                    }
+                    if (event.key === "Escape") {
+                        event.preventDefault();
+                        closeLightbox();
+                        return;
+                    }
+                    if (event.key === "ArrowLeft") {
+                        event.preventDefault();
+                        stepLightbox(-1);
+                        return;
+                    }
+                    if (event.key === "ArrowRight") {
+                        event.preventDefault();
+                        stepLightbox(1);
+                    }
+                });
+                window.addEventListener("resize", () => {
+                    if (state.lightboxOpen && state.lightboxZoomAuto) {
+                        renderLightbox();
+                    }
+                });
+                document.addEventListener("fullscreenchange", () => {
+                    if (!state.lightboxOpen) {
+                        return;
+                    }
+                    if (document.fullscreenElement && document.fullscreenElement !== elements.lightbox) {
+                        closeLightbox();
+                        return;
+                    }
+                    if (!document.fullscreenElement) {
+                        closeLightbox();
+                        return;
+                    }
+                    if (state.lightboxZoomAuto) {
+                        renderLightbox();
+                    }
+                });
+            }
+
+            function handleError(error) {
+                console.error(error);
+                const message = error && error.message ? error.message : String(error);
+                updateStatus("Error: " + message);
+            }
+
+            function initialize() {
+                loadHistory();
+                loadSettings();
+                loadSessionSnapshot();
+                syncControls();
+                renderRecentList();
+                renderFolderTree();
+                renderGallery();
+                renderLightbox();
+                updateStatus();
+                if (!isSupported()) {
+                    elements.browserCompatibilityHint.classList.remove("hidden");
+                    elements.openDirectoryButton.disabled = true;
+                    elements.dropOpenButton.disabled = true;
+                    elements.clearHistoryButton.disabled = true;
+                    return;
+                }
+                attachEventListeners();
+                if (state.pendingSessionDirectoryId) {
+                    openRecentDirectory(state.pendingSessionDirectoryId).catch(handleError);
+                }
+            }
+
+            initialize();
+        });
+    </script>
+</body>
+
+</html>
