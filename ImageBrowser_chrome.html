@@ -97,7 +97,9 @@
             grid-template-columns: minmax(280px, var(--sidebar-width)) minmax(0, 1fr);
             gap: 1rem;
             padding: 1rem;
-            min-height: 100vh;
+            height: 100vh;
+            min-height: 0;
+            overflow: hidden;
         }
 
         .sidebar,
@@ -106,6 +108,7 @@
             display: flex;
             flex-direction: column;
             gap: 1rem;
+            overflow: hidden;
         }
 
         .card {
@@ -345,6 +348,7 @@
         .gallery-card {
             display: flex;
             flex-direction: column;
+            flex: 1 1 auto;
             min-height: 0;
             overflow: hidden;
         }
@@ -410,12 +414,18 @@
         }
 
         .gallery-scroll {
+            flex: 1 1 auto;
             min-height: 0;
             overflow: auto;
             padding: 1rem 1.1rem 1.25rem;
             display: flex;
             flex-direction: column;
             gap: 1.1rem;
+        }
+
+        .gallery-scroll:focus {
+            outline: 2px solid rgba(15, 139, 109, 0.45);
+            outline-offset: -2px;
         }
 
         .group-card {
@@ -461,6 +471,18 @@
             border: 1px solid rgba(69, 57, 45, 0.1);
         }
 
+        .virtual-grid {
+            position: relative;
+            width: 100%;
+            min-height: 1px;
+        }
+
+        .virtual-image-card {
+            position: absolute;
+            margin: 0;
+            overflow: visible;
+        }
+
         .image-grid[data-zoom-mode="percent"] .image-card {
             flex: 0 0 auto;
             width: max-content;
@@ -471,6 +493,7 @@
             width: 100%;
             min-height: 4rem;
             height: var(--preview-height);
+            flex: 0 0 auto;
             border-radius: 12px;
             background:
                 linear-gradient(45deg, rgba(69, 57, 45, 0.06) 25%, transparent 25%),
@@ -500,6 +523,22 @@
             pointer-events: none;
         }
 
+        .image-placeholder {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            max-width: min(100%, 15rem);
+            min-height: 3.4rem;
+            padding: 0.7rem 0.9rem;
+            text-align: center;
+            font-size: 0.82rem;
+            line-height: 1.35;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.68);
+            border: 1px solid rgba(69, 57, 45, 0.1);
+            border-radius: 10px;
+        }
+
         .image-card[data-zoom-mode="percent"] .image-frame {
             width: calc(var(--intrinsic-width, 200) * var(--image-scale) * 1px / 100 + 0.7rem);
             height: calc(var(--intrinsic-height, 150) * var(--image-scale) * 1px / 100 + 0.7rem);
@@ -521,18 +560,43 @@
         .image-title {
             font-weight: 700;
             word-break: break-word;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            overflow: hidden;
+            min-height: 2.6em;
         }
 
         .image-path {
             color: var(--muted);
             font-size: 0.86rem;
             word-break: break-word;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            overflow: hidden;
+            min-height: 2.6em;
         }
 
         .image-actions {
             display: flex;
             gap: 0.4rem;
             flex-wrap: wrap;
+        }
+
+        .image-meta {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            overflow: hidden;
+            min-height: 2.6em;
+        }
+
+        .virtual-image-card .image-actions {
+            margin-top: auto;
         }
 
         .image-actions button {
@@ -854,7 +918,7 @@
                         original creation timestamps.</div>
                 </div>
                 <div id="folderNavigator" class="folder-navigator"></div>
-                <div id="galleryScroll" class="gallery-scroll"></div>
+                <div id="galleryScroll" class="gallery-scroll" tabindex="0"></div>
             </section>
         </main>
     </div>
@@ -912,6 +976,17 @@
             const DB_NAME = "image-browser-chrome-db";
             const DB_VERSION = 1;
             const HANDLE_STORE = "directoryHandles";
+            const PREVIEW_LOAD_CONCURRENCY = 3;
+            const PREVIEW_PRIORITY_VISIBLE = 0;
+            const PREVIEW_PRIORITY_BUFFER = 1;
+            const VIRTUAL_GAP_PX = 14;
+            const VIRTUAL_BUFFER_PX = 900;
+            const VIRTUAL_GROUP_PADDING_PX = 30;
+            const VIRTUAL_PREVIEW_CARD_EXTRA_WIDTH = 22;
+            const VIRTUAL_PREVIEW_CARD_EXTRA_HEIGHT = 232;
+            const VIRTUAL_PERCENT_CARD_EXTRA_WIDTH = 34;
+            const VIRTUAL_PERCENT_CARD_EXTRA_HEIGHT = 232;
+            const GALLERY_SCROLL_IDLE_MS = 180;
 
             const elements = {
                 openDirectoryButton: document.getElementById("openDirectoryButton"),
@@ -962,6 +1037,8 @@
                 folderMap: new Map(),
                 folderHandleMap: new Map(),
                 images: [],
+                imageMap: new Map(),
+                virtualGallery: null,
                 selectedFolderPath: "",
                 filterText: "",
                 sortKey: "path",
@@ -979,12 +1056,22 @@
                 lightboxScale: 400,
                 lightboxZoomPercent: 100,
                 lightboxZoomAuto: true,
+                lightboxReturnSnapshot: null,
+                pendingGalleryRestoreSnapshot: null,
                 lightboxView: null,
-                lightboxDrag: null
+                lightboxDrag: null,
+                previewQueue: [],
+                previewQueueMap: new Map(),
+                previewQueueSequence: 0,
+                previewActiveLoads: 0,
+                galleryScrollUntil: 0,
+                galleryRenderDeferred: false
             };
 
             let galleryRenderScheduled = false;
+            let galleryWindowRenderScheduled = false;
             let folderRenderScheduled = false;
+            let galleryScrollIdleTimeout = 0;
 
             function isSupported() {
                 return typeof window.showDirectoryPicker === "function"
@@ -1157,14 +1244,83 @@
             }
 
             function scheduleGalleryRender() {
+                if (Date.now() < state.galleryScrollUntil) {
+                    state.galleryRenderDeferred = true;
+                    return;
+                }
                 if (galleryRenderScheduled) {
                     return;
                 }
                 galleryRenderScheduled = true;
                 requestAnimationFrame(() => {
                     galleryRenderScheduled = false;
-                    renderGallery();
+                    renderGallery({ preserveScroll: true });
                 });
+            }
+
+            function scheduleGalleryWindowRender() {
+                if (galleryRenderScheduled || galleryWindowRenderScheduled) {
+                    return;
+                }
+                galleryWindowRenderScheduled = true;
+                requestAnimationFrame(() => {
+                    galleryWindowRenderScheduled = false;
+                    renderVirtualGalleryWindow();
+                });
+            }
+
+            function captureGalleryScrollState() {
+                return {
+                    top: elements.galleryScroll.scrollTop,
+                    left: elements.galleryScroll.scrollLeft,
+                    focused: document.activeElement === elements.galleryScroll
+                };
+            }
+
+            function restoreGalleryScrollState(snapshot) {
+                if (!snapshot) {
+                    return;
+                }
+                requestAnimationFrame(() => {
+                    const maxTop = Math.max(0, elements.galleryScroll.scrollHeight - elements.galleryScroll.clientHeight);
+                    const maxLeft = Math.max(0, elements.galleryScroll.scrollWidth - elements.galleryScroll.clientWidth);
+                    elements.galleryScroll.scrollTop = clamp(snapshot.top, 0, maxTop);
+                    elements.galleryScroll.scrollLeft = clamp(snapshot.left, 0, maxLeft);
+                    if (snapshot.focused) {
+                        elements.galleryScroll.focus({ preventScroll: true });
+                    }
+                    if (state.virtualGallery) {
+                        renderVirtualGalleryWindow(true);
+                    }
+                });
+            }
+
+            function restorePendingGallerySnapshot() {
+                const snapshot = state.pendingGalleryRestoreSnapshot;
+                if (!snapshot || !state.currentHandle) {
+                    return;
+                }
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        if (state.pendingGalleryRestoreSnapshot !== snapshot || !state.currentHandle) {
+                            return;
+                        }
+                        renderGallery({ restoreSnapshot: snapshot });
+                        state.pendingGalleryRestoreSnapshot = null;
+                    });
+                });
+            }
+
+            function noteGalleryScrollActivity() {
+                state.galleryScrollUntil = Date.now() + GALLERY_SCROLL_IDLE_MS;
+                clearTimeout(galleryScrollIdleTimeout);
+                galleryScrollIdleTimeout = setTimeout(() => {
+                    if (!state.galleryRenderDeferred || Date.now() < state.galleryScrollUntil) {
+                        return;
+                    }
+                    state.galleryRenderDeferred = false;
+                    scheduleGalleryRender();
+                }, GALLERY_SCROLL_IDLE_MS + 20);
             }
 
             function scheduleFolderRender() {
@@ -1176,6 +1332,12 @@
                     folderRenderScheduled = false;
                     renderFolderTree();
                     renderFolderNavigator();
+                });
+            }
+
+            function yieldToBrowser() {
+                return new Promise((resolve) => {
+                    setTimeout(resolve, 0);
                 });
             }
 
@@ -1366,6 +1528,8 @@
                 state.folderMap = new Map();
                 state.folderHandleMap = new Map();
                 state.images = [];
+                state.imageMap = new Map();
+                state.virtualGallery = null;
                 state.selectedFolderPath = "";
                 state.treeLoading = false;
                 state.imageLoading = false;
@@ -1378,11 +1542,23 @@
             }
 
             function revokeImageUrls() {
+                clearPreviewQueue();
                 state.images.forEach((image) => {
                     if (image.objectUrl) {
                         URL.revokeObjectURL(image.objectUrl);
+                        image.objectUrl = "";
                     }
+                    image.previewPromise = null;
+                    image.previewLoading = false;
                 });
+            }
+
+            function clearPreviewQueue() {
+                state.previewQueue.forEach((task) => {
+                    task.resolve(null);
+                });
+                state.previewQueue = [];
+                state.previewQueueMap = new Map();
             }
 
             async function openDirectoryPicker() {
@@ -1451,13 +1627,15 @@
                 state.folderMap = new Map([["", rootFolder]]);
                 state.folderHandleMap = new Map([["", state.currentHandle]]);
                 state.images = [];
+                state.imageMap = new Map();
+                state.virtualGallery = null;
                 state.selectedFolderPath = "";
                 renderFolderTree();
                 renderFolderNavigator();
                 updateStatus("Scanning directory...");
                 renderGallery();
 
-                discoverFolderTree(state.currentHandle, [], scanToken)
+                discoverFolderTree(state.currentHandle, [], scanToken, { count: 0 })
                     .then(() => {
                         if (scanToken !== state.scanToken) {
                             return;
@@ -1486,7 +1664,7 @@
                         handleError(error);
                     });
 
-                await refreshVisibleImages();
+                refreshVisibleImages().catch(handleError);
             }
 
             function ensureFolderRecord(path, depth, handle) {
@@ -1525,7 +1703,7 @@
                 }
             }
 
-            async function discoverFolderTree(directoryHandle, parts, scanToken) {
+            async function discoverFolderTree(directoryHandle, parts, scanToken, progress) {
                 const currentPath = normalizePath(parts);
                 ensureFolderRecord(currentPath, parts.length, directoryHandle);
                 for await (const [name, childHandle] of directoryHandle.entries()) {
@@ -1537,7 +1715,11 @@
                         const childPath = normalizePath(childParts);
                         ensureFolderRecord(childPath, childParts.length, childHandle);
                         scheduleFolderRender();
-                        await discoverFolderTree(childHandle, childParts, scanToken);
+                        progress.count += 1;
+                        if (progress.count % 40 === 0) {
+                            await yieldToBrowser();
+                        }
+                        await discoverFolderTree(childHandle, childParts, scanToken, progress);
                         continue;
                     }
                     const extension = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
@@ -1545,46 +1727,51 @@
                         continue;
                     }
                     incrementFolderImageCounts(currentPath);
+                    progress.count += 1;
+                    if (progress.count % 80 === 0) {
+                        scheduleFolderRender();
+                        await yieldToBrowser();
+                    }
                 }
                 scheduleFolderRender();
             }
 
-            async function loadImageEntry(childHandle, parts, name, loadToken) {
+            async function loadImageEntryMetadata(childHandle, parts, name, loadToken, progress) {
                 const folderPath = normalizePath(parts);
                 const relativePath = normalizePath(parts.concat(name));
                 const file = await childHandle.getFile();
                 if (loadToken !== state.imageLoadToken) {
                     return;
                 }
-                const objectUrl = URL.createObjectURL(file);
-                const dimensions = await readImageDimensions(file, objectUrl);
-                if (loadToken !== state.imageLoadToken) {
-                    URL.revokeObjectURL(objectUrl);
-                    return;
-                }
-                const area = dimensions.width > 0 && dimensions.height > 0
-                    ? dimensions.width * dimensions.height
-                    : 0;
-                state.images.push({
+                const image = {
                     name,
                     extension: name.includes(".") ? name.split(".").pop().toLowerCase() : "",
                     folderPath,
                     relativePath,
                     handle: childHandle,
-                    file,
-                    objectUrl,
+                    objectUrl: "",
                     bytes: file.size,
                     modifiedMs: file.lastModified || 0,
                     createdMs: file.lastModified || 0,
-                    width: dimensions.width,
-                    height: dimensions.height,
-                    area,
-                    longestEdge: Math.max(dimensions.width, dimensions.height)
-                });
-                scheduleGalleryRender();
+                    width: 0,
+                    height: 0,
+                    area: 0,
+                    longestEdge: 0,
+                    previewLoading: false,
+                    previewPromise: null,
+                    scopeToken: loadToken
+                };
+                state.images.push(image);
+                state.imageMap.set(relativePath, image);
+                progress.count += 1;
+                if (progress.count % 24 === 0) {
+                    scheduleGalleryRender();
+                    updateStatus();
+                    await yieldToBrowser();
+                }
             }
 
-            async function loadImagesForScope(directoryHandle, parts, recursive, loadToken) {
+            async function loadImagesForScope(directoryHandle, parts, recursive, loadToken, progress) {
                 const currentPath = normalizePath(parts);
                 ensureFolderRecord(currentPath, parts.length, directoryHandle);
                 for await (const [name, childHandle] of directoryHandle.entries()) {
@@ -1595,7 +1782,7 @@
                         const childParts = parts.concat(name);
                         ensureFolderRecord(normalizePath(childParts), childParts.length, childHandle);
                         if (recursive) {
-                            await loadImagesForScope(childHandle, childParts, true, loadToken);
+                            await loadImagesForScope(childHandle, childParts, true, loadToken, progress);
                         }
                         continue;
                     }
@@ -1603,13 +1790,14 @@
                     if (!IMAGE_EXTENSIONS.has(extension)) {
                         continue;
                     }
-                    await loadImageEntry(childHandle, parts, name, loadToken);
+                    await loadImageEntryMetadata(childHandle, parts, name, loadToken, progress);
                 }
             }
 
             async function refreshVisibleImages() {
                 revokeImageUrls();
                 state.images = [];
+                state.imageMap = new Map();
                 state.imageLoading = true;
                 state.imageLoadToken += 1;
                 const loadToken = state.imageLoadToken;
@@ -1622,17 +1810,500 @@
                     return;
                 }
 
+                const parts = state.selectedFolderPath ? state.selectedFolderPath.split("/") : [];
+                const progress = { count: 0 };
+
+                loadImagesForScope(selectedHandle, parts, state.flatten, loadToken, progress)
+                    .catch((error) => {
+                        if (loadToken === state.imageLoadToken) {
+                            handleError(error);
+                        }
+                    })
+                    .finally(() => {
+                        if (loadToken === state.imageLoadToken) {
+                            state.imageLoading = false;
+                            saveSessionSnapshot();
+                            renderGallery();
+                            updateStatus();
+                        }
+                    });
+            }
+
+            function buildImageMetaLine(image) {
+                const dimensions = image.width > 0 && image.height > 0
+                    ? image.width + " x " + image.height
+                    : image.previewLoading
+                        ? "Loading preview"
+                        : "Preview on demand";
+                return dimensions + " | " + formatBytes(image.bytes) + " | changed " + formatTimestamp(image.modifiedMs);
+            }
+
+            function buildImageFrameContent(image) {
+                if (image.objectUrl) {
+                    return "<img loading=\"lazy\" alt=\"" + escapeHtml(image.relativePath) + "\" src=\"" + escapeHtml(image.objectUrl) + "\">";
+                }
+                return "<span class=\"image-placeholder\">" + escapeHtml(image.previewLoading ? "Loading preview..." : "Preview loads when visible.") + "</span>";
+            }
+
+            function queuePreviewLoad(relativePath, priority) {
+                const image = state.imageMap.get(relativePath);
+                if (!image) {
+                    return Promise.resolve(null);
+                }
+                if (image.objectUrl) {
+                    return Promise.resolve(image);
+                }
+                const existingTask = state.previewQueueMap.get(relativePath);
+                if (existingTask) {
+                    existingTask.priority = Math.min(existingTask.priority, priority);
+                    pumpPreviewQueue();
+                    return image.previewPromise || existingTask.promise;
+                }
+                image.previewLoading = true;
+                syncImageCard(image);
+                let resolveTask;
+                let rejectTask;
+                const promise = new Promise((resolve, reject) => {
+                    resolveTask = resolve;
+                    rejectTask = reject;
+                });
+                image.previewPromise = promise;
+                const task = {
+                    relativePath,
+                    priority,
+                    order: state.previewQueueSequence += 1,
+                    resolve: resolveTask,
+                    reject: rejectTask,
+                    promise
+                };
+                state.previewQueue.push(task);
+                state.previewQueueMap.set(relativePath, task);
+                pumpPreviewQueue();
+                return promise;
+            }
+
+            function pumpPreviewQueue() {
+                while (state.previewActiveLoads < PREVIEW_LOAD_CONCURRENCY && state.previewQueue.length) {
+                    state.previewQueue.sort((left, right) => {
+                        return (left.priority - right.priority) || (left.order - right.order);
+                    });
+                    const task = state.previewQueue.shift();
+                    if (!task) {
+                        return;
+                    }
+                    const image = state.imageMap.get(task.relativePath);
+                    state.previewQueueMap.delete(task.relativePath);
+                    if (!image || image.objectUrl) {
+                        if (image) {
+                            image.previewPromise = null;
+                            image.previewLoading = false;
+                        }
+                        task.resolve(image || null);
+                        continue;
+                    }
+                    state.previewActiveLoads += 1;
+                    performPreviewLoad(task, image)
+                        .finally(() => {
+                            state.previewActiveLoads = Math.max(0, state.previewActiveLoads - 1);
+                            pumpPreviewQueue();
+                        });
+                }
+            }
+
+            async function performPreviewLoad(task, image) {
                 try {
-                    const parts = state.selectedFolderPath ? state.selectedFolderPath.split("/") : [];
-                    await loadImagesForScope(selectedHandle, parts, state.flatten, loadToken);
-                } finally {
-                    if (loadToken === state.imageLoadToken) {
-                        state.imageLoading = false;
-                        saveSessionSnapshot();
-                        renderGallery();
-                        updateStatus();
+                    const relativePath = image.relativePath;
+                    const file = await image.handle.getFile();
+                    if (image.scopeToken !== state.imageLoadToken || state.imageMap.get(relativePath) !== image) {
+                        image.previewLoading = false;
+                        image.previewPromise = null;
+                        syncImageCard(image);
+                        task.resolve(null);
+                        return;
+                    }
+                    const objectUrl = URL.createObjectURL(file);
+                    let dimensions = { width: image.width || 0, height: image.height || 0 };
+                    if (!(dimensions.width > 0 && dimensions.height > 0)) {
+                        dimensions = await readImageDimensions(file, objectUrl);
+                    }
+                    if (image.scopeToken !== state.imageLoadToken || state.imageMap.get(relativePath) !== image) {
+                        URL.revokeObjectURL(objectUrl);
+                        image.previewLoading = false;
+                        image.previewPromise = null;
+                        syncImageCard(image);
+                        task.resolve(null);
+                        return;
+                    }
+                    image.objectUrl = objectUrl;
+                    image.bytes = file.size;
+                    image.modifiedMs = file.lastModified || 0;
+                    image.createdMs = file.lastModified || 0;
+                    image.width = dimensions.width || 0;
+                    image.height = dimensions.height || 0;
+                    image.area = image.width > 0 && image.height > 0 ? image.width * image.height : 0;
+                    image.longestEdge = Math.max(image.width, image.height);
+                    image.previewLoading = false;
+                    image.previewPromise = null;
+                    syncImageCard(image);
+                    if (state.zoomMode === "percent" || state.sortKey === "area" || state.sortKey === "pixels") {
+                        scheduleGalleryRender();
+                    }
+                    if (state.lightboxOpen && state.lightboxRelativePath === image.relativePath) {
+                        renderLightbox();
+                    }
+                    task.resolve(image);
+                } catch (error) {
+                    image.previewLoading = false;
+                    image.previewPromise = null;
+                    syncImageCard(image);
+                    task.reject(error);
+                }
+            }
+
+            function observeVisiblePreviewFrames() {
+                const frames = Array.from(elements.galleryScroll.querySelectorAll(".image-frame[data-relative-path]"));
+                if (!frames.length) {
+                    return;
+                }
+                const viewportRect = elements.galleryScroll.getBoundingClientRect();
+                frames
+                    .map((frame) => {
+                        const rect = frame.getBoundingClientRect();
+                        const visible = rect.bottom >= viewportRect.top && rect.top <= viewportRect.bottom;
+                        const distance = visible
+                            ? 0
+                            : Math.min(
+                                Math.abs(rect.top - viewportRect.bottom),
+                                Math.abs(rect.bottom - viewportRect.top)
+                            );
+                        return {
+                            frame,
+                            priority: visible ? PREVIEW_PRIORITY_VISIBLE : PREVIEW_PRIORITY_BUFFER,
+                            distance
+                        };
+                    })
+                    .sort((left, right) => (left.priority - right.priority) || (left.distance - right.distance))
+                    .forEach((entry) => {
+                        const relativePath = entry.frame.getAttribute("data-relative-path");
+                        if (relativePath) {
+                            queuePreviewLoad(relativePath, entry.priority).catch(handleError);
+                        }
+                    });
+            }
+
+            function escapeCssValue(value) {
+                if (window.CSS && typeof window.CSS.escape === "function") {
+                    return window.CSS.escape(value);
+                }
+                return String(value).replace(/(["\\])/g, "\\$1");
+            }
+
+            function getGalleryVirtualWidth() {
+                const styles = getComputedStyle(elements.galleryScroll);
+                const horizontalPadding = parseFloat(styles.paddingLeft || "0") + parseFloat(styles.paddingRight || "0");
+                return Math.max(220, elements.galleryScroll.clientWidth - horizontalPadding - VIRTUAL_GROUP_PADDING_PX);
+            }
+
+            function getPreviewFrameSize() {
+                return {
+                    width: Math.round(240 * state.zoomValue / 100),
+                    height: Math.round(180 * state.zoomValue / 100)
+                };
+            }
+
+            function getVirtualPercentCardMetrics(image, availableWidth) {
+                const scale = state.zoomValue / 100;
+                const frameWidth = Math.max(32, Math.round((image.width || 200) * scale));
+                const frameHeight = Math.max(32, Math.round((image.height || 150) * scale));
+                return {
+                    width: Math.min(availableWidth, frameWidth + VIRTUAL_PERCENT_CARD_EXTRA_WIDTH),
+                    height: frameHeight + VIRTUAL_PERCENT_CARD_EXTRA_HEIGHT
+                };
+            }
+
+            function buildPreviewVirtualLayout(images, availableWidth) {
+                const previewSize = getPreviewFrameSize();
+                const targetCardWidth = Math.min(availableWidth, previewSize.width + VIRTUAL_PREVIEW_CARD_EXTRA_WIDTH);
+                const columnCount = Math.max(1, Math.floor((availableWidth + VIRTUAL_GAP_PX) / (targetCardWidth + VIRTUAL_GAP_PX)));
+                const cardWidth = columnCount > 1
+                    ? Math.floor((availableWidth - VIRTUAL_GAP_PX * (columnCount - 1)) / columnCount)
+                    : availableWidth;
+                const cardHeight = previewSize.height + VIRTUAL_PREVIEW_CARD_EXTRA_HEIGHT;
+                const rowHeight = cardHeight + VIRTUAL_GAP_PX;
+                const items = [];
+                const rows = [];
+                for (let index = 0; index < images.length; index += 1) {
+                    const rowIndex = Math.floor(index / columnCount);
+                    const columnIndex = index % columnCount;
+                    if (columnIndex === 0) {
+                        rows.push({
+                            startIndex: index,
+                            endIndex: index,
+                            top: rowIndex * rowHeight,
+                            height: cardHeight
+                        });
+                    } else {
+                        rows[rows.length - 1].endIndex = index;
+                    }
+                    items.push({
+                        image: images[index],
+                        rowIndex,
+                        left: columnIndex * (cardWidth + VIRTUAL_GAP_PX),
+                        top: rowIndex * rowHeight,
+                        width: cardWidth,
+                        height: cardHeight
+                    });
+                }
+                const totalHeight = rows.length
+                    ? rows[rows.length - 1].top + rows[rows.length - 1].height
+                    : 0;
+                return { items, rows, totalHeight };
+            }
+
+            function buildPercentVirtualLayout(images, availableWidth) {
+                const items = [];
+                const rows = [];
+                let currentTop = 0;
+                let currentLeft = 0;
+                let rowStartIndex = 0;
+                let rowHeight = 0;
+
+                images.forEach((image, index) => {
+                    const metrics = getVirtualPercentCardMetrics(image, availableWidth);
+                    const fitsCurrentRow = currentLeft === 0 || currentLeft + metrics.width <= availableWidth;
+                    if (!fitsCurrentRow) {
+                        rows.push({
+                            startIndex: rowStartIndex,
+                            endIndex: index - 1,
+                            top: currentTop,
+                            height: rowHeight
+                        });
+                        currentTop += rowHeight + VIRTUAL_GAP_PX;
+                        currentLeft = 0;
+                        rowStartIndex = index;
+                        rowHeight = 0;
+                    }
+                    const rowIndex = rows.length;
+                    items.push({
+                        image,
+                        rowIndex,
+                        left: currentLeft,
+                        top: currentTop,
+                        width: metrics.width,
+                        height: metrics.height
+                    });
+                    currentLeft += metrics.width + VIRTUAL_GAP_PX;
+                    rowHeight = Math.max(rowHeight, metrics.height);
+                });
+
+                if (images.length) {
+                    rows.push({
+                        startIndex: rowStartIndex,
+                        endIndex: images.length - 1,
+                        top: currentTop,
+                        height: rowHeight
+                    });
+                }
+
+                const totalHeight = rows.length
+                    ? rows[rows.length - 1].top + rows[rows.length - 1].height
+                    : 0;
+                return { items, rows, totalHeight };
+            }
+
+            function buildVirtualGalleryLayout(images) {
+                const availableWidth = getGalleryVirtualWidth();
+                return state.zoomMode === "percent"
+                    ? buildPercentVirtualLayout(images, availableWidth)
+                    : buildPreviewVirtualLayout(images, availableWidth);
+            }
+
+            function getVirtualVisibleRange(layout, gridTop) {
+                if (!layout.rows.length) {
+                    return { startIndex: 0, endIndex: 0 };
+                }
+                const localScrollTop = Math.max(0, elements.galleryScroll.scrollTop - gridTop);
+                const startY = Math.max(0, localScrollTop - VIRTUAL_BUFFER_PX);
+                const endY = localScrollTop + elements.galleryScroll.clientHeight + VIRTUAL_BUFFER_PX;
+                let startRowIndex = 0;
+                while (startRowIndex < layout.rows.length && layout.rows[startRowIndex].top + layout.rows[startRowIndex].height < startY) {
+                    startRowIndex += 1;
+                }
+                let endRowIndex = startRowIndex;
+                while (endRowIndex < layout.rows.length && layout.rows[endRowIndex].top <= endY) {
+                    endRowIndex += 1;
+                }
+                if (startRowIndex >= layout.rows.length) {
+                    const lastRow = layout.rows[layout.rows.length - 1];
+                    return {
+                        startIndex: lastRow.startIndex,
+                        endIndex: lastRow.endIndex + 1
+                    };
+                }
+                const endRow = layout.rows[Math.max(startRowIndex, endRowIndex - 1)];
+                return {
+                    startIndex: layout.rows[startRowIndex].startIndex,
+                    endIndex: endRow.endIndex + 1
+                };
+            }
+
+            function reflowVirtualLayoutFromRow(layout, startRowIndex) {
+                if (!layout.rows.length || startRowIndex < 0 || startRowIndex >= layout.rows.length) {
+                    return;
+                }
+                for (let rowIndex = startRowIndex; rowIndex < layout.rows.length; rowIndex += 1) {
+                    if (rowIndex > 0) {
+                        const previousRow = layout.rows[rowIndex - 1];
+                        layout.rows[rowIndex].top = previousRow.top + previousRow.height + VIRTUAL_GAP_PX;
+                    }
+                    const row = layout.rows[rowIndex];
+                    for (let itemIndex = row.startIndex; itemIndex <= row.endIndex; itemIndex += 1) {
+                        if (layout.items[itemIndex]) {
+                            layout.items[itemIndex].top = row.top;
+                            layout.items[itemIndex].height = row.height;
+                        }
                     }
                 }
+                const lastRow = layout.rows[layout.rows.length - 1];
+                layout.totalHeight = lastRow.top + lastRow.height;
+            }
+
+            function reconcileVisibleRowHeights(grid, visibleItems) {
+                if (!state.virtualGallery || !visibleItems.length) {
+                    return false;
+                }
+                const measuredHeightsByRow = new Map();
+                Array.from(grid.querySelectorAll(".virtual-image-card")).forEach((card) => {
+                    const rowIndex = Number(card.getAttribute("data-row-index"));
+                    if (!Number.isFinite(rowIndex)) {
+                        return;
+                    }
+                    const measuredHeight = Math.ceil(card.offsetHeight);
+                    const currentHeight = measuredHeightsByRow.get(rowIndex) || 0;
+                    measuredHeightsByRow.set(rowIndex, Math.max(currentHeight, measuredHeight));
+                });
+                let firstChangedRow = -1;
+                measuredHeightsByRow.forEach((measuredHeight, rowIndex) => {
+                    const row = state.virtualGallery.layout.rows[rowIndex];
+                    if (!row) {
+                        return;
+                    }
+                    if (measuredHeight > row.height) {
+                        row.height = measuredHeight;
+                        if (firstChangedRow < 0 || rowIndex < firstChangedRow) {
+                            firstChangedRow = rowIndex;
+                        }
+                    }
+                });
+                if (firstChangedRow < 0) {
+                    return false;
+                }
+                reflowVirtualLayoutFromRow(state.virtualGallery.layout, firstChangedRow);
+                return true;
+            }
+
+            function renderVirtualGalleryWindow(forceRender) {
+                if (!state.virtualGallery) {
+                    return;
+                }
+                const grid = elements.galleryScroll.querySelector("#virtualGalleryGrid");
+                if (!grid) {
+                    return;
+                }
+                const gridTop = grid.offsetTop;
+                const visibleRange = getVirtualVisibleRange(state.virtualGallery.layout, gridTop);
+                if (!forceRender
+                    && state.virtualGallery.renderedStartIndex === visibleRange.startIndex
+                    && state.virtualGallery.renderedEndIndex === visibleRange.endIndex) {
+                    observeVisiblePreviewFrames();
+                    return;
+                }
+                state.virtualGallery.renderedStartIndex = visibleRange.startIndex;
+                state.virtualGallery.renderedEndIndex = visibleRange.endIndex;
+                const visibleItems = state.virtualGallery.layout.items.slice(visibleRange.startIndex, visibleRange.endIndex);
+                grid.style.height = state.virtualGallery.layout.totalHeight + "px";
+                grid.innerHTML = visibleItems.map((item) => {
+                    return buildImageCard(item.image, {
+                        className: "virtual-image-card",
+                        attributes: "data-row-index=\"" + item.rowIndex + "\"",
+                        style: "left: " + item.left + "px; top: " + item.top + "px; width: " + item.width + "px; min-height: " + item.height + "px;"
+                    });
+                }).join("");
+                if (reconcileVisibleRowHeights(grid, visibleItems)) {
+                    grid.style.height = state.virtualGallery.layout.totalHeight + "px";
+                    grid.innerHTML = state.virtualGallery.layout.items.slice(visibleRange.startIndex, visibleRange.endIndex).map((item) => {
+                        return buildImageCard(item.image, {
+                            className: "virtual-image-card",
+                            attributes: "data-row-index=\"" + item.rowIndex + "\"",
+                            style: "left: " + item.left + "px; top: " + item.top + "px; width: " + item.width + "px; min-height: " + item.height + "px;"
+                        });
+                    }).join("");
+                }
+                observeVisiblePreviewFrames();
+            }
+
+            function syncImageCard(image) {
+                const card = elements.galleryScroll.querySelector("[data-image-path=\"" + escapeCssValue(image.relativePath) + "\"]");
+                if (!card) {
+                    return;
+                }
+                card.style.setProperty("--intrinsic-width", String(image.width || 200));
+                card.style.setProperty("--intrinsic-height", String(image.height || 150));
+                const frame = card.querySelector(".image-frame");
+                if (frame) {
+                    frame.innerHTML = buildImageFrameContent(image);
+                }
+                const meta = card.querySelector(".image-meta");
+                if (meta) {
+                    meta.textContent = buildImageMetaLine(image);
+                }
+            }
+
+            function isEditableElement(target) {
+                if (!target || !(target instanceof Element)) {
+                    return false;
+                }
+                const editable = target.closest("input, textarea, select, [contenteditable='true']");
+                return Boolean(editable);
+            }
+
+            function handleGalleryKeyboardScroll(event) {
+                if (!state.currentHandle || state.lightboxOpen || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+                    return false;
+                }
+                if (isEditableElement(event.target)) {
+                    return false;
+                }
+                const pageStep = Math.max(120, Math.round(elements.galleryScroll.clientHeight * 0.9));
+                if (event.key === "PageDown") {
+                    event.preventDefault();
+                    elements.galleryScroll.focus({ preventScroll: true });
+                    elements.galleryScroll.scrollBy({ top: pageStep, behavior: "auto" });
+                    return true;
+                }
+                if (event.key === "PageUp") {
+                    event.preventDefault();
+                    elements.galleryScroll.focus({ preventScroll: true });
+                    elements.galleryScroll.scrollBy({ top: -pageStep, behavior: "auto" });
+                    return true;
+                }
+                if (event.key === "Home") {
+                    event.preventDefault();
+                    elements.galleryScroll.focus({ preventScroll: true });
+                    elements.galleryScroll.scrollTo({ top: 0, behavior: "auto" });
+                    return true;
+                }
+                if (event.key === "End") {
+                    event.preventDefault();
+                    elements.galleryScroll.focus({ preventScroll: true });
+                    elements.galleryScroll.scrollTo({ top: elements.galleryScroll.scrollHeight, behavior: "auto" });
+                    return true;
+                }
+                return false;
+            }
+
+            function ensureImagePreviewLoaded(relativePath, priority) {
+                return queuePreviewLoad(relativePath, Number.isFinite(priority) ? priority : PREVIEW_PRIORITY_BUFFER);
             }
 
             function readImageDimensions(file, objectUrl) {
@@ -1726,16 +2397,17 @@
                         : "<div class=\"folder-nav-group\"><span class=\"folder-nav-label\">Subfolders</span><span class=\"hint\">No subfolders here.</span></div>");
             }
 
-            function buildImageCard(image) {
+            function buildImageCard(image, options) {
                 const relativeFolder = image.folderPath || ".";
-                const dimensions = image.width > 0 && image.height > 0
-                    ? image.width + " x " + image.height
-                    : "Unknown size";
-                return "<article class=\"image-card\" data-zoom-mode=\"" + escapeHtml(state.zoomMode) + "\" style=\"--intrinsic-width: " + (image.width || 200) + "; --intrinsic-height: " + (image.height || 150) + ";\">"
-                    + "<div class=\"image-frame\" data-lightbox-path=\"" + escapeHtml(image.relativePath) + "\"><img loading=\"lazy\" alt=\"" + escapeHtml(image.relativePath) + "\" src=\"" + escapeHtml(image.objectUrl) + "\"></div>"
+                const extraClass = options && options.className ? " " + options.className : "";
+                const attributes = options && options.attributes ? " " + options.attributes : "";
+                const inlineStyle = (options && options.style ? options.style + " " : "")
+                    + "--intrinsic-width: " + (image.width || 200) + "; --intrinsic-height: " + (image.height || 150) + ";";
+                return "<article class=\"image-card" + extraClass + "\" data-image-path=\"" + escapeHtml(image.relativePath) + "\" data-zoom-mode=\"" + escapeHtml(state.zoomMode) + "\"" + attributes + " style=\"" + inlineStyle + "\">"
+                    + "<div class=\"image-frame\" data-lightbox-path=\"" + escapeHtml(image.relativePath) + "\" data-relative-path=\"" + escapeHtml(image.relativePath) + "\">" + buildImageFrameContent(image) + "</div>"
                     + "<div class=\"image-title\">" + escapeHtml(image.name) + "</div>"
                     + "<div class=\"image-path\">" + escapeHtml(image.relativePath) + "</div>"
-                    + "<div class=\"image-meta\">" + escapeHtml(dimensions) + " | " + escapeHtml(formatBytes(image.bytes)) + " | changed " + escapeHtml(formatTimestamp(image.modifiedMs)) + "</div>"
+                    + "<div class=\"image-meta\">" + escapeHtml(buildImageMetaLine(image)) + "</div>"
                     + "<div class=\"image-actions\"><button type=\"button\" data-open-path=\"" + escapeHtml(image.relativePath) + "\">Open image</button><button type=\"button\" data-folder-path=\"" + escapeHtml(relativeFolder === "." ? "" : image.folderPath) + "\">Open folder</button></div>"
                     + "</article>";
             }
@@ -1771,34 +2443,48 @@
                 }).join("");
             }
 
-            function renderGallery() {
+            function renderGallery(options) {
+                const restoreSnapshot = options && options.restoreSnapshot ? options.restoreSnapshot : null;
+                const preserveScroll = Boolean(options && options.preserveScroll);
+                const scrollSnapshot = restoreSnapshot || (preserveScroll ? captureGalleryScrollState() : null);
                 if (!state.currentHandle) {
+                    state.virtualGallery = null;
                     elements.galleryTitle.textContent = "Gallery";
                     elements.gallerySubtitle.textContent = "Drop a directory or reopen a recent one.";
                     elements.galleryScroll.innerHTML = "<div class=\"empty-state\">No directory is open.</div>";
                     renderFolderNavigator();
                     renderLightbox();
+                    restoreGalleryScrollState(scrollSnapshot);
                     return;
                 }
                 const filteredImages = getSortedVisibleImages();
                 const groups = groupImages(filteredImages);
                 renderFolderNavigator();
                 elements.galleryTitle.textContent = state.selectedFolderPath ? state.selectedFolderPath : state.currentDirectoryName;
-                elements.gallerySubtitle.textContent = filteredImages.length + " image" + (filteredImages.length === 1 ? "" : "s") + " visible" + (state.flatten ? " from this subtree." : " directly in the current folder.") + (state.imageLoading ? " Loading more..." : "");
+                elements.gallerySubtitle.textContent = filteredImages.length + " image" + (filteredImages.length === 1 ? "" : "s") + " visible" + (state.flatten ? " from this subtree." : " directly in the current folder.") + (state.imageLoading ? " Reading file list in the background..." : " Previews load when visible.");
                 if (!filteredImages.length) {
+                    state.virtualGallery = null;
                     elements.galleryScroll.innerHTML = state.imageLoading
-                        ? "<div class=\"empty-state\">Loading images from the current " + (state.flatten ? "subtree" : "folder") + "...</div>"
+                        ? "<div class=\"empty-state\">Reading image names and metadata from the current " + (state.flatten ? "subtree" : "folder") + "...</div>"
                         : "<div class=\"empty-state\">No images match the current folder and filter.</div>";
                     renderLightbox();
+                    restoreGalleryScrollState(scrollSnapshot);
                     return;
                 }
-                elements.galleryScroll.innerHTML = (state.imageLoading ? "<div class=\"hint\">Loading more images...</div>" : "") + groups.map((group) => {
-                    return "<section class=\"group-card\">"
-                        + "<div class=\"group-head\"><h3>" + escapeHtml(group.title) + "</h3><div class=\"group-meta\">" + escapeHtml(group.description) + "</div></div>"
-                        + "<div class=\"image-grid\" data-zoom-mode=\"" + escapeHtml(state.zoomMode) + "\">" + group.images.map(buildImageCard).join("") + "</div>"
-                        + "</section>";
-                }).join("");
+                const primaryGroup = groups[0];
+                state.virtualGallery = {
+                    layout: buildVirtualGalleryLayout(primaryGroup.images),
+                    renderedStartIndex: -1,
+                    renderedEndIndex: -1
+                };
+                elements.galleryScroll.innerHTML = (state.imageLoading ? "<div class=\"hint\">Reading file list in the background. Visible cards load first, then the off-screen buffer.</div>" : "<div class=\"hint\">Visible cards load first. Off-screen previews stay deferred.</div>")
+                    + "<section class=\"group-card\">"
+                    + "<div class=\"group-head\"><h3>" + escapeHtml(primaryGroup.title) + "</h3><div class=\"group-meta\">" + escapeHtml(primaryGroup.description) + "</div></div>"
+                    + "<div id=\"virtualGalleryGrid\" class=\"virtual-grid\" data-zoom-mode=\"" + escapeHtml(state.zoomMode) + "\"></div>"
+                    + "</section>";
+                renderVirtualGalleryWindow(true);
                 renderLightbox();
+                restoreGalleryScrollState(scrollSnapshot);
             }
 
             function updateStatus(message) {
@@ -1809,15 +2495,16 @@
                 }
                 const folderLabel = state.selectedFolderPath || "/";
                 elements.directorySummary.textContent = "Directory: " + state.currentDirectoryName + " | " + state.images.length + " image" + (state.images.length === 1 ? "" : "s");
-                elements.selectionSummary.textContent = message || "Folder: " + folderLabel + " | sort " + state.sortKey + " " + state.sortDirection + (state.flatten ? " | flat" : " | grouped") + (state.treeLoading ? " | scanning tree" : "") + (state.imageLoading ? " | loading images" : "");
+                elements.selectionSummary.textContent = message || "Folder: " + folderLabel + " | sort " + state.sortKey + " " + state.sortDirection + (state.flatten ? " | flat" : " | grouped") + (state.treeLoading ? " | scanning tree" : "") + (state.imageLoading ? " | reading file list" : " | previews on demand");
             }
 
             async function openImageByRelativePath(relativePath) {
-                const image = state.images.find((entry) => entry.relativePath === relativePath);
+                const image = state.imageMap.get(relativePath);
                 if (!image) {
                     return;
                 }
-                const blobUrl = URL.createObjectURL(image.file);
+                const file = await image.handle.getFile();
+                const blobUrl = URL.createObjectURL(file);
                 window.open(blobUrl, "_blank", "noopener");
                 setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
             }
@@ -1963,8 +2650,11 @@
             }
 
             function closeLightbox() {
+                const returnSnapshot = state.lightboxReturnSnapshot;
                 state.lightboxOpen = false;
                 state.lightboxRelativePath = "";
+                state.pendingGalleryRestoreSnapshot = returnSnapshot;
+                state.lightboxReturnSnapshot = null;
                 state.lightboxZoomAuto = true;
                 state.lightboxView = null;
                 state.lightboxDrag = null;
@@ -1973,6 +2663,10 @@
                 elements.lightboxImageWrap.classList.remove("dragging");
                 elements.lightboxImage.removeAttribute("src");
                 elements.lightboxImage.alt = "";
+                if (!document.fullscreenElement && returnSnapshot) {
+                    restoreGalleryScrollState(returnSnapshot);
+                    state.pendingGalleryRestoreSnapshot = null;
+                }
                 if (document.fullscreenElement === elements.lightbox && document.exitFullscreen) {
                     document.exitFullscreen().catch(() => undefined);
                 }
@@ -2002,7 +2696,12 @@
                     resetLightboxZoom();
                 }
                 updateLightboxZoomReadout();
-                elements.lightboxImage.src = image.objectUrl;
+                if (image.objectUrl) {
+                    elements.lightboxImage.src = image.objectUrl;
+                } else {
+                    elements.lightboxImage.removeAttribute("src");
+                    ensureImagePreviewLoaded(image.relativePath).catch(handleError);
+                }
                 elements.lightboxImage.alt = image.relativePath;
                 elements.lightboxImage.style.setProperty("--lightbox-intrinsic-width", String(image.width || 200));
                 elements.lightboxImage.style.setProperty("--lightbox-intrinsic-height", String(image.height || 150));
@@ -2022,6 +2721,8 @@
             }
 
             function openLightbox(relativePath) {
+                state.lightboxReturnSnapshot = captureGalleryScrollState();
+                state.pendingGalleryRestoreSnapshot = null;
                 state.lightboxOpen = true;
                 state.lightboxRelativePath = relativePath;
                 state.lightboxZoomAuto = true;
@@ -2168,6 +2869,16 @@
                         updateStatus();
                     }
                 });
+                elements.galleryScroll.addEventListener("scroll", () => {
+                    noteGalleryScrollActivity();
+                    if (state.virtualGallery) {
+                        scheduleGalleryWindowRender();
+                    }
+                }, { passive: true });
+                elements.galleryScroll.addEventListener("pointerdown", () => {
+                    elements.galleryScroll.focus({ preventScroll: true });
+                });
+                elements.galleryScroll.addEventListener("keydown", handleGalleryKeyboardScroll);
 
                 elements.lightbox.addEventListener("click", (event) => {
                     if (event.target.closest("[data-lightbox-close]")) {
@@ -2289,6 +3000,9 @@
                 }, { passive: false });
 
                 document.addEventListener("keydown", (event) => {
+                    if (!state.lightboxOpen && handleGalleryKeyboardScroll(event)) {
+                        return;
+                    }
                     if (!state.lightboxOpen) {
                         return;
                     }
@@ -2308,11 +3022,21 @@
                     }
                 });
                 window.addEventListener("resize", () => {
+                    if (state.currentHandle && !state.lightboxOpen) {
+                        if (state.pendingGalleryRestoreSnapshot) {
+                            return;
+                        }
+                        renderGallery({ preserveScroll: true });
+                    }
                     if (state.lightboxOpen && state.lightboxZoomAuto) {
                         renderLightbox();
                     }
                 });
                 document.addEventListener("fullscreenchange", () => {
+                    if (!state.lightboxOpen && !document.fullscreenElement && state.pendingGalleryRestoreSnapshot && state.currentHandle) {
+                        restorePendingGallerySnapshot();
+                        return;
+                    }
                     if (!state.lightboxOpen) {
                         return;
                     }

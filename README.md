@@ -5,6 +5,7 @@ Open any app directly from the links below. The list mirrors the repository stru
 ## Apps
 
 - [Advanced Hex Editor](https://koudelkab.github.io/singleHtmlApps/AdvancedHexEditor.html) - Hex editor for inspecting and editing binary files, with search, selection, and download support.
+- [Image Browser for Chrome](https://koudelkab.github.io/singleHtmlApps/ImageBrowser_chrome.html) - Chrome File System Access based image browser with directory history, folder navigation, filtering, sorting, lazy-loaded previews, virtual scrolling, and fullscreen lightbox browsing.
 - [Log Explorer](https://koudelkab.github.io/singleHtmlApps/LogExplorer.html) - UTF-8 log viewer with virtual scrolling, staged Filter/Replace/Sort/Diff operations, drag-and-drop multi-file input, clipboard input, and profile persistence. [Pipeline examples](https://koudelkab.github.io/singleHtmlApps/LogExplorerGuide.html).
 - [Word Search Generator](https://koudelkab.github.io/singleHtmlApps/OsmismerkaGenerator.html) - Localized Czech/English word-search builder with a fixed hidden phrase, required words, optional dictionary words, solution highlighting, print, and TXT export.
 - Print File Tools/
