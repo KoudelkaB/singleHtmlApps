@@ -296,6 +296,20 @@
             line-height: 1.45;
         }
 
+        .sidebar-filter {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+
+        .sidebar-filter label {
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+        }
+
         .recent-list,
         .folder-tree {
             display: flex;
@@ -1095,6 +1109,10 @@
                 <h2>Folders</h2>
                 <p class="sidebar-note">Select a folder to scope the gallery. Flat mode merges all matching images from
                     the chosen subtree into one grid.</p>
+                <div class="sidebar-filter">
+                    <label for="folderFilterInput">Filter folders by name</label>
+                    <input id="folderFilterInput" type="text" placeholder="screenshots raw">
+                </div>
                 <div id="folderTree" class="folder-tree"></div>
             </section>
         </aside>
@@ -1266,6 +1284,7 @@
                 toggleGalleryModeHeaderButton: document.getElementById("toggleGalleryModeHeaderButton"),
                 togglePanelsButton: document.getElementById("togglePanelsButton"),
                 toggleControlsButton: document.getElementById("toggleControlsButton"),
+                folderFilterInput: document.getElementById("folderFilterInput"),
                 filterInput: document.getElementById("filterInput"),
                 sortSelect: document.getElementById("sortSelect"),
                 sortDirectionSelect: document.getElementById("sortDirectionSelect"),
@@ -1313,6 +1332,7 @@
                 imageMap: new Map(),
                 virtualGallery: null,
                 selectedFolderPath: "",
+                folderFilterText: "",
                 filterText: "",
                 sortKey: "path",
                 sortDirection: "asc",
@@ -1473,6 +1493,7 @@
                     if (!parsed || typeof parsed !== "object") {
                         return;
                     }
+                    if (typeof parsed.folderFilterText === "string") state.folderFilterText = parsed.folderFilterText;
                     if (typeof parsed.filterText === "string") state.filterText = parsed.filterText;
                     if (typeof parsed.sortKey === "string") state.sortKey = parsed.sortKey;
                     if (typeof parsed.sortDirection === "string") state.sortDirection = parsed.sortDirection;
@@ -1508,6 +1529,7 @@
 
             function saveSettings() {
                 localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
+                    folderFilterText: state.folderFilterText,
                     filterText: state.filterText,
                     sortKey: state.sortKey,
                     sortDirection: state.sortDirection,
@@ -1527,6 +1549,7 @@
             }
 
             function syncControls() {
+                elements.folderFilterInput.value = state.folderFilterText;
                 elements.filterInput.value = state.filterText;
                 elements.sortSelect.value = state.sortKey;
                 elements.sortDirectionSelect.value = state.sortDirection;
@@ -2941,12 +2964,42 @@
                 }).join("");
             }
 
+            function getVisibleFoldersForTree() {
+                const sortedFolders = state.folders.slice().sort((left, right) => left.path.localeCompare(right.path));
+                const filterTokens = splitFilterTokens(state.folderFilterText);
+                if (!filterTokens.length) {
+                    return sortedFolders;
+                }
+                const visiblePaths = new Set();
+                sortedFolders.forEach((folder) => {
+                    const label = getFolderLabel(folder.path).toLowerCase();
+                    const candidatePath = folder.path.toLowerCase();
+                    const matches = filterTokens.every((token) => label.includes(token) || candidatePath.includes(token));
+                    if (!matches) {
+                        return;
+                    }
+                    let currentPath = folder.path;
+                    visiblePaths.add(currentPath);
+                    while (currentPath) {
+                        currentPath = getParentFolderPath(currentPath);
+                        visiblePaths.add(currentPath);
+                    }
+                    visiblePaths.add("");
+                });
+                return sortedFolders.filter((folder) => visiblePaths.has(folder.path));
+            }
+
             function renderFolderTree() {
                 if (!state.folders.length) {
                     elements.folderTree.innerHTML = "<div class=\"empty-state\">Load a directory to build the folder tree.</div>";
                     return;
                 }
-                elements.folderTree.innerHTML = state.folders.slice().sort((left, right) => left.path.localeCompare(right.path)).map((folder) => {
+                const visibleFolders = getVisibleFoldersForTree();
+                if (!visibleFolders.length) {
+                    elements.folderTree.innerHTML = "<div class=\"empty-state\">No folders match the current folder filter.</div>";
+                    return;
+                }
+                elements.folderTree.innerHTML = visibleFolders.map((folder) => {
                     const activeClass = folder.path === state.selectedFolderPath ? " active" : "";
                     const label = folder.path === "" ? (state.currentDirectoryName || "Root") : getFolderLabel(folder.path);
                     const caption = folder.path === "" ? "/" : folder.path;
@@ -3300,6 +3353,11 @@
                 });
                 elements.mobileBackdrop.addEventListener("click", () => {
                     setPanelsDrawerOpen(false);
+                });
+                elements.folderFilterInput.addEventListener("input", () => {
+                    state.folderFilterText = elements.folderFilterInput.value.trim();
+                    saveSettings();
+                    renderFolderTree();
                 });
                 elements.filterInput.addEventListener("input", () => {
                     state.filterText = elements.filterInput.value.trim();
