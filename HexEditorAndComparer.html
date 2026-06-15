@@ -254,6 +254,7 @@
             <h4>Editing & Copying</h4>
             <ul>
                 <li><strong>Editing (Primary Pane):</strong> The <strong>Inspector Panel</strong> is the primary tool for editing. Select bytes in the left pane to enable the inspector.</li>
+                <li><strong>Automatic Original Comparison:</strong> If no comparison file is open, the first edit opens the right pane against the originally loaded file.</li>
                 <li><strong>Number Editing (Overwrite):</strong> To edit a number (e.g., <code>Int32</code>, <code>Float64</code>), type a new value into its corresponding input box in the inspector and press <code>Enter</code>. This will <strong>overwrite</strong> a fixed number of bytes at the start of your selection without changing the file size.</li>
                 <li><strong>Text/Hex Editing (Replace):</strong> To edit a block of bytes, use the "Selection As" editor. Choose an encoding (UTF-8, UTF-16 LE, or Hex), type your new content, and press <code>Enter</code>. This will <strong>replace</strong> the entire selected block, which may change the file size.</li>
                 <li><strong>Deleting:</strong> Select bytes in the primary pane and click the <code>Delete Selection</code> button in the inspector panel.</li>
@@ -328,6 +329,7 @@
 
             // --- State for Pane 1 (Primary, Editable) ---
             let fileData1 = []; let fileName1 = '';
+            let originalFileData1 = []; let originalFileName1 = '';
             let selectionStart1 = -1, selectionEnd1 = -1, isSelecting1 = false;
             
             // --- State for Pane 2 (Comparison, Read-Only) ---
@@ -382,6 +384,7 @@
             // Call after any modification of fileData1: invalidates search results
             // and the aligned diff, recomputes the diff, and re-renders.
             function fileDataChanged() {
+                openOriginalComparisonIfNeeded();
                 resetSearchState();
                 alignment = null;
                 if (isComparing) runDiff();
@@ -390,12 +393,24 @@
                 updateControlStates();
             }
 
+            function openOriginalComparisonIfNeeded() {
+                if (isComparing || originalFileData1.length === 0) return;
+
+                fileData2 = originalFileData1.slice();
+                fileName2 = `${originalFileName1 || fileName1} (original)`;
+                selectionStart2 = selectionEnd2 = -1; isSelecting2 = false;
+                isComparing = true;
+                elements.dropZone2.style.display = 'none';
+                elements.editorPane2.style.display = 'grid';
+            }
+
             function loadFile(file, pane) {
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     const data = Array.from(new Uint8Array(e.target.result));
                     if (pane === 1) {
                         fileData1 = data; fileName1 = file.name;
+                        originalFileData1 = data.slice(); originalFileName1 = file.name;
                         elements.initialDropZone.style.display = 'none';
                         elements.mainContent.style.display = 'flex';
                         masterVirtualScrollTop = 0;
