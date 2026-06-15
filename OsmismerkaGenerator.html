@@ -377,39 +377,6 @@
             border-radius: 8px;
         }
 
-        .solution-arrows {
-            position: absolute;
-            inset: 4px;
-            width: calc(100% - 8px);
-            height: calc(100% - 8px);
-            pointer-events: none;
-            z-index: 4;
-            overflow: visible;
-            display: none;
-        }
-
-        .board-stage.show-solution .solution-arrows {
-            display: block;
-        }
-
-        .solution-arrow {
-            fill: none;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-            stroke-width: 3.2;
-            vector-effect: non-scaling-stroke;
-            opacity: 0.84;
-        }
-
-        .solution-arrow.required {
-            stroke: var(--accent-strong);
-        }
-
-        .solution-arrow.optional {
-            stroke: var(--warm);
-            opacity: 0.68;
-        }
-
         .cell {
             display: grid;
             place-items: center;
@@ -607,8 +574,7 @@
             .side,
             .secret,
             .message,
-            .screen-only,
-            .solution-arrows {
+            .screen-only {
                 display: none;
             }
 
@@ -1785,59 +1751,6 @@ dew</textarea>
             els.statusBadge.className = "badge " + (kind || "");
         }
 
-        function makeSolutionArrows(placements, rows, cols) {
-            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-            svg.setAttribute("class", "solution-arrows");
-            svg.setAttribute("viewBox", "0 0 100 100");
-            svg.setAttribute("preserveAspectRatio", "none");
-            svg.setAttribute("aria-hidden", "true");
-
-            const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-            const markers = {
-                required: "solutionArrowHeadRequired",
-                optional: "solutionArrowHeadOptional"
-            };
-            const addMarker = (id, color) => {
-                const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
-                marker.setAttribute("id", id);
-                marker.setAttribute("viewBox", "0 0 10 10");
-                marker.setAttribute("refX", "8.4");
-                marker.setAttribute("refY", "5");
-                marker.setAttribute("markerWidth", "4.8");
-                marker.setAttribute("markerHeight", "4.8");
-                marker.setAttribute("orient", "auto-start-reverse");
-
-                const arrowHead = document.createElementNS("http://www.w3.org/2000/svg", "path");
-                arrowHead.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
-                arrowHead.setAttribute("fill", color);
-                marker.append(arrowHead);
-                defs.append(marker);
-            };
-            addMarker(markers.required, "#24565a");
-            addMarker(markers.optional, "#b95d32");
-            svg.append(defs);
-
-            placements.forEach(placement => {
-                if (!placement.cells.length) return;
-                const first = placement.cells[0];
-                const last = placement.cells[placement.cells.length - 1];
-                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                line.setAttribute("class", `solution-arrow ${placement.source}`);
-                line.setAttribute("x1", ((first.col + 0.5) / cols * 100).toFixed(3));
-                line.setAttribute("y1", ((first.row + 0.5) / rows * 100).toFixed(3));
-                line.setAttribute("x2", ((last.col + 0.5) / cols * 100).toFixed(3));
-                line.setAttribute("y2", ((last.row + 0.5) / rows * 100).toFixed(3));
-                line.setAttribute("marker-end", `url(#${markers[placement.source] || markers.optional})`);
-
-                const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-                title.textContent = `${placement.word} ${placement.dir.label}`;
-                line.append(title);
-                svg.append(line);
-            });
-
-            return svg;
-        }
-
         function updateStats() {
             const config = readConfig();
             els.statSecret.textContent = config.secretLetters.length;
@@ -2131,7 +2044,6 @@ dew</textarea>
             );
 
             clearPrintSheet();
-            clearBoardObserver();
             els.workspace.replaceChildren(boardWrap, side);
             setStatus(
                 puzzle.exact ? text.done : text.partialDone,
@@ -2425,12 +2337,14 @@ dew</textarea>
         }
 
         function scheduleInputUpdate() {
+            scheduleStatsUpdate();
             scheduleSettingsSave(600);
         }
 
         for (const input of [els.secret, els.required, els.optional, els.rows, els.cols, els.attempts, els.seed]) {
             input.addEventListener("input", scheduleInputUpdate);
             input.addEventListener("change", () => {
+                flushStatsUpdate();
                 scheduleSettingsSave(80);
             });
         }

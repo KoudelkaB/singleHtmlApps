@@ -233,6 +233,8 @@
             }
         }
 
+        const MAX_LOG_LINES = 300;
+
         function appendLog(event) {
             const line = [
                 new Date().toLocaleTimeString(),
@@ -242,13 +244,17 @@
                 event.pointerType ? "pointerType=" + event.pointerType : "",
                 "target=" + ((event.target && event.target.id) || event.target.className || event.target.tagName)
             ].filter(Boolean).join("  ");
-            logOutput.textContent = line + "\n" + logOutput.textContent;
+            const lines = logOutput.textContent.split("\n", MAX_LOG_LINES - 1);
+            lines.unshift(line);
+            logOutput.textContent = lines.join("\n");
             updatePills(event.type, event.button);
         }
 
         for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup", "auxclick", "contextmenu"]) {
             testZone.addEventListener(type, (event) => {
-                if (type === "contextmenu") {
+                // Suppress default actions (context menu, middle-click autoscroll/paste)
+                // so they cannot swallow the very events this page is meant to log.
+                if (type === "contextmenu" || event.button === 1) {
                     event.preventDefault();
                 }
                 appendLog(event);

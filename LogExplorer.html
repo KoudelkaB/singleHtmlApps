@@ -1699,6 +1699,7 @@
                 const existingSource = getLoadedSourceSnapshot();
                 const action = await requestLoadAction(existingSource, incomingSources);
                 if (!action) {
+                    setDropZoneVisibility(!state.source.stage);
                     updateStatus("Load canceled.");
                     return;
                 }
@@ -2304,7 +2305,8 @@
                     anchorSide: operator.anchorSide,
                     valueType: operator.valueType,
                     order: operator.order,
-                    invert: operator.invert
+                    invert: operator.invert,
+                    outputExtend: operator.outputExtend
                 });
             }
 
@@ -3547,11 +3549,6 @@
                 setSelectedOperator(operatorId, true);
             }
 
-            function getFilterInsertionIndex() {
-                const selectedIndex = getSelectedOperatorIndex();
-                return selectedIndex === -1 ? 0 : selectedIndex + 1;
-            }
-
             function insertOperatorAfterSelected(operator) {
                 const selectedIndex = getSelectedOperatorIndex();
                 const insertIndex = selectedIndex === -1 ? state.operators.length : selectedIndex + 1;
@@ -4297,7 +4294,7 @@
                     return indexedStage.selectionXmlStructures;
                 }
                 const text = indexedStage.text;
-                const tagRegex = /<\?xml\b[^?]*\?>|< !--[\s\S ]*?- ->|<!\[CDATA\[[\s\S]*?\]\]>|<\/?([A-Za-z_][\w:.-]*)(?:\s[^<>]*)?\/?>/g;
+                const tagRegex = /<\?xml\b[^?]*\?>|<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\/?([A-Za-z_][\w:.-]*)(?:\s[^<>]*)?\/?>/g;
                 const stack = [];
                 const elements = [];
                 const tags = [];
@@ -5817,43 +5814,6 @@
                 await processLoadInputs([await readFileAsInput(file)]);
             }
 
-            async function pasteClipboard() {
-                if (navigator.clipboard.read) {
-                    try {
-                        const items = await navigator.clipboard.read();
-                        for (const item of items) {
-                            const textType = item.types.find((type) => type === "text/plain");
-                            if (textType) {
-                                const blob = await item.getType(textType);
-                                const text = await blob.text();
-                                await processLoadInputs([readClipboardTextAsInput(text, "Clipboard")]);
-                                return;
-                            }
-                        }
-                        const files = [];
-                        for (const item of items) {
-                            const binaryType = item.types.find((type) => !type.startsWith("text/"));
-                            if (binaryType) {
-                                const blob = await item.getType(binaryType);
-                                files.push(new File([blob], "Clipboard " + (files.length + 1), { type: blob.type }));
-                            }
-                        }
-                        if (files.length) {
-                            await processLoadInputs(await Promise.all(files.map((file) => readFileAsInput(file))));
-                            return;
-                        }
-                    } catch (error) {
-                        console.warn("Clipboard read() unavailable", error);
-                    }
-                }
-                const text = await navigator.clipboard.readText();
-                if (!text) {
-                    updateStatus("Clipboard did not contain text.");
-                    return;
-                }
-                await processLoadInputs([readClipboardTextAsInput(text, "Clipboard")]);
-            }
-
             function handlePasteEvent(event) {
                 if (isFormEditingTarget(event.target)) {
                     return;
@@ -5897,7 +5857,11 @@
                 if (files.length) {
                     Promise.all(files.map((file) => readFileAsInput(file)))
                         .then((results) => processLoadInputs(results))
-                        .catch(handleError);
+                        .catch(handleError)
+                        .finally(() => setDropZoneVisibility(!state.source.stage));
+                } else {
+                    // Nothing loadable was dropped; do not leave the overlay covering the app.
+                    setDropZoneVisibility(!state.source.stage);
                 }
             }
 
@@ -6177,10 +6141,15 @@
                 elements.profileImportInput.addEventListener("change", async () => {
                     const file = elements.profileImportInput.files[0];
                     if (!file) return;
-                    const payload = JSON.parse(await file.text());
-                    importProfilesFromPayload(payload);
-                    elements.profileImportInput.value = "";
-                    closeAppMenu();
+                    try {
+                        const payload = JSON.parse(await file.text());
+                        importProfilesFromPayload(payload);
+                    } catch (error) {
+                        handleError(error instanceof SyntaxError ? new Error("The selected file is not valid JSON.") : error);
+                    } finally {
+                        elements.profileImportInput.value = "";
+                        closeAppMenu();
+                    }
                 });
                 elements.viewerViewport.addEventListener("wheel", handleWheel, { passive: false });
                 elements.viewerViewport.addEventListener("pointerdown", handleViewportMiddlePointerDown, true);

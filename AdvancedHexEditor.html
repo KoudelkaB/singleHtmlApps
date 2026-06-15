@@ -58,7 +58,7 @@
             padding: 0 1px; border-radius: 2px;
         }
         #hex-column span { min-width: 1.2em; }
-        .selected { background-color: var(--highlight-bg); }
+        .selected { background-color: var(--highlight-bg) !important; }
         .found { background-color: var(--search-highlight-bg); color: #1e1e1e; font-weight: bold; }
         
         /* Custom Scrollbar Styles */
@@ -230,8 +230,7 @@
             const BYTES_PER_LINE = 16;
             const LINE_HEIGHT = 24;
             const BUFFER_LINES = 20;
-            let isScrolling = false;
-            
+
             // --- Custom Scrollbar State ---
             let virtualScrollTop = 0;
             let totalVirtualHeight = 0;
@@ -253,9 +252,12 @@
                     elements.dropZone.style.display = 'none';
                     elements.mainContent.style.display = 'flex';
                     virtualScrollTop = 0;
+                    selectionStart = selectionEnd = -1; isSelecting = false;
+                    lastSearch = { needle: null, allFoundBytes: new Set(), sortedHitOffsets: [] };
                     updateVirtualScroll();
                     updateControlStates();
                 };
+                reader.onerror = () => alert(`Failed to read file: ${file.name}`);
                 reader.readAsArrayBuffer(file);
             }
 
@@ -294,8 +296,8 @@
                             hexHtml += `<span class="${foundClass}" data-offset="${byteOffset}">${byte.toString(16).padStart(2, '0').toUpperCase()}</span> `;
                             const char = (byte >= 32 && byte <= 126) ? String.fromCharCode(byte) : '.';
                             asciiHtml += `<span class="${foundClass}" data-offset="${byteOffset}">${char.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span>`;
-                        } else {
-                            hexHtml += '   '; asciiHtml += ' ';
+                        } else { // past end of file: pad with cell-sized spans to keep the grid aligned
+                            hexHtml += '<span>  </span> '; asciiHtml += '<span> </span>';
                         }
                     }
                     hexHtml += '<br>'; asciiHtml += '<br>';
@@ -337,7 +339,10 @@
                     if (e.dataTransfer.files.length > 0) loadFile(e.dataTransfer.files[0]);
                 });
                 elements.dropZone.addEventListener('click', () => elements.fileInput.click());
-                elements.fileInput.addEventListener('change', () => { if (elements.fileInput.files.length > 0) loadFile(elements.fileInput.files[0]); });
+                elements.fileInput.addEventListener('change', () => {
+                    if (elements.fileInput.files.length > 0) loadFile(elements.fileInput.files[0]);
+                    elements.fileInput.value = ''; // allow re-selecting the same file
+                });
 
                 const handleMouseDown = (e) => {
                     if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
@@ -442,6 +447,16 @@
                 elements.editorMain.addEventListener('wheel', handleWheelScroll);
                 elements.customScrollbarThumb.addEventListener('mousedown', handleThumbMouseDown);
                 elements.customScrollbar.addEventListener('mousedown', handleTrackMouseDown);
+
+                // Dropping a file anywhere loads it (as documented in Help) instead of
+                // letting the browser navigate away and lose unsaved changes.
+                window.addEventListener('dragover', (e) => e.preventDefault());
+                window.addEventListener('drop', (e) => {
+                    if (e.defaultPrevented) return; // already handled by the drop zone
+                    e.preventDefault();
+                    if (e.dataTransfer.files.length > 0) loadFile(e.dataTransfer.files[0]);
+                });
+                window.addEventListener('resize', () => { if (fileData.length) updateVirtualScroll(); });
             }
 
             function highlightSelection() {
@@ -550,8 +565,8 @@
 
                 const start = Math.min(selectionStart, selectionEnd);
                 const selLength = Math.abs(selectionEnd - selectionStart) + 1;
-                const fileBuffer = new Uint8Array(fileData).buffer;
-                const view = new DataView(fileBuffer);
+                // View over just the bytes the inspector can show, not a copy of the whole file
+                const view = new DataView(Uint8Array.from(fileData.slice(start, start + 8)).buffer);
                 
                 inspectorDefs.forEach(def => {
                     ['BE', 'LE'].forEach(endian => {
@@ -564,9 +579,9 @@
                             const methodName = `get${def.name}`;
                             let value;
                             if (def.size === 1) {
-                                value = view[methodName](start);
+                                value = view[methodName](0);
                             } else {
-                                value = view[methodName](start, endian === 'LE');
+                                value = view[methodName](0, endian === 'LE');
                             }
                             input.value = value;
                         } else {
@@ -614,6 +629,7 @@
                 selectionEnd = start + newBytes.length - 1;
                 lastSearch.allFoundBytes.clear(); lastSearch.sortedHitOffsets = [];
                 updateVirtualScroll();
+                updateControlStates();
             }
 
             function handleStringEdit() {
@@ -637,6 +653,7 @@
                 selectionEnd = start + newBytes.length - 1;
                 lastSearch.allFoundBytes.clear(); lastSearch.sortedHitOffsets = [];
                 updateVirtualScroll();
+                updateControlStates();
             }
 
             function parseHex(hexStr) {
@@ -687,7 +704,7 @@
                     postMessage({ allFoundBytes: Array.from(allFoundBytes), sortedHitOffsets });
                 };
             `;
-            const searchWorkerBlob = new Blob([searchWorkerScript], { type: 'application/javascript' });
+            const searchWorkerUrl = URL.createObjectURL(new Blob([searchWorkerScript], { type: 'application/javascript' }));
             let searchWorker = null;
 
             function getNeedleFromQuery(query, type) {
@@ -732,7 +749,7 @@
                 if (searchWorker) {
                     searchWorker.terminate();
                 }
-                searchWorker = new Worker(URL.createObjectURL(searchWorkerBlob));
+                searchWorker = new Worker(searchWorkerUrl);
 
                 elements.searchBtn.disabled = true;
                 elements.searchBtn.textContent = 'Searching...';
@@ -800,8 +817,11 @@
             }
 
             function handleSelectionMovement(offsetChange, isShift) {
-                if (selectionStart === -1) return;
-                
+                if (selectionStart === -1) {
+                    if (!fileData.length) return;
+                    selectionStart = selectionEnd = 0; // start keyboard navigation at the top
+                }
+
                 let newEnd = selectionEnd + offsetChange;
                 newEnd = Math.max(0, Math.min(fileData.length - 1, newEnd));
 
@@ -810,10 +830,11 @@
                 } else {
                     selectionStart = selectionEnd = newEnd;
                 }
-                
+
                 ensureOffsetIsVisible(selectionEnd);
                 renderVisibleContent();
                 updateInspector();
+                updateControlStates();
             }
 
             function handleGoTo() {
@@ -828,6 +849,7 @@
                 scrollToOffset(offset);
                 renderVisibleContent();
                 updateInspector();
+                updateControlStates();
             }
 
             function findNext(isForward) {
@@ -858,6 +880,7 @@
                     scrollToOffset(nextHit);
                     renderVisibleContent();
                     updateInspector();
+                    updateControlStates();
                 }
             }
 
@@ -916,7 +939,7 @@
                 const trackHeight = elements.customScrollbar.clientHeight;
                 const thumbHeight = elements.customScrollbarThumb.offsetHeight;
                 const maxThumbTop = trackHeight - thumbHeight;
-                const scrollRatio = (totalVirtualHeight - elements.editorMain.clientHeight) / maxThumbTop;
+                const scrollRatio = maxThumbTop > 0 ? (totalVirtualHeight - elements.editorMain.clientHeight) / maxThumbTop : 0;
                 setVirtualScrollTop(dragStartScrollTop + deltaY * scrollRatio);
             }
 
