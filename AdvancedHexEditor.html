@@ -10,6 +10,8 @@
             --highlight-bg: #264f78; --search-highlight-bg: #998a58; --border-color: #333;
             --control-bg: #252526; --input-bg: #3c3c3c; --input-disabled-bg: #2d2d2d;
             --button-bg: #0e639c; --button-hover-bg: #1177bb; --scrollbar-track-bg: #2a2d2e;
+            --diff-bg: #8B4513; /* Brown for changed bytes */
+            --insert-delete-bg: #006400; /* Dark Green for insertions/deletions */
             --line-height: 24px;
         }
         body {
@@ -32,16 +34,42 @@
         .controls-row button:hover:not(:disabled) { background-color: var(--button-hover-bg); }
         .controls-row button:disabled { background-color: #555; cursor: not-allowed; opacity: 0.6; }
         #download-btn[draggable="true"] { cursor: grab; }
-        #drop-zone {
+        
+        /* Hit Info In-place Edit Styles */
+        .hit-info { cursor: pointer; }
+        .hit-info.editing .hit-text { display: none; }
+        .hit-info .hit-input { display: none; }
+        .hit-info.editing .hit-input { display: inline-block; }
+        .hit-input {
+            width: 40px; text-align: center; padding: 1px 3px;
+            background-color: var(--bg-color); color: var(--text-color);
+            border: 1px solid var(--button-bg);
+        }
+
+        #initial-drop-zone {
             flex-grow: 1; display: flex; justify-content: center; align-items: center; border: 3px dashed var(--border-color);
             margin: 20px; border-radius: 10px; text-align: center; transition: background-color 0.3s, border-color 0.3s;
         }
-        #drop-zone.drag-over { background-color: var(--highlight-bg); border-color: var(--button-bg); }
+        #initial-drop-zone.drag-over { background-color: var(--highlight-bg); border-color: var(--button-bg); }
+        
         #main-content { display: none; flex-direction: column; flex-grow: 1; overflow: hidden; }
         #editor-container {
-            display: grid; grid-template-columns: 1fr auto auto;
-            flex-grow: 1; overflow: hidden;
+            display: flex; gap: 10px;
+            flex-grow: 1; overflow: hidden; padding: 10px;
         }
+        .editor-pane {
+            display: grid; grid-template-columns: 1fr auto;
+            flex: 1; overflow: hidden; border: 1px solid var(--border-color);
+        }
+        #editor-pane-1 { grid-template-columns: 1fr auto auto; }
+
+        #drop-zone-2 {
+            flex: 1; display: flex; justify-content: center; align-items: center; border: 3px dashed var(--border-color);
+            border-radius: 10px; text-align: center; transition: background-color 0.3s, border-color 0.3s;
+        }
+        #drop-zone-2.drag-over { background-color: var(--highlight-bg); border-color: var(--button-bg); }
+
+
         .editor-main {
             overflow: hidden; /* Hide native scrollbar */
             position: relative;
@@ -50,27 +78,35 @@
             padding: 0 5px; white-space: pre; line-height: var(--line-height);
             position: absolute; top: 0;
         }
-        #address-column { color: var(--address-color); text-align: right; left: 0; width: 90px; user-select: none; }
-        #hex-column { left: 100px; user-select: none; }
-        #ascii-column { left: 620px; user-select: none; }
-        #hex-column span, #ascii-column span {
+        .address-column { color: var(--address-color); text-align: right; left: 0; width: 90px; user-select: none; }
+        .hex-column { left: 100px; user-select: none; }
+        .ascii-column { left: 620px; user-select: none; }
+        
+        .hex-column span, .ascii-column span {
             display: inline-block; min-width: 0.6em; text-align: center; cursor: pointer;
             padding: 0 1px; border-radius: 2px;
         }
-        #hex-column span { min-width: 1.2em; }
+        .hex-column span { min-width: 1.2em; }
         .selected { background-color: var(--highlight-bg) !important; }
         .found { background-color: var(--search-highlight-bg); color: #1e1e1e; font-weight: bold; }
+        .diff { background-color: var(--diff-bg); }
+        .inserted { background-color: var(--insert-delete-bg); }
+        .gap {
+            background: repeating-linear-gradient(45deg, transparent, transparent 3px,
+                rgba(0, 160, 0, 0.3) 3px, rgba(0, 160, 0, 0.3) 6px);
+            cursor: default;
+        }
         
         /* Custom Scrollbar Styles */
-        #custom-scrollbar {
+        .custom-scrollbar {
             width: 15px; background-color: var(--scrollbar-track-bg);
             position: relative; cursor: pointer;
         }
-        #custom-scrollbar-thumb {
+        .custom-scrollbar-thumb {
             background-color: #555; border-radius: 10px;
             position: absolute; left: 2px; right: 2px;
         }
-        #custom-scrollbar-thumb:hover { background-color: #666; }
+        .custom-scrollbar-thumb:hover { background-color: #666; }
 
         #scrollbar-map {
             width: 15px; background-color: var(--scrollbar-track-bg); position: relative;
@@ -142,28 +178,60 @@
                 <button id="next-found-btn" disabled>Next &gt;</button>
             </div>
         </div>
+        <div class="controls-row" id="comparison-controls" style="display: none;">
+            <span id="hit-info-1" class="file-info hit-info">
+                <span class="hit-text"></span>
+                <input type="text" class="hit-input">
+            </span>
+            <div style="flex-grow: 1; text-align: center;">
+                <button id="sync-views-btn" disabled>Sync Views to Current Hit</button>
+            </div>
+            <span id="hit-info-2" class="file-info hit-info" style="text-align: right;">
+                <span class="hit-text"></span>
+                <input type="text" class="hit-input">
+            </span>
+        </div>
     </div>
 
     <div id="main-content">
         <div id="inspector-panel"></div>
         <div id="editor-container">
-            <div class="editor-main" id="editor-main">
-                <div id="address-column" class="column"></div>
-                <div id="hex-column" class="column"></div>
-                <div id="ascii-column" class="column"></div>
+            <div id="editor-pane-1" class="editor-pane">
+                <div class="editor-main" id="editor-main-1">
+                    <div id="address-column-1" class="column address-column"></div>
+                    <div id="hex-column-1" class="column hex-column"></div>
+                    <div id="ascii-column-1" class="column ascii-column"></div>
+                </div>
+                <div id="custom-scrollbar-1" class="custom-scrollbar">
+                    <div id="custom-scrollbar-thumb-1" class="custom-scrollbar-thumb"></div>
+                </div>
+                <div id="scrollbar-map"></div>
             </div>
-            <div id="custom-scrollbar">
-                <div id="custom-scrollbar-thumb"></div>
+            <div id="editor-pane-2" class="editor-pane" style="display: none;">
+                 <div class="editor-main" id="editor-main-2">
+                    <div id="address-column-2" class="column address-column"></div>
+                    <div id="hex-column-2" class="column hex-column"></div>
+                    <div id="ascii-column-2" class="column ascii-column"></div>
+                </div>
+                <div id="custom-scrollbar-2" class="custom-scrollbar">
+                    <div id="custom-scrollbar-thumb-2" class="custom-scrollbar-thumb"></div>
+                </div>
             </div>
-            <div id="scrollbar-map"></div>
+            <div id="drop-zone-2" style="display: none;">
+                 <div>
+                    <h2>Drag & Drop Comparison File</h2>
+                    <p>or click to select</p>
+                    <input type="file" id="file-input-2" style="display: none;">
+                </div>
+            </div>
         </div>
     </div>
     
-    <div id="drop-zone">
+    <div id="initial-drop-zone">
         <div>
             <h2>Drag & Drop File Here</h2>
             <p>or click to select a file</p>
-            <input type="file" id="file-input" style="display: none;">
+            <input type="file" id="file-input-1" style="display: none;">
         </div>
     </div>
 
@@ -173,30 +241,44 @@
             <h3>Hex Editor Help</h3>
             
             <h4>File Operations</h4>
-            <p><strong>Loading:</strong> Drag and drop a file onto the main window, or click the window to open a file selection dialog.</p>
+            <p><strong>Loading:</strong> Drag and drop a file onto the main window, or click the window to open a file selection dialog. After the primary file is loaded, dropping another file loads or replaces the comparison file.</p>
             <p><strong>Saving:</strong> Click the <code>Download Modified File</code> button. You can also drag this button directly to your desktop or a file manager to save the file.</p>
 
             <h4>Navigation</h4>
             <ul>
-                <li><strong>Mouse:</strong> Click and drag in either the Hex or ASCII panes to select bytes.</li>
-                <li><strong>Keyboard:</strong> Use <code>PageUp</code>/<code>PageDown</code> to scroll by a full screen. Use <code>ArrowUp</code>/<code>ArrowDown</code>/<code>ArrowLeft</code>/<code>ArrowRight</code> to move the selection. Use <code>Home</code>/<code>End</code> to jump to the start/end of the file.</li>
-                <li><strong>Go to Address:</strong> Click the <code>Go to...</code> button and enter a hexadecimal address to jump directly to that location.</li>
+                <li><strong>Mouse:</strong> Click and drag in either the Hex or ASCII panes to select bytes. Use the mouse wheel to scroll.</li>
+                <li><strong>Keyboard:</strong> Use <code>PageUp</code>/<code>PageDown</code>, <code>Arrow</code> keys, and <code>Home</code>/<code>End</code> to navigate. These keys affect the pane your mouse is currently hovering over.</li>
+                <li><strong>Go to Address:</strong> Click the <code>Go to...</code> button to jump to an address in the primary (left) file.</li>
             </ul>
 
-            <h4>Editing</h4>
-            <p>The <strong>Inspector Panel</strong> at the top is the primary tool for editing. When you select bytes, it shows their interpretation as different data types.</p>
+            <h4>Editing & Copying</h4>
             <ul>
+                <li><strong>Editing (Primary Pane):</strong> The <strong>Inspector Panel</strong> is the primary tool for editing. Select bytes in the left pane to enable the inspector.</li>
                 <li><strong>Number Editing (Overwrite):</strong> To edit a number (e.g., <code>Int32</code>, <code>Float64</code>), type a new value into its corresponding input box in the inspector and press <code>Enter</code>. This will <strong>overwrite</strong> a fixed number of bytes at the start of your selection without changing the file size.</li>
                 <li><strong>Text/Hex Editing (Replace):</strong> To edit a block of bytes, use the "Selection As" editor. Choose an encoding (UTF-8, UTF-16 LE, or Hex), type your new content, and press <code>Enter</code>. This will <strong>replace</strong> the entire selected block, which may change the file size.</li>
-                <li><strong>Deleting:</strong> Select bytes and click the <code>Delete Selection</code> button in the inspector panel.</li>
+                <li><strong>Deleting:</strong> Select bytes in the primary pane and click the <code>Delete Selection</code> button in the inspector panel.</li>
+                <li>In any inspector input, press <code>Escape</code> to cancel an edit and revert to the original value.</li>
+                <li><strong>Copying (Either Pane):</strong> Select bytes and press <code>Ctrl+C</code>. If your mouse is over the Hex area, it copies the hex string. If it's over the ASCII area, it copies the decoded text.</li>
             </ul>
-            <p>In any inspector input, press <code>Escape</code> to cancel an edit and revert to the original value.</p>
 
-            <h4>Search</h4>
+            <h4>Search & Comparison</h4>
             <ul>
-                <li><strong>Performing a Search:</strong> Type your query, select the data type (Text, Hex, or a specific number format), and click <code>Search</code> or press <code>Enter</code>. The search runs in the background and will not freeze the application.</li>
-                <li><strong>Navigating Results:</strong> After a search is complete, use the <code>&lt; Prev</code> and <code>Next &gt;</code> buttons to jump between found occurrences. The navigation is relative to your current position in the viewport.</li>
-                <li><strong>Scrollbar Map:</strong> The thin bar on the far right provides a map of all search results in the entire file. Each tick mark represents a line containing at least one match.</li>
+                <li><strong>Performing a Search:</strong> Type your query, select the data type, and click <code>Search</code>. Occurrences are found and highlighted in both files.</li>
+                <li><strong>Navigating Hits:</strong>
+                    <ul>
+                        <li><strong>Hit 0:</strong> This special hit represents the start of the file. It's included in the navigation cycle to allow comparing differences from the very beginning.</li>
+                        <li><strong>Keyboard:</strong> Use <code>Ctrl+ArrowUp/Down</code> to change the "current" search hit. When hovering over the <strong>left pane</strong>, this changes the current hit in <strong>both</strong> panes. When hovering over the <strong>right pane</strong>, this changes the current hit <strong>only</strong> in that pane.</li>
+                        <li><strong>Buttons:</strong> Use the <code>&lt; Prev</code> and <code>Next &gt;</code> buttons to cycle through hits (including Hit 0).</li>
+                        <li><strong>Direct Input:</strong> Click the "Hit: X / Y" display to type a specific hit number (including 0) and press Enter to jump directly to it.</li>
+                    </ul>
+                </li>
+                <li><strong>Intelligent Diffing:</strong> The two files are aligned side by side using a Myers diff over their full contents.
+                    <ul>
+                        <li><span style="background-color: var(--insert-delete-bg); padding: 0 3px;">Green</span>: Indicates inserted or deleted bytes (present in one file only).</li>
+                        <li><span style="background-color: var(--diff-bg); padding: 0 3px;">Brown</span>: Indicates a byte that was modified.</li>
+                        <li>Hatched empty cells are alignment gaps: they reserve the space of bytes inserted/deleted in the other file, so identical bytes stay side by side before and after every insertion or deletion.</li>
+                    </ul>
+                </li>
             </ul>
         </div>
     </div>
@@ -204,13 +286,12 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const elements = {
-                dropZone: document.getElementById('drop-zone'), fileInput: document.getElementById('file-input'),
-                mainContent: document.getElementById('main-content'), editorMain: document.getElementById('editor-main'),
-                addressColumn: document.getElementById('address-column'), hexColumn: document.getElementById('hex-column'),
-                asciiColumn: document.getElementById('ascii-column'), downloadBtn: document.getElementById('download-btn'),
+                initialDropZone: document.getElementById('initial-drop-zone'), fileInput1: document.getElementById('file-input-1'),
+                dropZone2: document.getElementById('drop-zone-2'), fileInput2: document.getElementById('file-input-2'),
+                mainContent: document.getElementById('main-content'), 
+                downloadBtn: document.getElementById('download-btn'),
                 searchBtn: document.getElementById('search-btn'), searchInput: document.getElementById('search-input'),
                 searchType: document.getElementById('search-type'), scrollbarMap: document.getElementById('scrollbar-map'),
-                fileInfoText: document.getElementById('file-info-text'), 
                 inspectorPanel: document.getElementById('inspector-panel'),
                 gotoBtn: document.getElementById('goto-btn'),
                 prevFoundBtn: document.getElementById('prev-found-btn'),
@@ -218,63 +299,167 @@
                 helpBtn: document.getElementById('help-btn'),
                 helpModal: document.getElementById('help-modal'),
                 closeHelpBtn: document.querySelector('.close-btn'),
-                customScrollbar: document.getElementById('custom-scrollbar'),
-                customScrollbarThumb: document.getElementById('custom-scrollbar-thumb'),
-                // Delete button will be assigned dynamically after it's created
+                comparisonControls: document.getElementById('comparison-controls'),
+                syncViewsBtn: document.getElementById('sync-views-btn'),
+                hitInfo1: document.getElementById('hit-info-1'),
+                hitInfo2: document.getElementById('hit-info-2'),
+                hitText1: document.querySelector('#hit-info-1 .hit-text'),
+                hitInput1: document.querySelector('#hit-info-1 .hit-input'),
+                hitText2: document.querySelector('#hit-info-2 .hit-text'),
+                hitInput2: document.querySelector('#hit-info-2 .hit-input'),
+                // Pane 1
+                editorPane1: document.getElementById('editor-pane-1'),
+                editorMain1: document.getElementById('editor-main-1'),
+                addressColumn1: document.getElementById('address-column-1'),
+                hexColumn1: document.getElementById('hex-column-1'),
+                asciiColumn1: document.getElementById('ascii-column-1'),
+                fileInfoText1: document.getElementById('file-info-text'),
+                customScrollbar1: document.getElementById('custom-scrollbar-1'),
+                customScrollbarThumb1: document.getElementById('custom-scrollbar-thumb-1'),
+                // Pane 2
+                editorPane2: document.getElementById('editor-pane-2'),
+                editorMain2: document.getElementById('editor-main-2'),
+                addressColumn2: document.getElementById('address-column-2'),
+                hexColumn2: document.getElementById('hex-column-2'),
+                asciiColumn2: document.getElementById('ascii-column-2'),
+                customScrollbar2: document.getElementById('custom-scrollbar-2'),
+                customScrollbarThumb2: document.getElementById('custom-scrollbar-thumb-2'),
             };
 
-            let fileData = []; let fileName = '';
-            let selectionStart = -1, selectionEnd = -1, isSelecting = false;
-            let lastSearch = { needle: null, allFoundBytes: new Set(), sortedHitOffsets: [] };
+            // --- State for Pane 1 (Primary, Editable) ---
+            let fileData1 = []; let fileName1 = '';
+            let selectionStart1 = -1, selectionEnd1 = -1, isSelecting1 = false;
+            
+            // --- State for Pane 2 (Comparison, Read-Only) ---
+            let fileData2 = []; let fileName2 = '';
+            let selectionStart2 = -1, selectionEnd2 = -1, isSelecting2 = false;
+            let isComparing = false;
+
+            // --- Global State ---
+            let masterVirtualScrollTop = 0;
+            let activeScrollbarPane = null, dragStartY = 0, dragStartScrollTop = 0;
+            let activePane = 1;
+            let activeColumnType = 'hex';
+            let lastSearch = {};
+            let currentHitIndex1 = -1;
+            let currentHitIndex2 = -1;
+            let alignment = null; // global aligned diff of fileData1 vs fileData2
 
             const BYTES_PER_LINE = 16;
             const LINE_HEIGHT = 24;
             const BUFFER_LINES = 20;
-
-            // --- Custom Scrollbar State ---
-            let virtualScrollTop = 0;
-            let totalVirtualHeight = 0;
-            let isDraggingThumb = false;
-            let dragStartY = 0;
-            let dragStartScrollTop = 0;
-
+            
             const inspectorDefs = [
                 { name: 'Int8', size: 1 }, { name: 'Uint8', size: 1 }, { name: 'Int16', size: 2 },
                 { name: 'Uint16', size: 2 }, { name: 'Int32', size: 4 }, { name: 'Uint32', size: 4 },
                 { name: 'Float32', size: 4 }, { name: 'Float64', size: 8 }
             ];
 
-            function loadFile(file) {
-                fileName = file.name;
+            function resetSearchState() {
+                lastSearch = { 
+                    needle: null, 
+                    allFoundBytes1: new Set(), sortedHitOffsets1: [],
+                    allFoundBytes2: new Set(), sortedHitOffsets2: [],
+                };
+                currentHitIndex1 = -1;
+                currentHitIndex2 = -1;
+                updateHitInfo();
+            }
+
+            function resetComparisonState() {
+                fileData2 = []; fileName2 = '';
+                selectionStart2 = -1; selectionEnd2 = -1; isSelecting2 = false;
+                isComparing = false;
+                alignment = null;
+                if (diffWorker) { diffWorker.terminate(); diffWorker = null; }
+                elements.editorPane2.style.display = 'none';
+                elements.dropZone2.style.display = 'flex';
+                elements.comparisonControls.style.display = 'none';
+                resetSearchState();
+                updateControlStates();
+            }
+
+            // Call after any modification of fileData1: invalidates search results
+            // and the aligned diff, recomputes the diff, and re-renders.
+            function fileDataChanged() {
+                resetSearchState();
+                alignment = null;
+                if (isComparing) runDiff();
+                updateVirtualScroll(1);
+                if (isComparing) updateVirtualScroll(2);
+                updateControlStates();
+            }
+
+            function loadFile(file, pane) {
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    fileData = Array.from(new Uint8Array(e.target.result));
-                    elements.dropZone.style.display = 'none';
-                    elements.mainContent.style.display = 'flex';
-                    virtualScrollTop = 0;
-                    selectionStart = selectionEnd = -1; isSelecting = false;
-                    lastSearch = { needle: null, allFoundBytes: new Set(), sortedHitOffsets: [] };
-                    updateVirtualScroll();
-                    updateControlStates();
+                    const data = Array.from(new Uint8Array(e.target.result));
+                    if (pane === 1) {
+                        fileData1 = data; fileName1 = file.name;
+                        elements.initialDropZone.style.display = 'none';
+                        elements.mainContent.style.display = 'flex';
+                        masterVirtualScrollTop = 0;
+                        selectionStart1 = selectionEnd1 = -1; isSelecting1 = false;
+                        resetComparisonState();
+                        updateVirtualScroll(1);
+                        updateControlStates();
+                    } else { // pane === 2
+                        fileData2 = data; fileName2 = file.name;
+                        selectionStart2 = selectionEnd2 = -1; isSelecting2 = false;
+                        isComparing = true;
+                        elements.dropZone2.style.display = 'none';
+                        elements.editorPane2.style.display = 'grid';
+                        resetSearchState();
+                        runDiff();
+                        updateVirtualScroll(2);
+                        updateVirtualScroll(1);
+                        updateControlStates();
+                    }
                 };
                 reader.onerror = () => alert(`Failed to read file: ${file.name}`);
                 reader.readAsArrayBuffer(file);
             }
 
-            function updateVirtualScroll() {
-                const totalLines = Math.ceil(fileData.length / BYTES_PER_LINE);
-                totalVirtualHeight = totalLines * LINE_HEIGHT;
-                renderVisibleContent();
-                updateCustomScrollbar();
-                updateFileInfo();
-                updateInspector();
-                updateScrollbarMap();
+            function getPaneVirtualState(pane) {
+                const isPane1 = pane === 1;
+                const fileData = isPane1 ? fileData1 : fileData2;
+                // When an aligned diff is active, both panes share one row space of equal height.
+                const totalRows = (isComparing && alignment) ? alignment.length : fileData.length;
+
+                return {
+                    fileData,
+                    virtualScrollTop: masterVirtualScrollTop,
+                    totalVirtualHeight: Math.ceil(totalRows / BYTES_PER_LINE) * LINE_HEIGHT,
+                    editorMain: isPane1 ? elements.editorMain1 : elements.editorMain2,
+                    addressColumn: isPane1 ? elements.addressColumn1 : elements.addressColumn2,
+                    hexColumn: isPane1 ? elements.hexColumn1 : elements.hexColumn2,
+                    asciiColumn: isPane1 ? elements.asciiColumn1 : elements.asciiColumn2,
+                    foundBytes: isPane1 ? lastSearch.allFoundBytes1 : lastSearch.allFoundBytes2,
+                };
             }
 
-            function renderVisibleContent() {
-                const totalLines = Math.ceil(fileData.length / BYTES_PER_LINE);
-                const viewportHeight = elements.editorMain.clientHeight;
-                
+            function updateVirtualScroll(pane) {
+                const state = getPaneVirtualState(pane);
+                renderVisibleContent(pane, state);
+                updateCustomScrollbar(pane, state);
+                if (pane === 1) {
+                    updateFileInfo(1);
+                    updateInspector();
+                    updateScrollbarMap();
+                }
+            }
+
+            function renderVisibleContent(pane, state) {
+                const isPane1 = pane === 1;
+                const { fileData, virtualScrollTop, editorMain, addressColumn, hexColumn, asciiColumn, foundBytes } = state;
+                const aligned = isComparing && alignment;
+                const alignMap = aligned ? (isPane1 ? alignment.align1 : alignment.align2) : null;
+                const rowCount = aligned ? alignment.length : fileData.length;
+                const ownStatus = isPane1 ? 3 : 2; // status marking bytes that exist only in this file
+
+                const totalLines = Math.ceil(rowCount / BYTES_PER_LINE);
+                const viewportHeight = editorMain.clientHeight;
+
                 const firstVisibleLine = Math.floor(virtualScrollTop / LINE_HEIGHT);
                 const visibleLinesCount = Math.ceil(viewportHeight / LINE_HEIGHT);
 
@@ -284,190 +469,379 @@
                 let addressHtml = '', hexHtml = '', asciiHtml = '';
 
                 for (let i = startLine; i < endLine; i++) {
-                    const offset = i * BYTES_PER_LINE;
-                    addressHtml += `${offset.toString(16).padStart(8, '0').toUpperCase()}<br>`;
-                    for (let j = 0; j < BYTES_PER_LINE; j++) {
-                        const byteOffset = offset + j;
-                        if (byteOffset < fileData.length) {
-                            const byte = fileData[byteOffset];
-                            const isFound = lastSearch.allFoundBytes.has(byteOffset);
-                            const foundClass = isFound ? ' found' : '';
-                            
-                            hexHtml += `<span class="${foundClass}" data-offset="${byteOffset}">${byte.toString(16).padStart(2, '0').toUpperCase()}</span> `;
-                            const char = (byte >= 32 && byte <= 126) ? String.fromCharCode(byte) : '.';
-                            asciiHtml += `<span class="${foundClass}" data-offset="${byteOffset}">${char.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span>`;
-                        } else { // past end of file: pad with cell-sized spans to keep the grid aligned
-                            hexHtml += '<span>  </span> '; asciiHtml += '<span> </span>';
+                    const rowStart = i * BYTES_PER_LINE;
+
+                    let lineAddress = rowStart;
+                    if (aligned) {
+                        lineAddress = -1; // address of the first real byte on the line, if any
+                        for (let j = 0; j < BYTES_PER_LINE && rowStart + j < rowCount; j++) {
+                            if (alignMap[rowStart + j] >= 0) { lineAddress = alignMap[rowStart + j]; break; }
                         }
+                    }
+                    addressHtml += (lineAddress >= 0 ? lineAddress.toString(16).padStart(8, '0').toUpperCase() : '') + '<br>';
+
+                    for (let j = 0; j < BYTES_PER_LINE; j++) {
+                        const row = rowStart + j;
+                        if (row >= rowCount) { // past the end: pad to keep the grid aligned
+                            hexHtml += '<span>  </span> ';
+                            asciiHtml += '<span> </span>';
+                            continue;
+                        }
+                        const byteOffset = aligned ? alignMap[row] : row;
+                        if (byteOffset < 0) { // alignment gap: bytes inserted/deleted in the other file
+                            hexHtml += '<span class="gap">  </span> ';
+                            asciiHtml += '<span class="gap"> </span>';
+                            continue;
+                        }
+                        const byte = fileData[byteOffset];
+                        let classes = [];
+                        if (foundBytes?.has(byteOffset)) classes.push('found');
+                        if (aligned) {
+                            const status = alignment.status[row];
+                            if (status === 1) classes.push('diff');
+                            else if (status === ownStatus) classes.push('inserted');
+                        }
+                        hexHtml += `<span class="${classes.join(' ')}" data-offset="${byteOffset}">${byte.toString(16).padStart(2, '0').toUpperCase()}</span> `;
+                        const char = (byte >= 32 && byte <= 126) ? String.fromCharCode(byte) : '.';
+                        asciiHtml += `<span class="${classes.join(' ')}" data-offset="${byteOffset}">${char.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span>`;
                     }
                     hexHtml += '<br>'; asciiHtml += '<br>';
                 }
 
-                elements.addressColumn.innerHTML = addressHtml;
-                elements.hexColumn.innerHTML = hexHtml;
-                elements.asciiColumn.innerHTML = asciiHtml;
+                addressColumn.innerHTML = addressHtml;
+                hexColumn.innerHTML = hexHtml;
+                asciiColumn.innerHTML = asciiHtml;
 
                 const transformY = startLine * LINE_HEIGHT - virtualScrollTop;
-                elements.addressColumn.style.transform = `translateY(${transformY}px)`;
-                elements.hexColumn.style.transform = `translateY(${transformY}px)`;
-                elements.asciiColumn.style.transform = `translateY(${transformY}px)`;
+                addressColumn.style.transform = `translateY(${transformY}px)`;
+                hexColumn.style.transform = `translateY(${transformY}px)`;
+                asciiColumn.style.transform = `translateY(${transformY}px)`;
 
-                highlightSelection();
+                highlightSelection(pane);
             }
             
-            function updateFileInfo() {
-                const hexLength = fileData.length.toString(16).toUpperCase();
-                elements.fileInfoText.textContent = `File: ${fileName} (${fileData.length} bytes / 0x${hexLength})`;
+            function updateFileInfo(pane) {
+                if (pane === 1) {
+                    const hexLength = fileData1.length.toString(16).toUpperCase();
+                    elements.fileInfoText1.textContent = `File: ${fileName1} (${fileData1.length} bytes / 0x${hexLength})`;
+                }
+            }
+
+            function updateHitInfo() {
+                const update = (textEl, inputEl, containerEl, currentIndex, totalHits, fileName, prefix) => {
+                    if (containerEl.classList.contains('editing')) return;
+                    if (totalHits > 0) {
+                        const displayNum = currentIndex === -1 ? 0 : currentIndex + 1;
+                        textEl.textContent = `${prefix}: ${displayNum} / ${totalHits}`;
+                    } else {
+                        textEl.textContent = `${prefix}: ${fileName || 'N/A'}`;
+                    }
+                };
+                update(elements.hitText1, elements.hitInput1, elements.hitInfo1, currentHitIndex1, lastSearch.sortedHitOffsets1?.length, fileName1, "Hit");
+                update(elements.hitText2, elements.hitInput2, elements.hitInfo2, currentHitIndex2, lastSearch.sortedHitOffsets2?.length, fileName2, "vs Hit");
             }
             
             function updateControlStates() {
-                const hasFile = fileData.length > 0;
-                const hasSelection = selectionStart !== -1;
-                elements.downloadBtn.disabled = !hasFile; elements.downloadBtn.draggable = !!hasFile;
-                if (elements.deleteBtn) elements.deleteBtn.disabled = !hasSelection;
-                elements.gotoBtn.disabled = !hasFile;
-                const hasSearchResults = lastSearch.sortedHitOffsets.length > 0;
+                const hasFile1 = fileData1.length > 0;
+                const hasSelection1 = selectionStart1 !== -1;
+                elements.downloadBtn.disabled = !hasFile1; elements.downloadBtn.draggable = hasFile1;
+                if (elements.deleteBtn) elements.deleteBtn.disabled = !hasSelection1;
+                elements.gotoBtn.disabled = !hasFile1;
+                elements.syncViewsBtn.disabled = currentHitIndex1 === -1;
+                
+                const hasSearchResults = lastSearch.sortedHitOffsets1?.length > 0;
                 elements.prevFoundBtn.disabled = !hasSearchResults;
                 elements.nextFoundBtn.disabled = !hasSearchResults;
+                
+                if (isComparing) {
+                    elements.comparisonControls.style.display = 'flex';
+                }
             }
 
             function initializeEventListeners() {
-                elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); elements.dropZone.classList.add('drag-over'); });
-                elements.dropZone.addEventListener('dragleave', () => { elements.dropZone.classList.remove('drag-over'); });
-                elements.dropZone.addEventListener('drop', (e) => {
-                    e.preventDefault(); elements.dropZone.classList.remove('drag-over');
-                    if (e.dataTransfer.files.length > 0) loadFile(e.dataTransfer.files[0]);
-                });
-                elements.dropZone.addEventListener('click', () => elements.fileInput.click());
-                elements.fileInput.addEventListener('change', () => {
-                    if (elements.fileInput.files.length > 0) loadFile(elements.fileInput.files[0]);
-                    elements.fileInput.value = ''; // allow re-selecting the same file
-                });
-
-                const handleMouseDown = (e) => {
-                    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
-                        document.activeElement.blur();
-                    }
-                    if (e.target.tagName === 'SPAN' && e.target.dataset.offset) {
-                        e.preventDefault(); isSelecting = true;
-                        selectionStart = selectionEnd = parseInt(e.target.dataset.offset, 10);
-                        highlightSelection(); updateInspector(); updateControlStates();
-                    }
+                // --- File Drop/Select ---
+                const setupDropZone = (dropZoneElem, fileInputElem, pane) => {
+                    ['dragover', 'dragleave', 'drop', 'click'].forEach(evtName => {
+                        dropZoneElem.addEventListener(evtName, (e) => {
+                            if (evtName === 'dragover' || evtName === 'drop') e.preventDefault();
+                            if (evtName === 'dragover') dropZoneElem.classList.add('drag-over');
+                            else dropZoneElem.classList.remove('drag-over');
+                            if (evtName === 'drop' && e.dataTransfer.files.length > 0) loadFile(e.dataTransfer.files[0], pane);
+                            if (evtName === 'click') fileInputElem.click();
+                        });
+                    });
+                    fileInputElem.addEventListener('change', () => {
+                        if (fileInputElem.files.length > 0) loadFile(fileInputElem.files[0], pane);
+                        fileInputElem.value = ''; // allow re-selecting the same file
+                    });
                 };
-                const handleMouseOver = (e) => {
-                    if (isSelecting && e.target.tagName === 'SPAN' && e.target.dataset.offset) {
-                        selectionEnd = parseInt(e.target.dataset.offset, 10);
-                        highlightSelection(); updateInspector();
-                    }
-                };
-                elements.editorMain.addEventListener('mousedown', handleMouseDown);
-                elements.editorMain.addEventListener('mouseover', handleMouseOver);
-                document.body.addEventListener('mouseup', () => { isSelecting = false; });
+                setupDropZone(elements.initialDropZone, elements.fileInput1, 1);
+                setupDropZone(elements.dropZone2, elements.fileInput2, 2);
 
+                // --- Mouse Hover for Active Pane & Column ---
+                elements.editorMain1.addEventListener('mouseover', () => { activePane = 1; });
+                elements.editorMain2.addEventListener('mouseover', () => { activePane = 2; });
+                elements.hexColumn1.addEventListener('mouseover', () => { activeColumnType = 'hex'; });
+                elements.asciiColumn1.addEventListener('mouseover', () => { activeColumnType = 'ascii'; });
+                elements.hexColumn2.addEventListener('mouseover', () => { activeColumnType = 'hex'; });
+                elements.asciiColumn2.addEventListener('mouseover', () => { activeColumnType = 'ascii'; });
+
+                // --- Selection ---
+                const createSelectionHandlers = (pane) => {
+                    const isPane1 = pane === 1;
+                    const editorMain = isPane1 ? elements.editorMain1 : elements.editorMain2;
+                    
+                    const handleMouseDown = (e) => {
+                        if (isPane1 && document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
+                            document.activeElement.blur();
+                        }
+                        if (e.target.tagName === 'SPAN' && e.target.dataset.offset) {
+                            e.preventDefault();
+                            const offset = parseInt(e.target.dataset.offset, 10);
+                            if (isPane1) {
+                                isSelecting1 = true;
+                                selectionStart1 = selectionEnd1 = offset;
+                                highlightSelection(1); updateInspector(); updateControlStates();
+                            } else {
+                                isSelecting2 = true;
+                                selectionStart2 = selectionEnd2 = offset;
+                                highlightSelection(2); updateControlStates();
+                            }
+                        }
+                    };
+                    const handleMouseOver = (e) => {
+                        if (e.target.tagName === 'SPAN' && e.target.dataset.offset) {
+                            const offset = parseInt(e.target.dataset.offset, 10);
+                            if (isPane1 && isSelecting1) {
+                                selectionEnd1 = offset;
+                                highlightSelection(1); updateInspector();
+                            } else if (!isPane1 && isSelecting2) {
+                                selectionEnd2 = offset;
+                                highlightSelection(2);
+                            }
+                        }
+                    };
+                    editorMain.addEventListener('mousedown', handleMouseDown);
+                    editorMain.addEventListener('mouseover', handleMouseOver);
+                };
+                createSelectionHandlers(1);
+                createSelectionHandlers(2);
+                document.body.addEventListener('mouseup', () => { isSelecting1 = false; isSelecting2 = false; });
+
+                // --- Other Controls ---
                 elements.downloadBtn.addEventListener('dragstart', (e) => {
-                    const blob = new Blob([new Uint8Array(fileData)], { type: 'application/octet-stream' });
+                    const blob = new Blob([new Uint8Array(fileData1)], { type: 'application/octet-stream' });
                     const url = URL.createObjectURL(blob);
-                    e.dataTransfer.setData('DownloadURL', `application/octet-stream:${fileName}:${url}`);
+                    e.dataTransfer.setData('DownloadURL', `application/octet-stream:${fileName1}:${url}`);
                 });
                 elements.downloadBtn.addEventListener('click', () => {
-                    const blob = new Blob([new Uint8Array(fileData)], { type: 'application/octet-stream' });
+                    const blob = new Blob([new Uint8Array(fileData1)], { type: 'application/octet-stream' });
                     const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a'); a.href = url; a.download = fileName || 'edited.bin'; a.click();
+                    const a = document.createElement('a'); a.href = url; a.download = fileName1 || 'edited.bin'; a.click();
                     URL.revokeObjectURL(url);
                 });
-                elements.searchInput.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        elements.searchBtn.click();
-                    }
-                });
-                document.body.addEventListener('keydown', (e) => {
-                    if (e.key === 'F1') {
-                        e.preventDefault();
-                        openHelpModal();
-                    }
-                    if (e.key === 'Escape' && elements.helpModal.style.display === 'block') {
-                        closeHelpModal();
-                    }
-                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-                    
-                    const pageSize = Math.floor(elements.editorMain.clientHeight / LINE_HEIGHT) * BYTES_PER_LINE;
-                    let offsetChange = 0;
-
-                    switch (e.key) {
-                        case 'ArrowUp': offsetChange = -BYTES_PER_LINE; break;
-                        case 'ArrowDown': offsetChange = BYTES_PER_LINE; break;
-                        case 'ArrowLeft': offsetChange = -1; break;
-                        case 'ArrowRight': offsetChange = 1; break;
-                        case 'PageUp':
-                            e.preventDefault();
-                            if (e.shiftKey) {
-                                handleSelectionMovement(-pageSize, true);
-                            } else {
-                                setVirtualScrollTop(virtualScrollTop - elements.editorMain.clientHeight);
-                            }
-                            return;
-                        case 'PageDown':
-                            e.preventDefault();
-                            if (e.shiftKey) {
-                                handleSelectionMovement(pageSize, true);
-                            } else {
-                                setVirtualScrollTop(virtualScrollTop + elements.editorMain.clientHeight);
-                            }
-                            return;
-                        case 'Home':
-                            e.preventDefault();
-                            setVirtualScrollTop(0);
-                            return;
-                        case 'End':
-                            e.preventDefault();
-                            const maxScroll = totalVirtualHeight - elements.editorMain.clientHeight;
-                            setVirtualScrollTop(maxScroll);
-                            return;
-                        default:
-                            return; // Do nothing for other keys
-                    }
-
-                    e.preventDefault();
-                    handleSelectionMovement(offsetChange, e.shiftKey);
-                });
+                elements.searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); elements.searchBtn.click(); } });
+                document.body.addEventListener('keydown', handleGlobalKeyDown);
                 elements.gotoBtn.addEventListener('click', handleGoTo);
                 elements.nextFoundBtn.addEventListener('click', () => findNext(true));
                 elements.prevFoundBtn.addEventListener('click', () => findNext(false));
-                
                 elements.helpBtn.addEventListener('click', openHelpModal);
                 elements.closeHelpBtn.addEventListener('click', closeHelpModal);
-                elements.helpModal.addEventListener('click', (e) => {
-                    if (e.target === elements.helpModal) {
-                        closeHelpModal();
-                    }
-                });
+                elements.helpModal.addEventListener('click', (e) => { if (e.target === elements.helpModal) closeHelpModal(); });
+                elements.syncViewsBtn.addEventListener('click', () => scrollToHit(1));
+                elements.hitInfo1.addEventListener('click', () => enterHitEditMode(1));
+                elements.hitInfo2.addEventListener('click', () => enterHitEditMode(2));
 
-                // Custom Scrollbar Events
-                elements.editorMain.addEventListener('wheel', handleWheelScroll);
-                elements.customScrollbarThumb.addEventListener('mousedown', handleThumbMouseDown);
-                elements.customScrollbar.addEventListener('mousedown', handleTrackMouseDown);
+                // --- Custom Scrollbars ---
+                const onWheel = (e) => { e.preventDefault(); setMasterScrollTop(masterVirtualScrollTop + e.deltaY); };
+                elements.editorMain1.addEventListener('wheel', onWheel);
+                elements.editorMain2.addEventListener('wheel', onWheel);
+                setupCustomScrollbar(1);
+                setupCustomScrollbar(2);
 
-                // Dropping a file anywhere loads it (as documented in Help) instead of
-                // letting the browser navigate away and lose unsaved changes.
+                // Dropping a file anywhere loads it instead of letting the browser
+                // navigate away and lose unsaved changes.
                 window.addEventListener('dragover', (e) => e.preventDefault());
                 window.addEventListener('drop', (e) => {
-                    if (e.defaultPrevented) return; // already handled by the drop zone
+                    if (e.defaultPrevented) return; // already handled by a drop zone
                     e.preventDefault();
-                    if (e.dataTransfer.files.length > 0) loadFile(e.dataTransfer.files[0]);
+                    if (e.dataTransfer.files.length === 0) return;
+                    loadFile(e.dataTransfer.files[0], fileData1.length > 0 ? 2 : 1);
                 });
-                window.addEventListener('resize', () => { if (fileData.length) updateVirtualScroll(); });
+                window.addEventListener('resize', () => {
+                    if (!fileData1.length) return;
+                    updateVirtualScroll(1);
+                    if (isComparing) updateVirtualScroll(2);
+                });
             }
 
-            function highlightSelection() {
-                const previouslySelected = document.querySelectorAll('.selected');
+            function handleGlobalKeyDown(e) {
+                if (e.key === 'F1') { e.preventDefault(); openHelpModal(); return; }
+                if (e.key === 'Escape' && elements.helpModal.style.display === 'block') { closeHelpModal(); return; }
+                // Keys typed into inputs (incl. Ctrl+C) must keep their default behavior
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+                if (e.ctrlKey) {
+                    if (e.key.toLowerCase() === 'c') { e.preventDefault(); handleCopy(); return; }
+                    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); handleHitNavigation(e.key === 'ArrowDown'); return; }
+                }
+                
+                const isPane1 = activePane === 1;
+                const editorMain = isPane1 ? elements.editorMain1 : elements.editorMain2;
+                const pageSize = Math.floor(editorMain.clientHeight / LINE_HEIGHT) * BYTES_PER_LINE;
+                let offsetChange = 0;
+
+                switch (e.key) {
+                    case 'ArrowUp': offsetChange = -BYTES_PER_LINE; break;
+                    case 'ArrowDown': offsetChange = BYTES_PER_LINE; break;
+                    case 'ArrowLeft': offsetChange = -1; break;
+                    case 'ArrowRight': offsetChange = 1; break;
+                    case 'PageUp':
+                        e.preventDefault();
+                        if (e.shiftKey) handleSelectionMovement(-pageSize, true, activePane);
+                        else setMasterScrollTop(masterVirtualScrollTop - editorMain.clientHeight);
+                        return;
+                    case 'PageDown':
+                        e.preventDefault();
+                        if (e.shiftKey) handleSelectionMovement(pageSize, true, activePane);
+                        else setMasterScrollTop(masterVirtualScrollTop + editorMain.clientHeight);
+                        return;
+                    case 'Home': e.preventDefault(); setMasterScrollTop(0); return;
+                    case 'End': e.preventDefault(); setMasterScrollTop(getMaxScroll()); return;
+                    default: return;
+                }
+                e.preventDefault();
+                handleSelectionMovement(offsetChange, e.shiftKey, activePane);
+            }
+
+            function handleHitNavigation(isDown) {
+                const increment = isDown ? 1 : -1;
+                if (activePane === 1) {
+                    const numHits = lastSearch.sortedHitOffsets1?.length;
+                    if (!numHits) return;
+                    let newIndex = currentHitIndex1 + increment;
+                    if (newIndex < -1) newIndex = numHits - 1;
+                    if (newIndex >= numHits) newIndex = -1;
+                    currentHitIndex1 = newIndex;
+
+                    if (lastSearch.sortedHitOffsets2?.length > 0) {
+                        currentHitIndex2 = Math.min(currentHitIndex1, lastSearch.sortedHitOffsets2.length - 1);
+                        if (currentHitIndex1 === -1) currentHitIndex2 = -1;
+                    }
+                } else { // activePane === 2
+                    const numHits = lastSearch.sortedHitOffsets2?.length;
+                    if (!numHits) return;
+                    let newIndex = currentHitIndex2 + increment;
+                    if (newIndex < -1) newIndex = numHits - 1;
+                    if (newIndex >= numHits) newIndex = -1;
+                    currentHitIndex2 = newIndex;
+                }
+                scrollToHit(activePane === 1 ? 1 : 2);
+            }
+
+            function scrollToHit(pane) {
+                const isPane1 = pane === 1;
+                const currentIndex = isPane1 ? currentHitIndex1 : currentHitIndex2;
+                const offsets = isPane1 ? lastSearch.sortedHitOffsets1 : lastSearch.sortedHitOffsets2;
+                const targetOffset = (currentIndex > -1 && offsets) ? offsets[currentIndex] : 0;
+                // Place the hit's line at the top of the view
+                setMasterScrollTop(offsetToLine(pane, targetOffset) * LINE_HEIGHT);
+                updateHitInfo();
+                updateControlStates();
+            }
+
+            function enterHitEditMode(pane) {
+                const isPane1 = pane === 1;
+                const container = isPane1 ? elements.hitInfo1 : elements.hitInfo2;
+                const input = isPane1 ? elements.hitInput1 : elements.hitInput2;
+                const currentIndex = isPane1 ? currentHitIndex1 : currentHitIndex2;
+                const totalHits = isPane1 ? lastSearch.sortedHitOffsets1?.length : lastSearch.sortedHitOffsets2?.length;
+
+                if (!totalHits || totalHits === 0) return;
+                if (container.classList.contains('editing')) return; // already editing: don't stack listeners
+
+                container.classList.add('editing');
+                input.value = currentIndex === -1 ? 0 : currentIndex + 1;
+                input.focus();
+                input.select();
+
+                const onKeyDown = (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const newHitNum = parseInt(input.value, 10);
+                        if (!isNaN(newHitNum) && newHitNum >= 0 && newHitNum <= totalHits) {
+                            const newIndex = newHitNum === 0 ? -1 : newHitNum - 1;
+                            if (isPane1) {
+                                currentHitIndex1 = newIndex;
+                                if (lastSearch.sortedHitOffsets2?.length > 0) {
+                                    currentHitIndex2 = Math.min(currentHitIndex1, lastSearch.sortedHitOffsets2.length - 1);
+                                    if (currentHitIndex1 === -1) currentHitIndex2 = -1;
+                                }
+                            } else {
+                                currentHitIndex2 = newIndex;
+                            }
+                            scrollToHit(pane);
+                        }
+                        exitHitEditMode(pane);
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        exitHitEditMode(pane);
+                    }
+                };
+                const onBlur = () => exitHitEditMode(pane);
+
+                input.addEventListener('keydown', onKeyDown);
+                input.addEventListener('blur', onBlur);
+
+                function exitHitEditMode(paneToExit) {
+                    const c = (paneToExit === 1) ? elements.hitInfo1 : elements.hitInfo2;
+                    const i = (paneToExit === 1) ? elements.hitInput1 : elements.hitInput2;
+                    c.classList.remove('editing');
+                    i.removeEventListener('keydown', onKeyDown);
+                    i.removeEventListener('blur', onBlur);
+                    updateHitInfo();
+                }
+            }
+
+            function handleCopy() {
+                const isPane1 = activePane === 1;
+                const selectionStart = isPane1 ? selectionStart1 : selectionStart2;
+                const selectionEnd = isPane1 ? selectionEnd1 : selectionEnd2;
+                const fileData = isPane1 ? fileData1 : fileData2;
+
+                if (selectionStart === -1) return;
+                const start = Math.min(selectionStart, selectionEnd);
+                const end = Math.max(selectionStart, selectionEnd);
+                const bytes = new Uint8Array(fileData.slice(start, end + 1));
+                
+                let contentToCopy = '';
+                if (activeColumnType === 'ascii') {
+                    contentToCopy = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+                } else { // 'hex'
+                    contentToCopy = Array.from(bytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+                }
+
+                navigator.clipboard.writeText(contentToCopy).then(() => {
+                    console.log(`${activeColumnType} from pane ${activePane} copied to clipboard`);
+                }, (err) => {
+                    console.error('Failed to copy: ', err);
+                    alert('Failed to copy to clipboard.');
+                });
+            }
+
+            function highlightSelection(pane) {
+                const isPane1 = pane === 1;
+                const selectionStart = isPane1 ? selectionStart1 : selectionStart2;
+                const selectionEnd = isPane1 ? selectionEnd1 : selectionEnd2;
+                const editorMain = isPane1 ? elements.editorMain1 : elements.editorMain2;
+
+                const previouslySelected = editorMain.querySelectorAll('.selected');
                 previouslySelected.forEach(el => el.classList.remove('selected'));
 
                 if (selectionStart === -1) return;
                 const start = Math.min(selectionStart, selectionEnd);
                 const end = Math.max(selectionStart, selectionEnd);
                 for (let i = start; i <= end; i++) {
-                    document.querySelectorAll(`[data-offset='${i}']`).forEach(el => el.classList.add('selected'));
+                    editorMain.querySelectorAll(`[data-offset='${i}']`).forEach(el => el.classList.add('selected'));
                 }
             }
 
@@ -508,13 +882,12 @@
                 
                 elements.deleteBtn = document.getElementById('delete-btn');
                 elements.deleteBtn.addEventListener('click', () => {
-                    if (selectionStart === -1) return;
-                    const start = Math.min(selectionStart, selectionEnd);
-                    const count = Math.abs(selectionEnd - selectionStart) + 1;
-                    fileData.splice(start, count);
-                    selectionStart = selectionEnd = -1;
-                    lastSearch.allFoundBytes.clear(); lastSearch.sortedHitOffsets = [];
-                    updateVirtualScroll(); updateControlStates();
+                    if (selectionStart1 === -1) return;
+                    const start = Math.min(selectionStart1, selectionEnd1);
+                    const count = Math.abs(selectionEnd1 - selectionStart1) + 1;
+                    fileData1.splice(start, count);
+                    selectionStart1 = selectionEnd1 = -1;
+                    fileDataChanged();
                 });
 
                 const textInput = document.getElementById('selection-text-input');
@@ -552,7 +925,7 @@
             }
 
             function updateInspector() {
-                const hasSelection = selectionStart !== -1;
+                const hasSelection = selectionStart1 !== -1;
                 const textInput = document.getElementById('selection-text-input');
                 const encodingSelect = document.getElementById('selection-encoding-select');
 
@@ -563,10 +936,10 @@
                     return;
                 }
 
-                const start = Math.min(selectionStart, selectionEnd);
-                const selLength = Math.abs(selectionEnd - selectionStart) + 1;
+                const start = Math.min(selectionStart1, selectionEnd1);
+                const selLength = Math.abs(selectionEnd1 - selectionStart1) + 1;
                 // View over just the bytes the inspector can show, not a copy of the whole file
-                const view = new DataView(Uint8Array.from(fileData.slice(start, start + 8)).buffer);
+                const view = new DataView(Uint8Array.from(fileData1.slice(start, start + 8)).buffer);
                 
                 inspectorDefs.forEach(def => {
                     ['BE', 'LE'].forEach(endian => {
@@ -574,7 +947,7 @@
                         const input = document.getElementById(`inspector-${def.name}-${endian}`);
                         if (!input) return;
                         
-                        if (start + def.size <= fileData.length) {
+                        if (start + def.size <= fileData1.length) {
                             input.disabled = false;
                             const methodName = `get${def.name}`;
                             let value;
@@ -590,7 +963,7 @@
                     });
                 });
                 
-                const selectedBytes = new Uint8Array(fileData.slice(start, start + selLength));
+                const selectedBytes = new Uint8Array(fileData1.slice(start, start + selLength));
                 textInput.disabled = false;
                 encodingSelect.disabled = false;
                 
@@ -617,19 +990,17 @@
                 } catch(e) { alert(`Value out of range for ${typeName}.`); updateInspector(); return; }
                 
                 const newBytes = Array.from(new Uint8Array(buffer));
-                const start = Math.min(selectionStart, selectionEnd);
+                const start = Math.min(selectionStart1, selectionEnd1);
                 
-                if (start + size > fileData.length) {
+                if (start + size > fileData1.length) {
                     alert("Not enough space in file to write this data type at the selected offset.");
                     return;
                 }
-                fileData.splice(start, size, ...newBytes);
+                fileData1.splice(start, size, ...newBytes);
 
-                selectionStart = start;
-                selectionEnd = start + newBytes.length - 1;
-                lastSearch.allFoundBytes.clear(); lastSearch.sortedHitOffsets = [];
-                updateVirtualScroll();
-                updateControlStates();
+                selectionStart1 = start;
+                selectionEnd1 = start + newBytes.length - 1;
+                fileDataChanged();
             }
 
             function handleStringEdit() {
@@ -645,15 +1016,13 @@
                 }
                 if (!newBytes) { alert("Invalid input string."); return; }
                 
-                const start = Math.min(selectionStart, selectionEnd);
-                const count = Math.abs(selectionEnd - selectionStart) + 1;
-                fileData.splice(start, count, ...newBytes);
+                const start = Math.min(selectionStart1, selectionEnd1);
+                const count = Math.abs(selectionEnd1 - selectionStart1) + 1;
+                fileData1.splice(start, count, ...newBytes);
 
-                selectionStart = start;
-                selectionEnd = start + newBytes.length - 1;
-                lastSearch.allFoundBytes.clear(); lastSearch.sortedHitOffsets = [];
-                updateVirtualScroll();
-                updateControlStates();
+                selectionStart1 = start;
+                selectionEnd1 = start + newBytes.length - 1;
+                fileDataChanged();
             }
 
             function parseHex(hexStr) {
@@ -676,7 +1045,6 @@
                 return bytes;
             }
 
-            // --- Asynchronous Search with Web Worker ---
             const searchWorkerScript = `
                 onmessage = function(e) {
                     const { fileData, needle } = e.data;
@@ -706,6 +1074,196 @@
             `;
             const searchWorkerUrl = URL.createObjectURL(new Blob([searchWorkerScript], { type: 'application/javascript' }));
             let searchWorker = null;
+
+            // Linear-space Myers diff worker. O(N+M) memory; the per-snake effort
+            // cap keeps pathological inputs fast (capped splits remain valid edit
+            // scripts, they may just be non-minimal).
+            const diffWorkerScript = `
+                const EQ = 0, CHG = 1, INS = 2, DEL = 3;
+                const D_CAP = 1024;
+
+                onmessage = function(e) {
+                    postMessage({ runs: computeDiffRuns(e.data.seq1, e.data.seq2) });
+                };
+
+                function computeDiffRuns(a, b) {
+                    const out = [];
+                    const emit = (t, n) => {
+                        if (n <= 0) return;
+                        const last = out[out.length - 1];
+                        if (last && last.t === t) last.n += n;
+                        else out.push({ t, n });
+                    };
+                    diffMain(a, b, emit);
+                    return pairChanges(out);
+                }
+
+                // Pair adjacent delete/insert runs into 'changed' bytes so
+                // substitutions render as modifications, not delete + insert.
+                function pairChanges(runs) {
+                    const out = [];
+                    let i = 0;
+                    while (i < runs.length) {
+                        const cur = runs[i], next = runs[i + 1];
+                        if (next && ((cur.t === DEL && next.t === INS) || (cur.t === INS && next.t === DEL))) {
+                            const c = Math.min(cur.n, next.n);
+                            const delLeft = (cur.t === DEL ? cur.n : next.n) - c;
+                            const insLeft = (cur.t === INS ? cur.n : next.n) - c;
+                            out.push({ t: CHG, n: c });
+                            if (delLeft) out.push({ t: DEL, n: delLeft });
+                            if (insLeft) out.push({ t: INS, n: insLeft });
+                            i += 2;
+                        } else {
+                            out.push(cur);
+                            i++;
+                        }
+                    }
+                    return out;
+                }
+
+                // Divide & conquer on the middle snake, with an explicit stack so
+                // deep recursion cannot overflow. Emission order is left to right.
+                function diffMain(a, b, emit) {
+                    const stack = [{ op: 0, aLo: 0, aHi: a.length, bLo: 0, bHi: b.length }];
+                    while (stack.length) {
+                        const item = stack.pop();
+                        if (item.op === 1) { emit(item.t, item.n); continue; }
+                        let { aLo, aHi, bLo, bHi } = item;
+                        let pre = 0;
+                        while (aLo < aHi && bLo < bHi && a[aLo] === b[bLo]) { aLo++; bLo++; pre++; }
+                        if (pre) emit(EQ, pre);
+                        let suf = 0;
+                        while (aHi > aLo && bHi > bLo && a[aHi - 1] === b[bHi - 1]) { aHi--; bHi--; suf++; }
+                        const n = aHi - aLo, m = bHi - bLo;
+                        if (n === 0 || m === 0) {
+                            if (n) emit(DEL, n);
+                            if (m) emit(INS, m);
+                            if (suf) emit(EQ, suf);
+                            continue;
+                        }
+                        const snake = findMiddleSnake(a, b, aLo, aHi, bLo, bHi);
+                        if (!snake) {
+                            emit(DEL, n);
+                            emit(INS, m);
+                            if (suf) emit(EQ, suf);
+                            continue;
+                        }
+                        if (suf) stack.push({ op: 1, t: EQ, n: suf });
+                        stack.push({ op: 0, aLo: snake.xEnd, aHi, bLo: snake.yEnd, bHi });
+                        if (snake.xEnd > snake.xStart) stack.push({ op: 1, t: EQ, n: snake.xEnd - snake.xStart });
+                        stack.push({ op: 0, aLo, aHi: snake.xStart, bLo, bHi: snake.yStart });
+                    }
+                }
+
+                function findMiddleSnake(a, b, aLo, aHi, bLo, bHi) {
+                    const N = aHi - aLo, M = bHi - bLo;
+                    const delta = N - M;
+                    const odd = (delta & 1) !== 0;
+                    const dMax = Math.min(Math.ceil((N + M) / 2) + 1, D_CAP);
+                    const off = dMax + 1;
+                    const vf = new Int32Array(2 * dMax + 3);
+                    const vb = new Int32Array(2 * dMax + 3);
+                    vf[off + 1] = 0;
+                    vb[off + 1] = 0;
+                    let bestX = 0, bestY = 0, bestScore = -1;
+                    for (let d = 0; d <= dMax; d++) {
+                        for (let k = -d; k <= d; k += 2) {
+                            let x;
+                            if (k === -d || (k !== d && vf[off + k - 1] < vf[off + k + 1])) x = vf[off + k + 1];
+                            else x = vf[off + k - 1] + 1;
+                            let y = x - k;
+                            const xs = x, ys = y;
+                            while (x < N && y < M && a[aLo + x] === b[bLo + y]) { x++; y++; }
+                            vf[off + k] = x;
+                            if (x <= N && y >= 0 && y <= M && x + y > bestScore) { bestScore = x + y; bestX = x; bestY = y; }
+                            if (odd) {
+                                const kb = delta - k;
+                                if (kb >= -(d - 1) && kb <= d - 1 && vf[off + k] + vb[off + kb] >= N) {
+                                    return { xStart: aLo + xs, yStart: bLo + ys, xEnd: aLo + x, yEnd: bLo + y };
+                                }
+                            }
+                        }
+                        for (let k = -d; k <= d; k += 2) {
+                            let x;
+                            if (k === -d || (k !== d && vb[off + k - 1] < vb[off + k + 1])) x = vb[off + k + 1];
+                            else x = vb[off + k - 1] + 1;
+                            let y = x - k;
+                            const xs = x, ys = y;
+                            while (x < N && y < M && a[aHi - 1 - x] === b[bHi - 1 - y]) { x++; y++; }
+                            vb[off + k] = x;
+                            if (!odd) {
+                                const kf = delta - k;
+                                if (kf >= -d && kf <= d && vb[off + k] + vf[off + kf] >= N) {
+                                    return { xStart: aLo + N - x, yStart: bLo + M - y, xEnd: aLo + N - xs, yEnd: bLo + M - ys };
+                                }
+                            }
+                        }
+                    }
+                    // Effort cap reached: split at the furthest forward point.
+                    if (bestScore <= 0 || bestScore >= N + M) return null;
+                    return { xStart: aLo + bestX, yStart: bLo + bestY, xEnd: aLo + bestX, yEnd: bLo + bestY };
+                }
+            `;
+            const diffWorkerUrl = URL.createObjectURL(new Blob([diffWorkerScript], { type: 'application/javascript' }));
+            let diffWorker = null;
+
+            function runDiff() {
+                if (!isComparing) return;
+                alignment = null;
+                if (diffWorker) diffWorker.terminate();
+                diffWorker = new Worker(diffWorkerUrl);
+                diffWorker.onmessage = (e) => {
+                    diffWorker.terminate();
+                    diffWorker = null;
+                    alignment = buildAlignment(e.data.runs);
+                    setMasterScrollTop(masterVirtualScrollTop); // re-clamp and re-render both panes
+                };
+                const seq1 = Uint8Array.from(fileData1);
+                const seq2 = Uint8Array.from(fileData2);
+                diffWorker.postMessage({ seq1, seq2 }, [seq1.buffer, seq2.buffer]);
+            }
+
+            // Expand diff runs (t: 0 equal, 1 changed, 2 inserted, 3 deleted) into
+            // the aligned row space shared by both panes: align1/align2 map each
+            // row to a byte offset (or -1 for a gap), rowOf1/rowOf2 are the inverses.
+            function buildAlignment(runs) {
+                let totalRows = 0;
+                for (const r of runs) totalRows += r.n;
+                const align1 = new Int32Array(totalRows);
+                const align2 = new Int32Array(totalRows);
+                const status = new Uint8Array(totalRows);
+                const rowOf1 = new Int32Array(fileData1.length);
+                const rowOf2 = new Int32Array(fileData2.length);
+                let row = 0, o1 = 0, o2 = 0;
+                for (const r of runs) {
+                    for (let i = 0; i < r.n; i++, row++) {
+                        status[row] = r.t;
+                        if (r.t === 2) align1[row] = -1;
+                        else { align1[row] = o1; rowOf1[o1] = row; o1++; }
+                        if (r.t === 3) align2[row] = -1;
+                        else { align2[row] = o2; rowOf2[o2] = row; o2++; }
+                    }
+                }
+                return { align1, align2, status, rowOf1, rowOf2, length: totalRows };
+            }
+
+            function offsetToLine(pane, offset) {
+                if (isComparing && alignment) {
+                    const rowOf = pane === 1 ? alignment.rowOf1 : alignment.rowOf2;
+                    if (offset >= 0 && offset < rowOf.length) return Math.floor(rowOf[offset] / BYTES_PER_LINE);
+                }
+                return Math.floor(offset / BYTES_PER_LINE);
+            }
+
+            function getMaxScroll() {
+                const state1 = getPaneVirtualState(1);
+                let maxScroll = state1.totalVirtualHeight - state1.editorMain.clientHeight;
+                if (isComparing) {
+                    const state2 = getPaneVirtualState(2);
+                    maxScroll = Math.max(maxScroll, state2.totalVirtualHeight - state2.editorMain.clientHeight);
+                }
+                return Math.max(0, maxScroll);
+            }
 
             function getNeedleFromQuery(query, type) {
                 if (type === 'Hex') return parseHex(query);
@@ -739,28 +1297,58 @@
                 }
             }
 
+            function findInFile(fileData, needle) {
+                const allFoundBytes = new Set();
+                const sortedHitOffsets = [];
+                if (!needle || needle.length === 0) return { allFoundBytes, sortedHitOffsets };
+                for (let i = 0; i <= fileData.length - needle.length; i++) {
+                    let match = true;
+                    for (let j = 0; j < needle.length; j++) {
+                        if (fileData[i + j] !== needle[j]) {
+                            match = false;
+                            break;
+                        }
+                    }
+                    if (match) {
+                        sortedHitOffsets.push(i);
+                        for (let k = 0; k < needle.length; k++) {
+                            allFoundBytes.add(i + k);
+                        }
+                    }
+                }
+                return { allFoundBytes, sortedHitOffsets };
+            }
+
             elements.searchBtn.addEventListener('click', () => {
-                const query = elements.searchInput.value; if (!query || !fileData.length) return;
+                const query = elements.searchInput.value; if (!query || !fileData1.length) return;
                 const type = elements.searchType.value;
                 
                 const needle = getNeedleFromQuery(query, type);
                 if (!needle) return;
 
-                if (searchWorker) {
-                    searchWorker.terminate();
-                }
+                resetSearchState();
+                lastSearch.needle = needle;
+
+                if (searchWorker) searchWorker.terminate();
                 searchWorker = new Worker(searchWorkerUrl);
 
                 elements.searchBtn.disabled = true;
                 elements.searchBtn.textContent = 'Searching...';
 
                 searchWorker.onmessage = (e) => {
-                    lastSearch.needle = needle;
-                    lastSearch.allFoundBytes = new Set(e.data.allFoundBytes);
-                    lastSearch.sortedHitOffsets = e.data.sortedHitOffsets;
+                    lastSearch.allFoundBytes1 = new Set(e.data.allFoundBytes);
+                    lastSearch.sortedHitOffsets1 = e.data.sortedHitOffsets;
                     
-                    renderVisibleContent();
-                    updateScrollbarMap();
+                    if (isComparing) {
+                        const results2 = findInFile(fileData2, lastSearch.needle);
+                        lastSearch.allFoundBytes2 = results2.allFoundBytes;
+                        lastSearch.sortedHitOffsets2 = results2.sortedHitOffsets;
+                    }
+                    
+                    if (lastSearch.sortedHitOffsets1.length > 0) currentHitIndex1 = 0;
+                    if (lastSearch.sortedHitOffsets2?.length > 0) currentHitIndex2 = 0;
+
+                    scrollToHit(1);
                     updateControlStates();
 
                     elements.searchBtn.disabled = false;
@@ -769,21 +1357,23 @@
                     searchWorker = null;
                 };
 
-                searchWorker.postMessage({ fileData: fileData, needle: needle });
+                searchWorker.postMessage({ fileData: fileData1, needle: needle });
             });
 
             function updateScrollbarMap() {
                 elements.scrollbarMap.innerHTML = '';
-                if (lastSearch.allFoundBytes.size === 0) return;
+                if (!lastSearch.allFoundBytes1 || lastSearch.allFoundBytes1.size === 0) return;
 
-                const totalLines = Math.ceil(fileData.length / BYTES_PER_LINE);
+                const totalLines = (isComparing && alignment)
+                    ? Math.ceil(alignment.length / BYTES_PER_LINE)
+                    : Math.ceil(fileData1.length / BYTES_PER_LINE);
                 if (totalLines === 0) return;
 
                 const scrollbarHeight = elements.scrollbarMap.clientHeight;
                 const drawnPixelRows = new Set();
 
-                for (const offset of lastSearch.sortedHitOffsets) {
-                    const line = Math.floor(offset / BYTES_PER_LINE);
+                for (const offset of lastSearch.sortedHitOffsets1) {
+                    const line = offsetToLine(1, offset);
                     const percent = line / totalLines;
                     const pixelY = Math.floor(percent * scrollbarHeight);
 
@@ -797,168 +1387,168 @@
                 }
             }
 
-            // --- Navigation Functions ---
-            function scrollToOffset(offset) {
-                const line = Math.floor(offset / BYTES_PER_LINE);
-                const targetScrollTop = (line * LINE_HEIGHT) - (elements.editorMain.clientHeight / 2) + (LINE_HEIGHT / 2);
-                setVirtualScrollTop(targetScrollTop);
-            }
-
-            function ensureOffsetIsVisible(offset) {
-                const line = Math.floor(offset / BYTES_PER_LINE);
-                const offsetTop = line * LINE_HEIGHT;
+            function ensureOffsetIsVisible(offset, pane) {
+                const state = getPaneVirtualState(pane);
+                const offsetTop = offsetToLine(pane, offset) * LINE_HEIGHT;
                 const offsetBottom = offsetTop + LINE_HEIGHT;
 
-                if (offsetTop < virtualScrollTop) {
-                    setVirtualScrollTop(offsetTop);
-                } else if (offsetBottom > virtualScrollTop + elements.editorMain.clientHeight) {
-                    setVirtualScrollTop(offsetBottom - elements.editorMain.clientHeight);
+                if (offsetTop < masterVirtualScrollTop) {
+                    setMasterScrollTop(offsetTop);
+                } else if (offsetBottom > masterVirtualScrollTop + state.editorMain.clientHeight) {
+                    setMasterScrollTop(offsetBottom - state.editorMain.clientHeight);
                 }
             }
 
-            function handleSelectionMovement(offsetChange, isShift) {
-                if (selectionStart === -1) {
-                    if (!fileData.length) return;
-                    selectionStart = selectionEnd = 0; // start keyboard navigation at the top
-                }
+            function handleSelectionMovement(offsetChange, isShift, pane) {
+                const isPane1 = pane === 1;
+                let selectionStart = isPane1 ? selectionStart1 : selectionStart2;
+                let selectionEnd = isPane1 ? selectionEnd1 : selectionEnd2;
+                const fileData = isPane1 ? fileData1 : fileData2;
 
+                if (selectionStart === -1) {
+                    if (fileData.length > 0) selectionStart = selectionEnd = 0;
+                    else return;
+                }
+                
                 let newEnd = selectionEnd + offsetChange;
                 newEnd = Math.max(0, Math.min(fileData.length - 1, newEnd));
 
-                if (isShift) {
-                    selectionEnd = newEnd;
-                } else {
-                    selectionStart = selectionEnd = newEnd;
-                }
+                if (isShift) selectionEnd = newEnd;
+                else selectionStart = selectionEnd = newEnd;
 
-                ensureOffsetIsVisible(selectionEnd);
-                renderVisibleContent();
-                updateInspector();
-                updateControlStates();
+                if (isPane1) {
+                    selectionStart1 = selectionStart;
+                    selectionEnd1 = selectionEnd;
+                } else {
+                    selectionStart2 = selectionStart;
+                    selectionEnd2 = selectionEnd;
+                }
+                
+                ensureOffsetIsVisible(selectionEnd, pane);
+                renderVisibleContent(pane, getPaneVirtualState(pane));
+                if (isPane1) {
+                    updateInspector();
+                    updateControlStates();
+                }
             }
 
             function handleGoTo() {
                 const addressStr = prompt("Enter hexadecimal address to go to:", "1000");
                 if (!addressStr) return;
                 const offset = parseInt(addressStr, 16);
-                if (isNaN(offset) || offset < 0 || offset >= fileData.length) {
+                if (isNaN(offset) || offset < 0 || offset >= fileData1.length) {
                     alert("Invalid address.");
                     return;
                 }
-                selectionStart = selectionEnd = offset;
-                scrollToOffset(offset);
-                renderVisibleContent();
+                selectionStart1 = selectionEnd1 = offset;
+                setMasterScrollTop(offsetToLine(1, offset) * LINE_HEIGHT - Math.floor(elements.editorMain1.clientHeight / 2));
                 updateInspector();
                 updateControlStates();
             }
 
             function findNext(isForward) {
-                if (lastSearch.sortedHitOffsets.length === 0) return;
-                const hits = lastSearch.sortedHitOffsets;
-                let nextHit;
+                const numHits = lastSearch.sortedHitOffsets1?.length;
+                if (!numHits) return;
+                const increment = isForward ? 1 : -1;
                 
-                if (isForward) {
-                    const endOfViewScrollTop = virtualScrollTop + elements.editorMain.clientHeight;
-                    const referencePos = Math.floor(endOfViewScrollTop / LINE_HEIGHT) * BYTES_PER_LINE;
-                    
-                    nextHit = hits.find(offset => offset >= referencePos);
-                    if (nextHit === undefined) nextHit = hits[0];
+                let newIndex = currentHitIndex1 + increment;
+                if (newIndex < -1) newIndex = numHits - 1;
+                if (newIndex >= numHits) newIndex = -1;
+                currentHitIndex1 = newIndex;
+                
+                if (currentHitIndex1 === -1) { // "hit 0" is the start of file, not a real match
+                    selectionStart1 = selectionEnd1 = -1;
                 } else {
-                    const referencePos = Math.floor(virtualScrollTop / LINE_HEIGHT) * BYTES_PER_LINE;
-
-                    const prevHits = hits.filter(offset => offset < referencePos);
-                    if (prevHits.length > 0) {
-                        nextHit = prevHits[prevHits.length - 1];
-                    } else {
-                        nextHit = hits[hits.length - 1];
-                    }
+                    const nextHitOffset = lastSearch.sortedHitOffsets1[currentHitIndex1];
+                    selectionStart1 = nextHitOffset;
+                    selectionEnd1 = nextHitOffset + (lastSearch.needle?.length || 1) - 1;
                 }
 
-                if (nextHit !== undefined) {
-                    selectionStart = nextHit;
-                    selectionEnd = nextHit + lastSearch.needle.length - 1;
-                    scrollToOffset(nextHit);
-                    renderVisibleContent();
-                    updateInspector();
-                    updateControlStates();
+                if (isComparing && lastSearch.sortedHitOffsets2?.length > 0) {
+                    currentHitIndex2 = Math.min(currentHitIndex1, lastSearch.sortedHitOffsets2.length - 1);
+                    if (currentHitIndex1 === -1) currentHitIndex2 = -1;
                 }
+                scrollToHit(1);
+                updateInspector();
             }
 
-            function openHelpModal() {
-                elements.helpModal.style.display = 'block';
-            }
-            function closeHelpModal() {
-                elements.helpModal.style.display = 'none';
+            function openHelpModal() { elements.helpModal.style.display = 'block'; }
+            function closeHelpModal() { elements.helpModal.style.display = 'none'; }
+
+            function setMasterScrollTop(newScrollTop) {
+                masterVirtualScrollTop = Math.max(0, Math.min(newScrollTop, getMaxScroll()));
+                updateVirtualScroll(1);
+                if (isComparing) updateVirtualScroll(2);
             }
 
-            // --- Custom Scrollbar Logic ---
-            function setVirtualScrollTop(newScrollTop) {
-                const maxScroll = totalVirtualHeight - elements.editorMain.clientHeight;
-                virtualScrollTop = Math.max(0, Math.min(newScrollTop, maxScroll));
-                renderVisibleContent();
-                updateCustomScrollbar();
-            }
+            function updateCustomScrollbar(pane, state) {
+                const isPane1 = pane === 1;
+                const { totalVirtualHeight, editorMain, virtualScrollTop } = state;
+                const customScrollbar = isPane1 ? elements.customScrollbar1 : elements.customScrollbar2;
+                const thumb = isPane1 ? elements.customScrollbarThumb1 : elements.customScrollbarThumb2;
 
-            function updateCustomScrollbar() {
-                const viewportHeight = elements.editorMain.clientHeight;
+                const viewportHeight = editorMain.clientHeight;
                 if (totalVirtualHeight <= viewportHeight) {
-                    elements.customScrollbar.style.display = 'none';
+                    customScrollbar.style.display = 'none';
                     return;
                 }
-                elements.customScrollbar.style.display = 'block';
+                customScrollbar.style.display = 'block';
 
-                const trackHeight = elements.customScrollbar.clientHeight;
+                const trackHeight = customScrollbar.clientHeight;
                 const thumbHeight = Math.max(20, (viewportHeight / totalVirtualHeight) * trackHeight);
-                elements.customScrollbarThumb.style.height = `${thumbHeight}px`;
+                thumb.style.height = `${thumbHeight}px`;
 
                 const maxScroll = totalVirtualHeight - viewportHeight;
-                const scrollPercentage = virtualScrollTop / maxScroll;
+                const scrollPercentage = maxScroll > 0 ? virtualScrollTop / maxScroll : 0;
                 const maxThumbTop = trackHeight - thumbHeight;
-                elements.customScrollbarThumb.style.top = `${scrollPercentage * maxThumbTop}px`;
+                thumb.style.top = `${scrollPercentage * maxThumbTop}px`;
             }
 
-            function handleWheelScroll(e) {
-                e.preventDefault();
-                setVirtualScrollTop(virtualScrollTop + e.deltaY);
-            }
+            function setupCustomScrollbar(pane) {
+                const isPane1 = pane === 1;
+                const customScrollbar = isPane1 ? elements.customScrollbar1 : elements.customScrollbar2;
+                const thumb = isPane1 ? elements.customScrollbarThumb1 : elements.customScrollbarThumb2;
+                const editorMain = isPane1 ? elements.editorMain1 : elements.editorMain2;
 
-            function handleThumbMouseDown(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                isDraggingThumb = true;
-                dragStartY = e.clientY;
-                dragStartScrollTop = virtualScrollTop;
-                document.addEventListener('mousemove', handleThumbMouseMove);
-                document.addEventListener('mouseup', handleThumbMouseUp);
+                thumb.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    activeScrollbarPane = pane;
+                    dragStartY = e.clientY;
+                    dragStartScrollTop = masterVirtualScrollTop;
+                    document.addEventListener('mousemove', handleThumbMouseMove);
+                    document.addEventListener('mouseup', handleThumbMouseUp);
+                });
+
+                customScrollbar.addEventListener('mousedown', (e) => {
+                    if (e.target === thumb) return;
+                    const rect = customScrollbar.getBoundingClientRect();
+                    const clickY = e.clientY - rect.top;
+                    const thumbTop = thumb.offsetTop;
+                    if (clickY < thumbTop) setMasterScrollTop(masterVirtualScrollTop - editorMain.clientHeight);
+                    else setMasterScrollTop(masterVirtualScrollTop + editorMain.clientHeight);
+                });
             }
 
             function handleThumbMouseMove(e) {
-                if (!isDraggingThumb) return;
                 e.preventDefault();
+                if (activeScrollbarPane === null) return;
+
+                const isPane1 = activeScrollbarPane === 1;
+                const customScrollbar = isPane1 ? elements.customScrollbar1 : elements.customScrollbar2;
+                const thumb = isPane1 ? elements.customScrollbarThumb1 : elements.customScrollbarThumb2;
                 const deltaY = e.clientY - dragStartY;
-                const trackHeight = elements.customScrollbar.clientHeight;
-                const thumbHeight = elements.customScrollbarThumb.offsetHeight;
+                const trackHeight = customScrollbar.clientHeight;
+                const thumbHeight = thumb.offsetHeight;
                 const maxThumbTop = trackHeight - thumbHeight;
-                const scrollRatio = maxThumbTop > 0 ? (totalVirtualHeight - elements.editorMain.clientHeight) / maxThumbTop : 0;
-                setVirtualScrollTop(dragStartScrollTop + deltaY * scrollRatio);
+                const scrollRatio = maxThumbTop > 0 ? getMaxScroll() / maxThumbTop : 0;
+                setMasterScrollTop(dragStartScrollTop + deltaY * scrollRatio);
             }
 
             function handleThumbMouseUp() {
-                isDraggingThumb = false;
+                activeScrollbarPane = null;
                 document.removeEventListener('mousemove', handleThumbMouseMove);
                 document.removeEventListener('mouseup', handleThumbMouseUp);
-            }
-
-            function handleTrackMouseDown(e) {
-                if (e.target === elements.customScrollbarThumb) return;
-                const rect = elements.customScrollbar.getBoundingClientRect();
-                const clickY = e.clientY - rect.top;
-                const thumbTop = elements.customScrollbarThumb.offsetTop;
-                if (clickY < thumbTop) {
-                    setVirtualScrollTop(virtualScrollTop - elements.editorMain.clientHeight);
-                } else {
-                    setVirtualScrollTop(virtualScrollTop + elements.editorMain.clientHeight);
-                }
             }
 
             // --- Initialize App ---
