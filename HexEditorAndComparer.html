@@ -58,10 +58,9 @@
             flex-grow: 1; overflow: hidden; padding: 10px;
         }
         .editor-pane {
-            display: grid; grid-template-columns: 1fr auto;
+            display: grid; grid-template-columns: 1fr auto auto;
             flex: 1; overflow: hidden; border: 1px solid var(--border-color);
         }
-        #editor-pane-1 { grid-template-columns: 1fr auto auto; }
 
         #drop-zone-2 {
             flex: 1; display: flex; justify-content: center; align-items: center; border: 3px dashed var(--border-color);
@@ -108,14 +107,17 @@
         }
         .custom-scrollbar-thumb:hover { background-color: #666; }
 
-        #scrollbar-map {
+        .scrollbar-map {
             width: 15px; background-color: var(--scrollbar-track-bg); position: relative;
             padding: 15px 0; box-sizing: border-box;
         }
         .scrollbar-tick {
             position: absolute; width: 100%; height: 2px;
-            background-color: var(--search-highlight-bg); left: 0;
+            left: 0;
         }
+        .scrollbar-tick.search { background-color: var(--search-highlight-bg); }
+        .scrollbar-tick.diff-change { background-color: var(--diff-bg); }
+        .scrollbar-tick.diff-insert-delete { background-color: var(--insert-delete-bg); }
         #inspector-panel {
             background-color: var(--control-bg); padding: 8px 10px; border-bottom: 1px solid var(--border-color);
             display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px 15px; font-size: 0.9em;
@@ -205,7 +207,7 @@
                 <div id="custom-scrollbar-1" class="custom-scrollbar">
                     <div id="custom-scrollbar-thumb-1" class="custom-scrollbar-thumb"></div>
                 </div>
-                <div id="scrollbar-map"></div>
+                <div id="scrollbar-map-1" class="scrollbar-map"></div>
             </div>
             <div id="editor-pane-2" class="editor-pane" style="display: none;">
                  <div class="editor-main" id="editor-main-2">
@@ -216,6 +218,7 @@
                 <div id="custom-scrollbar-2" class="custom-scrollbar">
                     <div id="custom-scrollbar-thumb-2" class="custom-scrollbar-thumb"></div>
                 </div>
+                <div id="scrollbar-map-2" class="scrollbar-map"></div>
             </div>
             <div id="drop-zone-2" style="display: none;">
                  <div>
@@ -292,7 +295,7 @@
                 mainContent: document.getElementById('main-content'), 
                 downloadBtn: document.getElementById('download-btn'),
                 searchBtn: document.getElementById('search-btn'), searchInput: document.getElementById('search-input'),
-                searchType: document.getElementById('search-type'), scrollbarMap: document.getElementById('scrollbar-map'),
+                searchType: document.getElementById('search-type'),
                 inspectorPanel: document.getElementById('inspector-panel'),
                 gotoBtn: document.getElementById('goto-btn'),
                 prevFoundBtn: document.getElementById('prev-found-btn'),
@@ -317,6 +320,7 @@
                 fileInfoText1: document.getElementById('file-info-text'),
                 customScrollbar1: document.getElementById('custom-scrollbar-1'),
                 customScrollbarThumb1: document.getElementById('custom-scrollbar-thumb-1'),
+                scrollbarMap1: document.getElementById('scrollbar-map-1'),
                 // Pane 2
                 editorPane2: document.getElementById('editor-pane-2'),
                 editorMain2: document.getElementById('editor-main-2'),
@@ -325,6 +329,7 @@
                 asciiColumn2: document.getElementById('ascii-column-2'),
                 customScrollbar2: document.getElementById('custom-scrollbar-2'),
                 customScrollbarThumb2: document.getElementById('custom-scrollbar-thumb-2'),
+                scrollbarMap2: document.getElementById('scrollbar-map-2'),
             };
 
             // --- State for Pane 1 (Primary, Editable) ---
@@ -346,6 +351,9 @@
             let currentHitIndex1 = -1;
             let currentHitIndex2 = -1;
             let alignment = null; // global aligned diff of fileData1 vs fileData2
+            let searchVersion = 0;
+            let alignmentVersion = 0;
+            let scrollbarMapRenderCache = { 1: '', 2: '' };
 
             const BYTES_PER_LINE = 16;
             const LINE_HEIGHT = 24;
@@ -365,7 +373,22 @@
                 };
                 currentHitIndex1 = -1;
                 currentHitIndex2 = -1;
+                searchVersion++;
                 updateHitInfo();
+            }
+
+            function clearActiveSearch() {
+                if (!lastSearch.needle && !lastSearch.sortedHitOffsets1?.length && !lastSearch.sortedHitOffsets2?.length && !searchWorker) return;
+                if (searchWorker) {
+                    searchWorker.terminate();
+                    searchWorker = null;
+                    elements.searchBtn.disabled = false;
+                    elements.searchBtn.textContent = 'Search';
+                }
+                resetSearchState();
+                if (fileData1.length) updateVirtualScroll(1);
+                if (isComparing) updateVirtualScroll(2);
+                updateControlStates();
             }
 
             function resetComparisonState() {
@@ -373,6 +396,7 @@
                 selectionStart2 = -1; selectionEnd2 = -1; isSelecting2 = false;
                 isComparing = false;
                 alignment = null;
+                alignmentVersion++;
                 if (diffWorker) { diffWorker.terminate(); diffWorker = null; }
                 elements.editorPane2.style.display = 'none';
                 elements.dropZone2.style.display = 'flex';
@@ -457,10 +481,10 @@
                 const state = getPaneVirtualState(pane);
                 renderVisibleContent(pane, state);
                 updateCustomScrollbar(pane, state);
+                updateScrollbarMap(pane);
                 if (pane === 1) {
                     updateFileInfo(1);
                     updateInspector();
-                    updateScrollbarMap();
                 }
             }
 
@@ -655,6 +679,8 @@
                     const a = document.createElement('a'); a.href = url; a.download = fileName1 || 'edited.bin'; a.click();
                     URL.revokeObjectURL(url);
                 });
+                elements.searchInput.addEventListener('input', clearActiveSearch);
+                elements.searchType.addEventListener('change', clearActiveSearch);
                 elements.searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); elements.searchBtn.click(); } });
                 document.body.addEventListener('keydown', handleGlobalKeyDown);
                 elements.gotoBtn.addEventListener('click', handleGoTo);
@@ -1225,12 +1251,14 @@
             function runDiff() {
                 if (!isComparing) return;
                 alignment = null;
+                alignmentVersion++;
                 if (diffWorker) diffWorker.terminate();
                 diffWorker = new Worker(diffWorkerUrl);
                 diffWorker.onmessage = (e) => {
                     diffWorker.terminate();
                     diffWorker = null;
                     alignment = buildAlignment(e.data.runs);
+                    alignmentVersion++;
                     setMasterScrollTop(masterVirtualScrollTop); // re-clamp and re-render both panes
                 };
                 const seq1 = Uint8Array.from(fileData1);
@@ -1249,17 +1277,23 @@
                 const status = new Uint8Array(totalRows);
                 const rowOf1 = new Int32Array(fileData1.length);
                 const rowOf2 = new Int32Array(fileData2.length);
+                const diffLineStatus = new Uint8Array(Math.ceil(totalRows / BYTES_PER_LINE));
                 let row = 0, o1 = 0, o2 = 0;
                 for (const r of runs) {
                     for (let i = 0; i < r.n; i++, row++) {
                         status[row] = r.t;
+                        if (r.t !== 0) {
+                            const line = Math.floor(row / BYTES_PER_LINE);
+                            const markerStatus = r.t === 1 ? 1 : 2;
+                            if (markerStatus > diffLineStatus[line]) diffLineStatus[line] = markerStatus;
+                        }
                         if (r.t === 2) align1[row] = -1;
                         else { align1[row] = o1; rowOf1[o1] = row; o1++; }
                         if (r.t === 3) align2[row] = -1;
                         else { align2[row] = o2; rowOf2[o2] = row; o2++; }
                     }
                 }
-                return { align1, align2, status, rowOf1, rowOf2, length: totalRows };
+                return { align1, align2, status, rowOf1, rowOf2, diffLineStatus, length: totalRows };
             }
 
             function offsetToLine(pane, offset) {
@@ -1359,6 +1393,7 @@
                         lastSearch.allFoundBytes2 = results2.allFoundBytes;
                         lastSearch.sortedHitOffsets2 = results2.sortedHitOffsets;
                     }
+                    searchVersion++;
                     
                     if (lastSearch.sortedHitOffsets1.length > 0) currentHitIndex1 = 0;
                     if (lastSearch.sortedHitOffsets2?.length > 0) currentHitIndex2 = 0;
@@ -1375,31 +1410,69 @@
                 searchWorker.postMessage({ fileData: fileData1, needle: needle });
             });
 
-            function updateScrollbarMap() {
-                elements.scrollbarMap.innerHTML = '';
-                if (!lastSearch.allFoundBytes1 || lastSearch.allFoundBytes1.size === 0) return;
+            function updateScrollbarMap(pane) {
+                const isPane1 = pane === 1;
+                const scrollbarMap = isPane1 ? elements.scrollbarMap1 : elements.scrollbarMap2;
+                const fileData = isPane1 ? fileData1 : fileData2;
+                const searchOffsets = isPane1 ? lastSearch.sortedHitOffsets1 : lastSearch.sortedHitOffsets2;
 
                 const totalLines = (isComparing && alignment)
                     ? Math.ceil(alignment.length / BYTES_PER_LINE)
-                    : Math.ceil(fileData1.length / BYTES_PER_LINE);
-                if (totalLines === 0) return;
+                    : Math.ceil(fileData.length / BYTES_PER_LINE);
+                if (totalLines === 0) {
+                    scrollbarMap.innerHTML = '';
+                    scrollbarMapRenderCache[pane] = '';
+                    return;
+                }
 
-                const scrollbarHeight = elements.scrollbarMap.clientHeight;
-                const drawnPixelRows = new Set();
+                const scrollbarHeight = scrollbarMap.clientHeight;
+                if (scrollbarHeight === 0) return;
 
-                for (const offset of lastSearch.sortedHitOffsets1) {
-                    const line = offsetToLine(1, offset);
+                const renderSignature = [
+                    pane,
+                    scrollbarHeight,
+                    totalLines,
+                    (isComparing && alignment) ? alignmentVersion : 0,
+                    searchVersion,
+                    searchOffsets?.length || 0
+                ].join(':');
+                if (scrollbarMapRenderCache[pane] === renderSignature) return;
+                scrollbarMapRenderCache[pane] = renderSignature;
+                scrollbarMap.innerHTML = '';
+
+                const markersByPixelRow = new Map();
+                const addMarker = (line, className, priority) => {
+                    if (line < 0 || line >= totalLines) return;
                     const percent = line / totalLines;
                     const pixelY = Math.floor(percent * scrollbarHeight);
+                    const existing = markersByPixelRow.get(pixelY);
+                    if (!existing || priority >= existing.priority) {
+                        markersByPixelRow.set(pixelY, { percent, className, priority });
+                    }
+                };
 
-                    if (!drawnPixelRows.has(pixelY)) {
-                        drawnPixelRows.add(pixelY);
-                        const tick = document.createElement('div');
-                        tick.className = 'scrollbar-tick';
-                        tick.style.top = `${percent * 100}%`;
-                        elements.scrollbarMap.appendChild(tick);
+                if (isComparing && alignment?.diffLineStatus) {
+                    for (let line = 0; line < alignment.diffLineStatus.length; line++) {
+                        const status = alignment.diffLineStatus[line];
+                        if (status === 0) continue;
+                        addMarker(line, status === 1 ? 'diff-change' : 'diff-insert-delete', status);
                     }
                 }
+
+                if (searchOffsets?.length > 0) {
+                    for (const offset of searchOffsets) {
+                        addMarker(offsetToLine(pane, offset), 'search', 3);
+                    }
+                }
+
+                Array.from(markersByPixelRow.entries())
+                    .sort((a, b) => a[0] - b[0])
+                    .forEach(([, marker]) => {
+                        const tick = document.createElement('div');
+                        tick.className = `scrollbar-tick ${marker.className}`;
+                        tick.style.top = `${marker.percent * 100}%`;
+                        scrollbarMap.appendChild(tick);
+                    });
             }
 
             function ensureOffsetIsVisible(offset, pane) {
