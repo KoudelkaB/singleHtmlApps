@@ -3045,6 +3045,7 @@
                 };
                 elements.galleryScroll.innerHTML = (state.imageLoading ? "<div class=\"hint\">Reading file list in the background. Visible cards load first, then the off-screen buffer.</div>" : "<div class=\"hint\">Visible cards load first. Off-screen previews stay deferred.</div>")
                     + "<section class=\"group-card\">"
+                    + "<div class=\"group-head\"><h3>" + escapeHtml(primaryGroup.title) + "</h3><div class=\"group-meta\">" + escapeHtml(primaryGroup.description) + "</div></div>"
                     + "<div id=\"virtualGalleryGrid\" class=\"virtual-grid\" data-zoom-mode=\"" + escapeHtml(state.zoomMode) + "\"></div>"
                     + "</section>";
                 renderVirtualGalleryWindow(true);
@@ -3239,7 +3240,9 @@
 
             function renderLightbox() {
                 if (!state.lightboxOpen) {
-                    closeLightbox();
+                    if (!elements.lightbox.classList.contains("hidden")) {
+                        closeLightbox();
+                    }
                     return;
                 }
                 const context = getLightboxContext();
@@ -3387,7 +3390,7 @@
                     state.zoomMode = elements.zoomModeSelect.value;
                     saveSettings();
                     updateZoomCss();
-                    renderGallery();
+                    renderGallery({ preserveScroll: true });
                 });
                 elements.zoomValueRange.addEventListener("input", () => {
                     setZoomValue(Number(elements.zoomValueRange.value));
@@ -3438,17 +3441,6 @@
                     renderFolderTree();
                     refreshVisibleImages().catch(handleError);
                     updateStatus();
-                });
-                elements.galleryScroll.addEventListener("pointerup", (event) => {
-                    if (event.button !== 0) {
-                        return;
-                    }
-                    const lightboxTarget = event.target.closest("[data-lightbox-path]");
-                    if (!lightboxTarget) {
-                        return;
-                    }
-                    event.preventDefault();
-                    openLightbox(lightboxTarget.getAttribute("data-lightbox-path"));
                 });
                 elements.galleryScroll.addEventListener("click", (event) => {
                     const lightboxTarget = event.target.closest("[data-lightbox-path]");
