@@ -869,6 +869,21 @@ path=/api/orders</pre>
                             search and replacement are supported.</p>
                     </div>
                     <div>
+                        <strong>Extract</strong>
+                        <p>Turn regex captures, a selected column, or text between delimiters into rows. Whole-view
+                            matching can collect values from one-line JSON.</p>
+                    </div>
+                    <div>
+                        <strong>Unique</strong>
+                        <p>Remove duplicate rows while preserving the first occurrence, or sort the distinct result.
+                            Empty, whitespace, and case handling are configurable.</p>
+                    </div>
+                    <div>
+                        <strong>Join</strong>
+                        <p>Combine rows with a delimiter, prefix, and suffix. Use this after Unique to produce values
+                            such as <code>id1|id2|id3</code>.</p>
+                    </div>
+                    <div>
                         <strong>Sort</strong>
                         <p>Extract a fixed position or a token before/after an anchor, parse it as string, number,
                             date-time, or time-span, then move rows as blocks.</p>
@@ -885,7 +900,8 @@ path=/api/orders</pre>
         <footer>
             <p>Open the app, load a file, select a representative token, and press <code>F</code>, <code>R</code>,
                 <code>S</code>, or <code>D</code> to create a prefilled stage. Then adjust the pipeline from top to
-                bottom.</p>
+                bottom. The <code>Transform</code> menu also provides Extract, Unique, Join, and a combined
+                <code>Collect unique values</code> pipeline.</p>
         </footer>
     </div>
 </body>

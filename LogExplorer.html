@@ -284,6 +284,9 @@
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto;
             gap: 12px;
+            position: relative;
+            z-index: 50;
+            overflow: visible;
         }
 
         .compact-toolbar {
@@ -305,6 +308,72 @@
 
         .toolbar-section.actions button {
             min-width: 112px;
+        }
+
+        .transform-menu {
+            position: relative;
+            z-index: 70;
+        }
+
+        .transform-menu summary {
+            min-width: 112px;
+            padding: 9px 12px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--panel-strong);
+            cursor: pointer;
+            list-style: none;
+            transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+        }
+
+        .transform-menu summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .transform-menu summary:hover,
+        .transform-menu[open] summary {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+
+        .transform-menu-panel {
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 0;
+            width: min(310px, calc(100vw - 36px));
+            display: grid;
+            gap: 6px;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.98);
+            box-shadow: var(--shadow);
+            z-index: 120;
+        }
+
+        .toolbar-section.actions .transform-menu-panel button {
+            min-width: 0;
+            width: 100%;
+            display: grid;
+            gap: 2px;
+            padding: 9px 10px;
+            text-align: left;
+            background: transparent;
+        }
+
+        .transform-menu-panel button:hover {
+            background: var(--surface-2);
+        }
+
+        .transform-menu-panel button span {
+            color: var(--muted);
+            font-size: 0.76rem;
+        }
+
+        .transform-menu-separator {
+            height: 1px;
+            margin: 2px 0;
+            background: var(--border);
         }
 
         .toolbar-hint {
@@ -1191,6 +1260,16 @@
                 <button id="addReplaceButton" title="Add replace or delete from current selection">⇄ Replace</button>
                 <button id="addSortButton" title="Add sort">⇅ Sort</button>
                 <button id="addDiffButton" title="Add diff">≠ Diff</button>
+                <details class="transform-menu" id="transformMenu">
+                    <summary title="Add data transformation">Transform ▾</summary>
+                    <div class="transform-menu-panel">
+                        <button type="button" data-transform-type="extract"><strong>Extract</strong><span>Column, text between delimiters, or regex captures</span></button>
+                        <button type="button" data-transform-type="unique"><strong>Unique</strong><span>Remove duplicate rows and optionally sort them</span></button>
+                        <button type="button" data-transform-type="join"><strong>Join</strong><span>Combine rows with a delimiter such as |</span></button>
+                        <div class="transform-menu-separator"></div>
+                        <button type="button" data-transform-action="collect"><strong>Collect unique values</strong><span>Add Extract → Unique → Join together</span></button>
+                    </div>
+                </details>
             </div>
             <div class="toolbar-section">
                 <span class="toolbar-hint">Shortcuts: Enter include, Esc exclude, Delete remove, F filter, R replace,
@@ -1313,12 +1392,21 @@
                     acts as an alternative match for that clause.</li>
                 <li><strong>Replace:</strong> whole-stage text replacement, including multi-line search and replacement.
                 </li>
+                <li><strong>Extract:</strong> emit regex capture groups, fixed columns, or text between delimiters as
+                    rows. Whole-view extraction can collect every matching value from JSON or other one-line data.</li>
+                <li><strong>Unique:</strong> remove duplicate rows while keeping the first occurrence or sorting the
+                    result, with trim, empty-row, and case-sensitivity controls.</li>
+                <li><strong>Join:</strong> combine rows with a configurable delimiter, prefix, and suffix. Escape
+                    sequences such as <code>\n</code> and <code>\t</code> are supported.</li>
                 <li><strong>Sort:</strong> positional and anchor-based extraction. Non-parsable rows stay attached to
                     the nearest preceding parsable row and move as a block.</li>
                 <li><strong>Diff:</strong> positional numeric or temporal delta. Non-parsable rows stay attached to the
                     preceding parsable anchor row. Applying the inverted diff right after the normal diff restores the
                     cached original stage.</li>
             </ul>
+            <p>The <code>Transform</code> menu adds Extract, Unique, or Join separately. <code>Collect unique
+                    values</code> inserts all three in one step; configure Extract first, then select Join to see and
+                copy the final delimiter-separated value.</p>
             <p>Middle click opens the previous stage for the same row, and Ctrl+middle click moves forward again. The
                 preview can overscroll near the start and end of the file so the target row still aligns under the
                 pointer. Shift plus navigation extends the current selection.</p>
@@ -1449,6 +1537,7 @@
                 addReplaceButton: document.getElementById("addReplaceButton"),
                 addSortButton: document.getElementById("addSortButton"),
                 addDiffButton: document.getElementById("addDiffButton"),
+                transformMenu: document.getElementById("transformMenu"),
                 operatorList: document.getElementById("operatorList"),
                 savedProfilesPanel: document.getElementById("savedProfilesPanel"),
                 openFindButton: document.getElementById("openFindButton"),
@@ -2014,6 +2103,47 @@
                         sources: normalizeFilterSources(operator.sources)
                     };
                 }
+                if (operator.type === "extract") {
+                    const fromRow = Math.max(1, Number(operator.fromRow) || 1);
+                    return {
+                        ...operator,
+                        mode: ["regex", "column", "between"].includes(operator.mode) ? operator.mode : "regex",
+                        scope: operator.scope === "line" ? "line" : "whole",
+                        pattern: String(operator.pattern || ""),
+                        group: operator.group == null ? 1 : Math.max(0, Number(operator.group) || 0),
+                        pos: Math.max(0, Number(operator.pos) || 0),
+                        len: Math.max(1, Number(operator.len) || 1),
+                        startAnchor: String(operator.startAnchor || ""),
+                        endAnchor: String(operator.endAnchor || ""),
+                        rowMode: operator.rowMode === "range" ? "range" : "all",
+                        fromRow,
+                        toRow: Math.max(fromRow, Number(operator.toRow) || fromRow),
+                        allMatches: operator.allMatches !== false,
+                        caseSensitive: operator.caseSensitive !== false,
+                        trim: operator.trim !== false,
+                        skipEmpty: operator.skipEmpty !== false
+                    };
+                }
+                if (operator.type === "unique") {
+                    return {
+                        ...operator,
+                        order: ["stable", "asc", "desc"].includes(operator.order) ? operator.order : "stable",
+                        trim: operator.trim !== false,
+                        ignoreEmpty: operator.ignoreEmpty !== false,
+                        caseSensitive: operator.caseSensitive !== false
+                    };
+                }
+                if (operator.type === "join") {
+                    return {
+                        ...operator,
+                        delimiter: operator.delimiter == null ? "|" : String(operator.delimiter),
+                        prefix: String(operator.prefix || ""),
+                        suffix: String(operator.suffix || ""),
+                        trim: !!operator.trim,
+                        skipEmpty: operator.skipEmpty !== false,
+                        interpretEscapes: operator.interpretEscapes !== false
+                    };
+                }
                 return { ...operator };
             }
 
@@ -2062,6 +2192,48 @@
                         anchorSide: "after",
                         valueType: defaultValueType,
                         order: "asc"
+                    };
+                }
+                if (type === "extract") {
+                    const startRow = hasSelection && typeof prefill.startRow === "number" ? prefill.startRow + 1 : 1;
+                    const endRow = hasSelection && typeof prefill.endRow === "number" ? prefill.endRow + 1 : startRow;
+                    return {
+                        ...base,
+                        mode: hasSelection ? "column" : "regex",
+                        scope: "whole",
+                        pattern: "",
+                        group: 1,
+                        pos: prefill ? prefill.startCol : 0,
+                        len: defaultLength,
+                        startAnchor: "",
+                        endAnchor: "",
+                        rowMode: hasSelection ? "range" : "all",
+                        fromRow: startRow,
+                        toRow: endRow,
+                        allMatches: true,
+                        caseSensitive: true,
+                        trim: true,
+                        skipEmpty: true
+                    };
+                }
+                if (type === "unique") {
+                    return {
+                        ...base,
+                        order: "stable",
+                        trim: true,
+                        ignoreEmpty: true,
+                        caseSensitive: true
+                    };
+                }
+                if (type === "join") {
+                    return {
+                        ...base,
+                        delimiter: "|",
+                        prefix: "",
+                        suffix: "",
+                        trim: false,
+                        skipEmpty: true,
+                        interpretEscapes: true
                     };
                 }
                 return {
@@ -2136,13 +2308,15 @@
                 const normalized = normalizeSelection(state.selection);
                 const maxWidth = stage ? Math.max(1, stage.maxLineLength) : 1;
                 if (!stage || !normalized) {
-                    return { selectedText: "", startCol: 0, width: 0, maxWidth, hasSelection: false };
+                    return { selectedText: "", startRow: 0, endRow: 0, startCol: 0, width: 0, maxWidth, hasSelection: false };
                 }
                 const selectedText = extractSelectionText(stage, normalized);
                 const width = normalized.endCol - normalized.startCol;
                 const hasSelection = !!selectedText.length;
                 return {
                     selectedText,
+                    startRow: normalized.startRow,
+                    endRow: normalized.endRow,
                     startCol: hasSelection ? normalized.startCol : 0,
                     width,
                     maxWidth,
@@ -2436,7 +2610,24 @@
                     valueType: operator.valueType,
                     order: operator.order,
                     invert: operator.invert,
-                    outputExtend: operator.outputExtend
+                    outputExtend: operator.outputExtend,
+                    scope: operator.scope,
+                    pattern: operator.pattern,
+                    group: operator.group,
+                    startAnchor: operator.startAnchor,
+                    endAnchor: operator.endAnchor,
+                    rowMode: operator.rowMode,
+                    fromRow: operator.fromRow,
+                    toRow: operator.toRow,
+                    allMatches: operator.allMatches,
+                    caseSensitive: operator.caseSensitive,
+                    trim: operator.trim,
+                    skipEmpty: operator.skipEmpty,
+                    ignoreEmpty: operator.ignoreEmpty,
+                    delimiter: operator.delimiter,
+                    prefix: operator.prefix,
+                    suffix: operator.suffix,
+                    interpretEscapes: operator.interpretEscapes
                 });
             }
 
@@ -2510,7 +2701,19 @@
                 if (operator.type === "sort") {
                     return applySort(stage, operator, stage.hash + "|sort");
                 }
-                return applyDiff(stage, operator, stage.hash + "|diff");
+                if (operator.type === "diff") {
+                    return applyDiff(stage, operator, stage.hash + "|diff");
+                }
+                if (operator.type === "extract") {
+                    return applyExtract(stage, operator, stage.hash + "|extract");
+                }
+                if (operator.type === "unique") {
+                    return applyUnique(stage, operator, stage.hash + "|unique");
+                }
+                if (operator.type === "join") {
+                    return applyJoin(stage, operator, stage.hash + "|join");
+                }
+                throw new Error("Unsupported operation: " + operator.type);
             }
 
             function evaluateFilterLine(stage, rowIndex, line, operator) {
@@ -2593,6 +2796,286 @@
                 });
                 indexed.diffMeta = null;
                 return indexed;
+            }
+
+            function getExtractRowBounds(stage, operator) {
+                if (!stage.lineCount) {
+                    return { start: 0, end: 0 };
+                }
+                if (operator.rowMode !== "range") {
+                    return { start: 0, end: stage.lineCount };
+                }
+                const start = clamp((Number(operator.fromRow) || 1) - 1, 0, stage.lineCount - 1);
+                const end = clamp(Number(operator.toRow) || (start + 1), start + 1, stage.lineCount);
+                return { start, end };
+            }
+
+            function createExtractOutput(stage, operator) {
+                const output = {
+                    lines: [],
+                    lineSourceIds: [],
+                    lineRowIds: []
+                };
+                output.add = (rawValue, sourceId, rowId) => {
+                    const original = rawValue == null ? "" : String(rawValue);
+                    const value = operator.trim ? original.trim() : original;
+                    if (operator.skipEmpty && !value.length) {
+                        return;
+                    }
+                    output.lines.push(value);
+                    output.lineSourceIds.push(typeof sourceId === "number" ? sourceId : -1);
+                    output.lineRowIds.push(typeof rowId === "number" ? rowId : output.lines.length - 1);
+                };
+                return output;
+            }
+
+            function finishExtractOutput(stage, output, hash) {
+                return buildLineStage(output.lines, hash, "Extract", {
+                    lineSourceIds: output.lineSourceIds,
+                    lineRowIds: output.lineRowIds,
+                    sourceCatalog: getStageSourceCatalog(stage)
+                });
+            }
+
+            function compileExtractRegex(operator) {
+                const baseFlags = "gm" + (operator.caseSensitive ? "" : "i");
+                try {
+                    return new RegExp(operator.pattern, "d" + baseFlags);
+                } catch (indicesError) {
+                    try {
+                        return new RegExp(operator.pattern, baseFlags);
+                    } catch (error) {
+                        throw new Error("Invalid Extract regular expression: " + error.message);
+                    }
+                }
+            }
+
+            function getRegexCaptureStart(match, groupIndex, value) {
+                if (match.indices && match.indices[groupIndex]) {
+                    return match.indices[groupIndex][0];
+                }
+                if (groupIndex === 0) {
+                    return match.index;
+                }
+                const relative = match[0].indexOf(value);
+                return match.index + Math.max(0, relative);
+            }
+
+            function collectRegexMatches(stage, operator, output) {
+                const indexedStage = ensureStageIndex(stage);
+                const sourceIds = getStageLineSourceIds(stage);
+                const rowIds = getStageLineRowIds(stage);
+                const groupIndex = Math.max(0, Number(operator.group) || 0);
+                const collectFromText = (text, baseOffset, fallbackRow) => {
+                    const regex = compileExtractRegex(operator);
+                    let match = regex.exec(text);
+                    while (match) {
+                        if (groupIndex >= match.length) {
+                            throw new Error("Extract capture group " + groupIndex + " does not exist in the pattern.");
+                        }
+                        const value = match[groupIndex];
+                        if (value != null) {
+                            const localStart = getRegexCaptureStart(match, groupIndex, value);
+                            const absoluteStart = baseOffset + localStart;
+                            const row = fallbackRow == null
+                                ? findLineIndexForOffset(indexedStage.lineStarts, absoluteStart)
+                                : fallbackRow;
+                            output.add(
+                                value,
+                                sourceIds[row] ?? getSourceIdAtTextOffset(indexedStage, sourceIds, absoluteStart),
+                                rowIds[row] ?? getLineRowIdAtTextOffset(indexedStage, rowIds, absoluteStart)
+                            );
+                        }
+                        if (!operator.allMatches) {
+                            break;
+                        }
+                        if (match[0] === "") {
+                            regex.lastIndex += 1;
+                        }
+                        match = regex.exec(text);
+                    }
+                };
+
+                if (operator.scope === "line") {
+                    const bounds = getExtractRowBounds(stage, operator);
+                    for (let row = bounds.start; row < bounds.end; row++) {
+                        collectFromText(getStageLine(stage, row), indexedStage.lineStarts[row], row);
+                    }
+                    return;
+                }
+                collectFromText(indexedStage.text, 0, null);
+            }
+
+            function collectBetweenMatches(stage, operator, output) {
+                const indexedStage = ensureStageIndex(stage);
+                const sourceIds = getStageLineSourceIds(stage);
+                const rowIds = getStageLineRowIds(stage);
+                const startAnchor = String(operator.startAnchor || "");
+                const endAnchor = String(operator.endAnchor || "");
+                const collectFromText = (text, baseOffset, fallbackRow) => {
+                    const searchable = operator.caseSensitive ? text : text.toLocaleLowerCase();
+                    const startNeedle = operator.caseSensitive ? startAnchor : startAnchor.toLocaleLowerCase();
+                    const endNeedle = operator.caseSensitive ? endAnchor : endAnchor.toLocaleLowerCase();
+                    let cursor = 0;
+                    while (cursor <= text.length) {
+                        const anchorIndex = startNeedle ? searchable.indexOf(startNeedle, cursor) : cursor === 0 ? 0 : -1;
+                        if (anchorIndex === -1) {
+                            break;
+                        }
+                        const valueStart = anchorIndex + startAnchor.length;
+                        const valueEnd = endNeedle ? searchable.indexOf(endNeedle, valueStart) : text.length;
+                        if (valueEnd === -1) {
+                            break;
+                        }
+                        const absoluteStart = baseOffset + valueStart;
+                        const row = fallbackRow == null
+                            ? findLineIndexForOffset(indexedStage.lineStarts, absoluteStart)
+                            : fallbackRow;
+                        output.add(
+                            text.slice(valueStart, valueEnd),
+                            sourceIds[row] ?? getSourceIdAtTextOffset(indexedStage, sourceIds, absoluteStart),
+                            rowIds[row] ?? getLineRowIdAtTextOffset(indexedStage, rowIds, absoluteStart)
+                        );
+                        if (!operator.allMatches || !startNeedle) {
+                            break;
+                        }
+                        cursor = Math.max(valueEnd + endAnchor.length, anchorIndex + Math.max(1, startAnchor.length));
+                    }
+                };
+
+                if (operator.scope === "line") {
+                    const bounds = getExtractRowBounds(stage, operator);
+                    for (let row = bounds.start; row < bounds.end; row++) {
+                        collectFromText(getStageLine(stage, row), indexedStage.lineStarts[row], row);
+                    }
+                    return;
+                }
+                collectFromText(indexedStage.text, 0, null);
+            }
+
+            function applyExtract(stage, operator, hash) {
+                const output = createExtractOutput(stage, operator);
+                if (operator.mode === "regex") {
+                    if (!operator.pattern) {
+                        return buildLineStage(materializeStageLines(stage).slice(), hash, "Extract", {
+                            lineSourceIds: getStageLineSourceIds(stage).slice(),
+                            lineRowIds: getStageLineRowIds(stage).slice(),
+                            sourceCatalog: getStageSourceCatalog(stage)
+                        });
+                    }
+                    collectRegexMatches(stage, operator, output);
+                    return finishExtractOutput(stage, output, hash);
+                }
+                if (operator.mode === "between") {
+                    collectBetweenMatches(stage, operator, output);
+                    return finishExtractOutput(stage, output, hash);
+                }
+
+                const sourceIds = getStageLineSourceIds(stage);
+                const rowIds = getStageLineRowIds(stage);
+                const bounds = getExtractRowBounds(stage, operator);
+                const pos = Math.max(0, Number(operator.pos) || 0);
+                const len = Math.max(1, Number(operator.len) || 1);
+                for (let row = bounds.start; row < bounds.end; row++) {
+                    output.add(getStageLine(stage, row).slice(pos, pos + len), sourceIds[row], rowIds[row]);
+                }
+                return finishExtractOutput(stage, output, hash);
+            }
+
+            function applyUnique(stage, operator, hash) {
+                const lines = materializeStageLines(stage);
+                const sourceIds = getStageLineSourceIds(stage);
+                const rowIds = getStageLineRowIds(stage);
+                const seen = new Set();
+                const entries = [];
+                for (let row = 0; row < lines.length; row++) {
+                    const value = operator.trim ? lines[row].trim() : lines[row];
+                    if (operator.ignoreEmpty && !value.length) {
+                        continue;
+                    }
+                    const key = operator.caseSensitive ? value : value.toLocaleLowerCase();
+                    if (seen.has(key)) {
+                        continue;
+                    }
+                    seen.add(key);
+                    entries.push({
+                        value,
+                        sourceId: sourceIds[row] ?? -1,
+                        rowId: rowIds[row] ?? row,
+                        originalIndex: row
+                    });
+                }
+                if (operator.order === "asc" || operator.order === "desc") {
+                    const direction = operator.order === "desc" ? -1 : 1;
+                    entries.sort((left, right) => {
+                        const comparison = left.value.localeCompare(right.value, undefined, {
+                            numeric: true,
+                            sensitivity: operator.caseSensitive ? "variant" : "base"
+                        });
+                        return comparison * direction || left.originalIndex - right.originalIndex;
+                    });
+                }
+                return buildLineStage(entries.map((entry) => entry.value), hash, "Unique", {
+                    lineSourceIds: entries.map((entry) => entry.sourceId),
+                    lineRowIds: entries.map((entry) => entry.rowId),
+                    sourceCatalog: getStageSourceCatalog(stage)
+                });
+            }
+
+            function decodeJoinEscapes(value) {
+                return String(value || "").replace(/\\(n|t|\\)/g, (match, token) => {
+                    if (token === "n") return "\n";
+                    if (token === "t") return TAB_REPLACEMENT;
+                    return "\\";
+                });
+            }
+
+            function applyJoin(stage, operator, hash) {
+                const lines = materializeStageLines(stage);
+                const sourceIds = getStageLineSourceIds(stage);
+                const rowIds = getStageLineRowIds(stage);
+                const entries = [];
+                for (let row = 0; row < lines.length; row++) {
+                    const value = operator.trim ? lines[row].trim() : lines[row];
+                    if (operator.skipEmpty && !value.length) {
+                        continue;
+                    }
+                    entries.push({
+                        value,
+                        sourceId: sourceIds[row] ?? -1,
+                        rowId: rowIds[row] ?? row
+                    });
+                }
+                const decode = operator.interpretEscapes ? decodeJoinEscapes : (value) => String(value || "");
+                const delimiter = decode(operator.delimiter);
+                const prefix = decode(operator.prefix);
+                const suffix = decode(operator.suffix);
+                const firstEntry = entries[0] || { sourceId: -1, rowId: -1 };
+                const lastEntry = entries[entries.length - 1] || firstEntry;
+                const fragments = [];
+                if (prefix) {
+                    fragments.push({ text: prefix, sourceId: firstEntry.sourceId, rowId: firstEntry.rowId });
+                }
+                entries.forEach((entry, index) => {
+                    if (index > 0 && delimiter) {
+                        fragments.push({ text: delimiter, sourceId: entry.sourceId, rowId: entry.rowId });
+                    }
+                    fragments.push({ text: entry.value, sourceId: entry.sourceId, rowId: entry.rowId });
+                });
+                if (suffix) {
+                    fragments.push({ text: suffix, sourceId: lastEntry.sourceId, rowId: lastEntry.rowId });
+                }
+                if (!fragments.length) {
+                    fragments.push({ text: "", sourceId: -1, rowId: -1 });
+                }
+                const joinedText = fragments.map((fragment) => fragment.text).join("");
+                const materialized = materializeFragmentsToLines(fragments);
+                return buildIndexedStage(joinedText, hash, "Join", {
+                    lines: materialized.lines,
+                    lineSourceIds: materialized.lineSourceIds,
+                    lineRowIds: materialized.lineRowIds,
+                    sourceCatalog: getStageSourceCatalog(stage)
+                });
             }
 
             function extractSortSlice(line, operator) {
@@ -3549,6 +4032,15 @@
                     return "<div class=\"operator-row\"><label class=\"grow\"><span class=\"operator-field-label\">Search <span class=\"operator-newline-summary\" data-newline-summary hidden></span></span><textarea rows=\"1\" data-field=\"search\" aria-label=\"Search\" placeholder=\"Text to find; Enter inserts a line break\"></textarea></label></div>" +
                         "<div class=\"operator-row\"><label class=\"grow\"><span class=\"operator-field-label\">Replacement <span class=\"operator-newline-summary\" data-newline-summary hidden></span></span><textarea rows=\"1\" data-field=\"replacement\" aria-label=\"Replacement\" placeholder=\"Replacement text; Enter inserts a line break\"></textarea></label></div>";
                 }
+                if (operator.type === "extract") {
+                    return renderExtractBody(operator);
+                }
+                if (operator.type === "unique") {
+                    return renderUniqueBody(operator);
+                }
+                if (operator.type === "join") {
+                    return renderJoinBody(operator);
+                }
                 if (operator.type === "sort") {
                     return "<div class=\"operator-row\">" +
                         "<label>Mode<select data-field=\"mode\"><option value=\"positional\"" + (operator.mode === "positional" ? " selected" : "") + ">Positional</option><option value=\"anchor\"" + (operator.mode === "anchor" ? " selected" : "") + ">By Value</option></select></label>" +
@@ -3573,6 +4065,78 @@
                     "<label><input type=\"checkbox\" data-field=\"invert\" " + (operator.invert ? "checked" : "") + "> invert</label>" +
                     "</div>" +
                     "<div class=\"operator-meta\">Non-parsable rows stay attached to the nearest preceding parsable anchor row. String diff keeps only changed characters; invert after normal diff restores the cached original stage for matching parameters.</div>";
+            }
+
+            function renderExtractRows(operator) {
+                if (operator.rowMode !== "range") {
+                    return "";
+                }
+                return "<label>From row<input type=\"number\" min=\"1\" data-field=\"fromRow\" value=\"" + Math.max(1, Number(operator.fromRow) || 1) + "\"></label>" +
+                    "<label>To row<input type=\"number\" min=\"1\" data-field=\"toRow\" value=\"" + Math.max(1, Number(operator.toRow) || 1) + "\"></label>";
+            }
+
+            function renderExtractBody(operator) {
+                const regexPlaceholder = escapeAttribute("\"ConnectionId\"\\s*:\\s*\"([^\"]+)\"");
+                const rowControlsVisible = operator.mode === "column" || operator.scope === "line";
+                let modeBody = "";
+                if (operator.mode === "regex") {
+                    modeBody = "<div class=\"operator-row\"><label class=\"grow\">Pattern<textarea rows=\"1\" data-field=\"pattern\" aria-label=\"Extract regular expression\" placeholder=\"" + regexPlaceholder + "\"></textarea></label></div>" +
+                        "<div class=\"operator-row\">" +
+                        "<label>Capture group<input type=\"number\" min=\"0\" data-field=\"group\" value=\"" + Math.max(0, Number(operator.group) || 0) + "\"></label>" +
+                        "<label>Scope<select data-field=\"scope\"><option value=\"whole\"" + (operator.scope === "whole" ? " selected" : "") + ">Whole view</option><option value=\"line\"" + (operator.scope === "line" ? " selected" : "") + ">Each row</option></select></label>" +
+                        "<label><input type=\"checkbox\" data-field=\"allMatches\" " + (operator.allMatches ? "checked" : "") + "> all matches</label>" +
+                        "<label><input type=\"checkbox\" data-field=\"caseSensitive\" " + (operator.caseSensitive ? "checked" : "") + "> case</label>" +
+                        "</div>";
+                } else if (operator.mode === "between") {
+                    modeBody = "<div class=\"operator-row\">" +
+                        "<label class=\"grow\">After<input type=\"text\" data-field=\"startAnchor\" value=\"" + escapeAttribute(operator.startAnchor || "") + "\" placeholder=\"Opening text\"></label>" +
+                        "<label class=\"grow\">Before<input type=\"text\" data-field=\"endAnchor\" value=\"" + escapeAttribute(operator.endAnchor || "") + "\" placeholder=\"Closing text\"></label>" +
+                        "</div>" +
+                        "<div class=\"operator-row\">" +
+                        "<label>Scope<select data-field=\"scope\"><option value=\"whole\"" + (operator.scope === "whole" ? " selected" : "") + ">Whole view</option><option value=\"line\"" + (operator.scope === "line" ? " selected" : "") + ">Each row</option></select></label>" +
+                        "<label><input type=\"checkbox\" data-field=\"allMatches\" " + (operator.allMatches ? "checked" : "") + "> all matches</label>" +
+                        "<label><input type=\"checkbox\" data-field=\"caseSensitive\" " + (operator.caseSensitive ? "checked" : "") + "> case</label>" +
+                        "</div>";
+                } else {
+                    modeBody = "<div class=\"operator-row\">" +
+                        "<label>Pos<input type=\"number\" min=\"0\" data-field=\"pos\" value=\"" + Math.max(0, Number(operator.pos) || 0) + "\"></label>" +
+                        "<label>Len<input type=\"number\" min=\"1\" data-field=\"len\" value=\"" + Math.max(1, Number(operator.len) || 1) + "\"></label>" +
+                        "</div>";
+                }
+                return "<div class=\"operator-meta\">Emit captured values as rows. Regex and Between can find values across the whole current view, including one-line JSON.</div>" +
+                    "<div class=\"operator-row\"><label>Mode<select data-field=\"mode\"><option value=\"regex\"" + (operator.mode === "regex" ? " selected" : "") + ">Regex capture</option><option value=\"column\"" + (operator.mode === "column" ? " selected" : "") + ">Column</option><option value=\"between\"" + (operator.mode === "between" ? " selected" : "") + ">Between text</option></select></label></div>" +
+                    modeBody +
+                    (rowControlsVisible
+                        ? "<div class=\"operator-row\"><label>Rows<select data-field=\"rowMode\"><option value=\"all\"" + (operator.rowMode === "all" ? " selected" : "") + ">All rows</option><option value=\"range\"" + (operator.rowMode === "range" ? " selected" : "") + ">Row range</option></select></label>" + renderExtractRows(operator) + "</div>"
+                        : "") +
+                    "<div class=\"operator-row\">" +
+                    "<label><input type=\"checkbox\" data-field=\"trim\" " + (operator.trim ? "checked" : "") + "> trim</label>" +
+                    "<label><input type=\"checkbox\" data-field=\"skipEmpty\" " + (operator.skipEmpty ? "checked" : "") + "> skip empty</label>" +
+                    "</div>";
+            }
+
+            function renderUniqueBody(operator) {
+                return "<div class=\"operator-meta\">Keep one copy of each row. Stable order keeps the first occurrence and does not require Sort or Diff.</div>" +
+                    "<div class=\"operator-row\">" +
+                    "<label>Order<select data-field=\"order\"><option value=\"stable\"" + (operator.order === "stable" ? " selected" : "") + ">Keep first</option><option value=\"asc\"" + (operator.order === "asc" ? " selected" : "") + ">Ascending</option><option value=\"desc\"" + (operator.order === "desc" ? " selected" : "") + ">Descending</option></select></label>" +
+                    "<label><input type=\"checkbox\" data-field=\"trim\" " + (operator.trim ? "checked" : "") + "> trim</label>" +
+                    "<label><input type=\"checkbox\" data-field=\"ignoreEmpty\" " + (operator.ignoreEmpty ? "checked" : "") + "> ignore empty</label>" +
+                    "<label><input type=\"checkbox\" data-field=\"caseSensitive\" " + (operator.caseSensitive ? "checked" : "") + "> case</label>" +
+                    "</div>";
+            }
+
+            function renderJoinBody(operator) {
+                return "<div class=\"operator-meta\">Combine all current rows into one value. Use \\\\n or \\\\t when escape sequences are enabled.</div>" +
+                    "<div class=\"operator-row\">" +
+                    "<label class=\"grow\">Delimiter<input type=\"text\" data-field=\"delimiter\" value=\"" + escapeAttribute(operator.delimiter == null ? "|" : operator.delimiter) + "\" placeholder=\"|\"></label>" +
+                    "<label class=\"grow\">Prefix<input type=\"text\" data-field=\"prefix\" value=\"" + escapeAttribute(operator.prefix || "") + "\"></label>" +
+                    "<label class=\"grow\">Suffix<input type=\"text\" data-field=\"suffix\" value=\"" + escapeAttribute(operator.suffix || "") + "\"></label>" +
+                    "</div>" +
+                    "<div class=\"operator-row\">" +
+                    "<label><input type=\"checkbox\" data-field=\"trim\" " + (operator.trim ? "checked" : "") + "> trim rows</label>" +
+                    "<label><input type=\"checkbox\" data-field=\"skipEmpty\" " + (operator.skipEmpty ? "checked" : "") + "> skip empty</label>" +
+                    "<label><input type=\"checkbox\" data-field=\"interpretEscapes\" " + (operator.interpretEscapes ? "checked" : "") + "> escapes</label>" +
+                    "</div>";
             }
 
             function renderFilterBody(operator) {
@@ -3666,6 +4230,43 @@
                     operator.outputExtend = expandSelectionForDiffOutput(stage);
                 }
                 invalidateAfterOperatorChange();
+            }
+
+            function closeTransformMenu() {
+                if (elements.transformMenu) {
+                    elements.transformMenu.removeAttribute("open");
+                }
+            }
+
+            function addCollectPipeline() {
+                const prefill = getCurrentSelectionPrefill();
+                const extract = createDefaultOperator("extract", prefill);
+                const unique = createDefaultOperator("unique", prefill);
+                const join = createDefaultOperator("join", prefill);
+                const selectedIndex = getSelectedOperatorIndex();
+                const insertIndex = selectedIndex === -1 ? state.operators.length : selectedIndex + 1;
+                state.operators.splice(insertIndex, 0, extract, unique, join);
+                state.selectedOperatorId = extract.id;
+                closeTransformMenu();
+                invalidateAfterOperatorChange();
+                updateStatus("Added Extract, Unique, and Join. Configure Extract, then select Join for the final value.");
+            }
+
+            function handleTransformMenuClick(event) {
+                const button = event.target.closest("button[data-transform-type], button[data-transform-action]");
+                if (!button) {
+                    return;
+                }
+                const type = button.getAttribute("data-transform-type");
+                const action = button.getAttribute("data-transform-action");
+                if (type) {
+                    addOperator(type);
+                    closeTransformMenu();
+                    return;
+                }
+                if (action === "collect") {
+                    addCollectPipeline();
+                }
             }
 
             function deleteOperator(operatorId) {
@@ -6500,6 +7101,7 @@
                 elements.addReplaceButton.addEventListener("click", () => addOperator("replace"));
                 elements.addSortButton.addEventListener("click", () => addOperator("sort"));
                 elements.addDiffButton.addEventListener("click", () => addOperator("diff"));
+                elements.transformMenu.addEventListener("click", handleTransformMenuClick);
                 elements.operatorList.addEventListener("click", handleOperatorListClick);
                 elements.operatorList.addEventListener("change", handleOperatorInput);
                 elements.operatorList.addEventListener("input", handleOperatorInput);
@@ -6599,6 +7201,9 @@
                     hideProfileContextMenu();
                     if (elements.appMenu && elements.appMenu.hasAttribute("open") && !elements.appMenu.contains(event.target)) {
                         closeAppMenu();
+                    }
+                    if (elements.transformMenu && elements.transformMenu.hasAttribute("open") && !elements.transformMenu.contains(event.target)) {
+                        closeTransformMenu();
                     }
                 });
                 document.addEventListener("keydown", handleGlobalKeydown);
