@@ -558,6 +558,31 @@
             line-height: 1.45;
         }
 
+        .operator-field-label {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 4px;
+        }
+
+        .operator-newline-summary {
+            display: inline-flex;
+            align-items: center;
+            min-height: 20px;
+            padding: 1px 7px;
+            border: 1px solid var(--border-strong);
+            border-radius: 999px;
+            background: var(--surface-2);
+            color: var(--muted);
+            font-family: var(--font);
+            font-size: 0.72rem;
+            line-height: 1;
+        }
+
+        .operator-newline-summary[hidden] {
+            display: none;
+        }
+
         .operator-card input[type="text"],
         .operator-card input[type="number"],
         .operator-card select {
@@ -691,10 +716,78 @@
             font-size: 0.86rem;
         }
 
+        .viewer-find-open-button {
+            flex: 0 0 auto;
+            padding: 7px 10px;
+            font-size: 0.8rem;
+        }
+
         .viewer-toolbar-hint {
             color: var(--muted);
             font-size: 0.8rem;
             line-height: 1.35;
+        }
+
+        .viewer-findbar {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 7px;
+            flex: 1 0 100%;
+            min-width: 0;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+        }
+
+        .viewer-findbar[hidden] {
+            display: none;
+        }
+
+        .viewer-find-label {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            flex: 1 1 260px;
+            min-width: 140px;
+            color: var(--muted);
+            font-size: 0.82rem;
+        }
+
+        .viewer-find-label input {
+            min-width: 0;
+            width: 100%;
+            padding: 7px 10px;
+            font-family: var(--font);
+        }
+
+        .viewer-findbar button {
+            flex: 0 0 auto;
+            min-width: 36px;
+            padding: 7px 9px;
+        }
+
+        .viewer-findbar button[aria-pressed="true"] {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+            color: var(--accent-strong);
+        }
+
+        .viewer-find-status {
+            flex: 0 1 auto;
+            min-width: 88px;
+            color: var(--muted);
+            font-size: 0.78rem;
+            white-space: nowrap;
+        }
+
+        .viewer-find-status.not-found {
+            color: var(--danger);
+        }
+
+        .viewer-find-shortcuts {
+            color: var(--muted);
+            font-size: 0.72rem;
+            white-space: nowrap;
         }
 
         .viewer-shell {
@@ -1101,7 +1194,7 @@
             </div>
             <div class="toolbar-section">
                 <span class="toolbar-hint">Shortcuts: Enter include, Esc exclude, Delete remove, F filter, R replace,
-                    S sort, D diff, Ctrl+A select all, Ctrl+C copy.</span>
+                    S sort, D diff, Ctrl+F find, F3 next match, Ctrl+A select all, Ctrl+C copy.</span>
             </div>
         </section>
 
@@ -1127,14 +1220,33 @@
                             smallest matching token. Middle click jumps to the previous stage; Ctrl+middle click goes
                             forward.</span>
                     </div>
+                    <button type="button" class="viewer-find-open-button" id="openFindButton"
+                        title="Find in file view (Ctrl+F)">Find</button>
                     <div class="viewer-toolbar-stats">
                         <span class="pill" id="selectionInfo">Selection: none</span>
                         <span class="pill" id="scrollInfo">Scroll row 1/1 col 1/1</span>
                         <span class="pill" id="cacheInfo">Cache: 0 stages</span>
                     </div>
+                    <div class="viewer-findbar" id="viewerFindbar" role="search" aria-label="Find in file view"
+                        hidden>
+                        <label class="viewer-find-label" for="viewerFindInput">
+                            <span>Find</span>
+                            <input type="search" id="viewerFindInput" autocomplete="off" spellcheck="false"
+                                placeholder="Text in current file view">
+                        </label>
+                        <button type="button" id="findPreviousButton" title="Previous match (Shift+Enter or Shift+F3)"
+                            aria-label="Previous match">&uarr;</button>
+                        <button type="button" id="findNextButton" title="Next match (Enter or F3)"
+                            aria-label="Next match">&darr;</button>
+                        <button type="button" id="findCaseButton" title="Match case" aria-label="Match case"
+                            aria-pressed="false">Aa</button>
+                        <span class="viewer-find-status" id="viewerFindStatus" aria-live="polite">Enter text to find</span>
+                        <span class="viewer-find-shortcuts">Enter / Shift+Enter</span>
+                        <button type="button" id="closeFindButton" title="Close find (Esc)" aria-label="Close find">&times;</button>
+                    </div>
                 </div>
                 <div class="viewer-shell">
-                    <div class="viewer-viewport" id="viewerViewport">
+                    <div class="viewer-viewport" id="viewerViewport" tabindex="0" aria-label="File view">
                         <div class="line-layer" id="lineLayer"></div>
                         <div class="empty-state" id="emptyState">
                             <div>
@@ -1216,6 +1328,10 @@
                 selection, <code>Delete</code> creates a delete-style Replace, and <code>F</code>, <code>R</code>,
                 <code>S</code>, <code>D</code> create Filter, Replace, Sort, and Diff stages.
             </p>
+            <p><code>Ctrl+F</code> opens search for the current file view. Use <code>Enter</code> or <code>F3</code> for
+                the next match and add <code>Shift</code> for the previous match. <code>Ctrl+F3</code> uses the current
+                single-line selection as the search text and moves to its next occurrence; add <code>Shift</code> to
+                move backwards. Matches are selected and scrolled into view in both directions.</p>
             <p>Mouse selection is copyable. <code>Copy Column</code> uses the current selection width across the whole
                 preview. <code>Copy Block</code> copies the current rectangular selection across its selected line span.
                 Hovering a row highlights it and shows its source path or source label in the status bar. Double-click
@@ -1335,6 +1451,14 @@
                 addDiffButton: document.getElementById("addDiffButton"),
                 operatorList: document.getElementById("operatorList"),
                 savedProfilesPanel: document.getElementById("savedProfilesPanel"),
+                openFindButton: document.getElementById("openFindButton"),
+                viewerFindbar: document.getElementById("viewerFindbar"),
+                viewerFindInput: document.getElementById("viewerFindInput"),
+                viewerFindStatus: document.getElementById("viewerFindStatus"),
+                findPreviousButton: document.getElementById("findPreviousButton"),
+                findNextButton: document.getElementById("findNextButton"),
+                findCaseButton: document.getElementById("findCaseButton"),
+                closeFindButton: document.getElementById("closeFindButton"),
                 viewerViewport: document.getElementById("viewerViewport"),
                 lineLayer: document.getElementById("lineLayer"),
                 emptyState: document.getElementById("emptyState"),
@@ -1405,6 +1529,12 @@
                 cursor: {
                     row: 0,
                     col: 0
+                },
+                find: {
+                    open: false,
+                    query: "",
+                    caseSensitive: false,
+                    lastMatch: null
                 },
                 pointerSelection: null
             };
@@ -3345,6 +3475,48 @@
                     return;
                 }
                 elements.operatorList.innerHTML = state.operators.map((operator, index) => renderOperatorCard(operator, index)).join("");
+                hydrateOperatorTextareas();
+            }
+
+            function getOperatorFieldValue(operator, fieldPath) {
+                let value = operator;
+                for (const segment of fieldPath.split(".")) {
+                    if (value == null) {
+                        return "";
+                    }
+                    value = value[segment];
+                }
+                return value == null ? "" : String(value);
+            }
+
+            function updateTextareaNewlineSummary(textarea) {
+                const label = textarea.closest("label");
+                const summary = label ? label.querySelector("[data-newline-summary]") : null;
+                if (!summary) {
+                    return;
+                }
+                const value = textarea.value;
+                const newlineCount = (value.match(/\n/g) || []).length;
+                summary.hidden = newlineCount === 0;
+                if (!newlineCount) {
+                    summary.textContent = "";
+                    return;
+                }
+                const onlyLineBreaks = value.length === newlineCount;
+                summary.textContent = "\u21b5 LF \u00d7 " + newlineCount + (onlyLineBreaks ? " \u00b7 line break only" : "");
+            }
+
+            function hydrateOperatorTextareas() {
+                elements.operatorList.querySelectorAll("[data-operator-id]").forEach((card) => {
+                    const operator = state.operators[getOperatorIndexById(Number(card.getAttribute("data-operator-id")))];
+                    if (!operator) {
+                        return;
+                    }
+                    card.querySelectorAll("textarea[data-field]").forEach((textarea) => {
+                        textarea.value = getOperatorFieldValue(operator, textarea.getAttribute("data-field"));
+                        updateTextareaNewlineSummary(textarea);
+                    });
+                });
             }
 
             function renderOperatorCard(operator, index) {
@@ -3374,8 +3546,8 @@
                     return renderFilterBody(operator);
                 }
                 if (operator.type === "replace") {
-                    return "<div class=\"operator-row\"><label class=\"grow\">Search<textarea rows=\"1\" data-field=\"search\">" + escapeHtml(operator.search || "") + "</textarea></label></div>" +
-                        "<div class=\"operator-row\"><label class=\"grow\">Replacement<textarea rows=\"1\" data-field=\"replacement\">" + escapeHtml(operator.replacement || "") + "</textarea></label></div>";
+                    return "<div class=\"operator-row\"><label class=\"grow\"><span class=\"operator-field-label\">Search <span class=\"operator-newline-summary\" data-newline-summary hidden></span></span><textarea rows=\"1\" data-field=\"search\" aria-label=\"Search\" placeholder=\"Text to find; Enter inserts a line break\"></textarea></label></div>" +
+                        "<div class=\"operator-row\"><label class=\"grow\"><span class=\"operator-field-label\">Replacement <span class=\"operator-newline-summary\" data-newline-summary hidden></span></span><textarea rows=\"1\" data-field=\"replacement\" aria-label=\"Replacement\" placeholder=\"Replacement text; Enter inserts a line break\"></textarea></label></div>";
                 }
                 if (operator.type === "sort") {
                     return "<div class=\"operator-row\">" +
@@ -3434,7 +3606,7 @@
                     return "<div class=\"operator-meta\">No " + kind + " clauses.</div>";
                 }
                 return clauses.map((clause, index) => "<div class=\"clause-item\">" +
-                    "<textarea rows=\"1\" data-field=\"" + kind + "." + index + ".text\" placeholder=\"one term per line\">" + escapeHtml(clause.text || "") + "</textarea>" +
+                    "<textarea rows=\"1\" data-field=\"" + kind + "." + index + ".text\" placeholder=\"one term per line\"></textarea>" +
                     "<label><input type=\"checkbox\" data-field=\"" + kind + "." + index + ".caseSensitive\" " + (clause.caseSensitive ? "checked" : "") + "> case</label>" +
                     "<button data-action=\"remove-clause\" data-clause-kind=\"" + kind + "\" data-clause-index=\"" + index + "\" title=\"Remove clause\">✕</button>" +
                     "</div>").join("");
@@ -4759,6 +4931,7 @@
                 if (event.button !== 0) {
                     return;
                 }
+                elements.viewerViewport.focus({ preventScroll: true });
                 if (event.button === 0 && event.detail > 1) {
                     event.preventDefault();
                     endSelection();
@@ -4846,6 +5019,169 @@
                 } else if (col > state.view.scrollLeftCols + state.view.viewportCols - 1) {
                     state.view.scrollLeftCols = Math.max(0, col - state.view.viewportCols + 1);
                 }
+            }
+
+            function ensureFindMatchVisible(stage, row, startCol, endCol) {
+                ensureVisible(stage, row, startCol);
+                const matchWidth = Math.max(1, endCol - startCol);
+                if (matchWidth >= state.view.viewportCols) {
+                    state.view.scrollLeftCols = startCol;
+                } else if (startCol < state.view.scrollLeftCols) {
+                    state.view.scrollLeftCols = startCol;
+                } else if (endCol > state.view.scrollLeftCols + state.view.viewportCols) {
+                    state.view.scrollLeftCols = Math.max(0, endCol - state.view.viewportCols);
+                }
+            }
+
+            function getSingleLineSelectionText(stage) {
+                const selection = normalizeSelection(state.selection);
+                if (!stage || !selection || selection.startRow !== selection.endRow || selection.startCol === selection.endCol) {
+                    return "";
+                }
+                return extractSelectionText(stage, selection);
+            }
+
+            function setFindStatus(message, notFound) {
+                elements.viewerFindStatus.textContent = message;
+                elements.viewerFindStatus.classList.toggle("not-found", !!notFound);
+            }
+
+            function showFindBar(focusInput, useSelection) {
+                const stage = getCurrentStageSync();
+                const selectedText = useSelection ? getSingleLineSelectionText(stage) : "";
+                if (selectedText) {
+                    state.find.query = selectedText;
+                    state.find.lastMatch = null;
+                }
+                state.find.open = true;
+                elements.viewerFindbar.hidden = false;
+                elements.viewerFindInput.value = state.find.query;
+                setFindStatus(state.find.query ? "Enter to find" : "Enter text to find", false);
+                if (focusInput) {
+                    requestAnimationFrame(() => {
+                        elements.viewerFindInput.focus({ preventScroll: true });
+                        elements.viewerFindInput.select();
+                    });
+                }
+            }
+
+            function closeFindBar() {
+                state.find.open = false;
+                state.find.lastMatch = null;
+                elements.viewerFindbar.hidden = true;
+                elements.viewerViewport.focus({ preventScroll: true });
+            }
+
+            function findTextInLine(line, query, fromCol, direction) {
+                const haystack = state.find.caseSensitive ? line : line.toLocaleLowerCase();
+                const needle = state.find.caseSensitive ? query : query.toLocaleLowerCase();
+                return direction > 0
+                    ? haystack.indexOf(needle, Math.max(0, fromCol))
+                    : haystack.lastIndexOf(needle, Math.min(line.length, fromCol));
+            }
+
+            function findForwardMatch(stage, query, startRow, startCol) {
+                for (let row = startRow; row < stage.lineCount; row++) {
+                    const line = getStageLine(stage, row);
+                    const index = findTextInLine(line, query, row === startRow ? startCol : 0, 1);
+                    if (index !== -1) {
+                        return { row, startCol: index, endCol: index + query.length, wrapped: false };
+                    }
+                }
+                for (let row = 0; row <= startRow; row++) {
+                    const line = getStageLine(stage, row);
+                    const index = findTextInLine(line, query, 0, 1);
+                    if (index !== -1 && (row !== startRow || index < startCol)) {
+                        return { row, startCol: index, endCol: index + query.length, wrapped: true };
+                    }
+                }
+                return null;
+            }
+
+            function findBackwardMatch(stage, query, startRow, startCol) {
+                for (let row = startRow; row >= 0; row--) {
+                    const line = getStageLine(stage, row);
+                    const fromCol = row === startRow ? startCol - 1 : line.length;
+                    const index = findTextInLine(line, query, fromCol, -1);
+                    if (index !== -1) {
+                        return { row, startCol: index, endCol: index + query.length, wrapped: false };
+                    }
+                }
+                for (let row = stage.lineCount - 1; row >= startRow; row--) {
+                    const line = getStageLine(stage, row);
+                    const index = findTextInLine(line, query, line.length, -1);
+                    if (index !== -1 && (row !== startRow || index >= startCol)) {
+                        return { row, startCol: index, endCol: index + query.length, wrapped: true };
+                    }
+                }
+                return null;
+            }
+
+            function findInCurrentView(direction) {
+                const stage = getCurrentStageSync();
+                const query = state.find.query;
+                if (!stage) {
+                    setFindStatus("No file view", true);
+                    return false;
+                }
+                if (!query) {
+                    showFindBar(true, false);
+                    setFindStatus("Enter text to find", true);
+                    return false;
+                }
+                const selection = normalizeSelection(state.selection);
+                const startPoint = selection
+                    ? direction > 0
+                        ? { row: selection.endRow, col: selection.endCol }
+                        : { row: selection.startRow, col: selection.startCol }
+                    : { row: state.cursor.row, col: state.cursor.col };
+                const startRow = clamp(startPoint.row, 0, Math.max(0, stage.lineCount - 1));
+                const startCol = clamp(startPoint.col, 0, getStageLine(stage, startRow).length);
+                const match = direction > 0
+                    ? findForwardMatch(stage, query, startRow, startCol)
+                    : findBackwardMatch(stage, query, startRow, startCol);
+                if (!match) {
+                    state.find.lastMatch = null;
+                    setFindStatus("No matches", true);
+                    updateStatus("No match for '" + query + "'.");
+                    return false;
+                }
+                state.selection = {
+                    startRow: match.row,
+                    startCol: match.startCol,
+                    endRow: match.row,
+                    endCol: match.endCol
+                };
+                state.find.lastMatch = {
+                    query,
+                    caseSensitive: state.find.caseSensitive,
+                    stageHash: stage.hash,
+                    row: match.row,
+                    startCol: match.startCol,
+                    endCol: match.endCol
+                };
+                setCursor({ row: match.row, col: match.endCol }, stage);
+                ensureFindMatchVisible(stage, match.row, match.startCol, match.endCol);
+                setFindStatus("Row " + formatGrouped(match.row + 1) + ", col " + formatGrouped(match.startCol + 1) + (match.wrapped ? " \u00b7 wrapped" : ""), false);
+                updateStatus("Found '" + query + "' at row " + formatGrouped(match.row + 1) + ", column " + formatGrouped(match.startCol + 1) + ".");
+                renderSoon();
+                return true;
+            }
+
+            function findFromCurrentSelection(direction) {
+                const stage = getCurrentStageSync();
+                const selectedText = getSingleLineSelectionText(stage);
+                if (selectedText) {
+                    state.find.query = selectedText;
+                    elements.viewerFindInput.value = selectedText;
+                }
+                showFindBar(false, false);
+                if (!state.find.query) {
+                    showFindBar(true, false);
+                    setFindStatus("Select text or enter a query", true);
+                    return false;
+                }
+                return findInCurrentView(direction);
             }
 
             function moveCursor(deltaRow, deltaCol, extendSelection) {
@@ -5907,8 +6243,38 @@
                 if (!field) return;
                 if (event.target.tagName === "TEXTAREA") {
                     autoSizeTextarea(event.target);
+                    updateTextareaNewlineSummary(event.target);
                 }
                 updateOperatorField(Number(card.getAttribute("data-operator-id")), field, event.target.value, event.target.checked);
+            }
+
+            function handleFindInput(event) {
+                state.find.query = event.target.value;
+                state.find.lastMatch = null;
+                setFindStatus(state.find.query ? "Enter to find" : "Enter text to find", false);
+            }
+
+            function handleFindInputKeydown(event) {
+                if (event.key === "Enter" || event.key === "F3") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    findInCurrentView(event.shiftKey ? -1 : 1);
+                    return;
+                }
+                if (event.key === "Escape") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    closeFindBar();
+                }
+            }
+
+            function toggleFindCase() {
+                state.find.caseSensitive = !state.find.caseSensitive;
+                state.find.lastMatch = null;
+                elements.findCaseButton.setAttribute("aria-pressed", state.find.caseSensitive ? "true" : "false");
+                elements.findCaseButton.title = state.find.caseSensitive ? "Match case: on" : "Match case: off";
+                setFindStatus(state.find.query ? "Enter to find" : "Enter text to find", false);
+                elements.viewerFindInput.focus({ preventScroll: true });
             }
 
             function handleGlobalKeydown(event) {
@@ -5929,6 +6295,28 @@
                     return;
                 }
                 if (elements.loadActionModal.classList.contains("visible")) {
+                    return;
+                }
+                if (event.ctrlKey && !event.altKey && event.key.toLowerCase() === "f") {
+                    event.preventDefault();
+                    showFindBar(true, true);
+                    return;
+                }
+                const isFindbarTarget = !!(event.target && elements.viewerFindbar.contains(event.target));
+                if ((!isFormEditingTarget(event.target) || isFindbarTarget) && event.ctrlKey && !event.altKey && event.key === "F3") {
+                    event.preventDefault();
+                    findFromCurrentSelection(event.shiftKey ? -1 : 1);
+                    return;
+                }
+                if ((!isFormEditingTarget(event.target) || isFindbarTarget) && !event.altKey && event.key === "F3") {
+                    event.preventDefault();
+                    showFindBar(false, false);
+                    findInCurrentView(event.shiftKey ? -1 : 1);
+                    return;
+                }
+                if (state.find.open && (!isFormEditingTarget(event.target) || isFindbarTarget) && event.key === "Escape") {
+                    event.preventDefault();
+                    closeFindBar();
                     return;
                 }
                 if (event.key === "F1") {
@@ -6115,6 +6503,13 @@
                 elements.operatorList.addEventListener("click", handleOperatorListClick);
                 elements.operatorList.addEventListener("change", handleOperatorInput);
                 elements.operatorList.addEventListener("input", handleOperatorInput);
+                elements.openFindButton.addEventListener("click", () => showFindBar(true, true));
+                elements.viewerFindInput.addEventListener("input", handleFindInput);
+                elements.viewerFindInput.addEventListener("keydown", handleFindInputKeydown);
+                elements.findPreviousButton.addEventListener("click", () => findInCurrentView(-1));
+                elements.findNextButton.addEventListener("click", () => findInCurrentView(1));
+                elements.findCaseButton.addEventListener("click", toggleFindCase);
+                elements.closeFindButton.addEventListener("click", closeFindBar);
                 elements.savedProfilesPanel.addEventListener("click", (event) => {
                     const actionButton = event.target.closest('[data-profile-action="new"]');
                     if (actionButton) {
