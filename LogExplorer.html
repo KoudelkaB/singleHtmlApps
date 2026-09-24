@@ -282,7 +282,7 @@
 
         .toolbar {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-columns: auto minmax(0, 1fr);
             gap: 12px;
             position: relative;
             z-index: 50;
@@ -765,7 +765,7 @@
             align-items: center;
             gap: 8px;
             min-width: 0;
-            flex: 1 1 auto;
+            flex: 1 1 0;
         }
 
         .viewer-toolbar-stats {
@@ -781,6 +781,7 @@
         }
 
         .viewer-stage-label {
+            white-space: nowrap;
             color: var(--muted);
             font-size: 0.86rem;
         }
@@ -792,9 +793,13 @@
         }
 
         .viewer-toolbar-hint {
+            min-width: 0;
+            overflow: hidden;
             color: var(--muted);
             font-size: 0.8rem;
             line-height: 1.35;
+            white-space: nowrap;
+            text-overflow: ellipsis;
         }
 
         .viewer-findbar {
@@ -1058,7 +1063,7 @@
             align-items: center;
             justify-content: center;
             padding: 20px;
-            z-index: 40;
+            z-index: 200;
         }
 
         .modal-backdrop.visible {
@@ -1135,6 +1140,10 @@
             border-radius: 18px;
             border: 1px solid var(--border);
             background: rgba(255, 255, 255, 0.6);
+        }
+
+        .choice-modal-column[hidden] {
+            display: none;
         }
 
         .choice-modal-column h4 {
@@ -1295,7 +1304,8 @@
                     <div class="viewer-toolbar-main">
                         <span class="viewer-stage-label" id="viewerStageLabel"
                             title="Shows the current file view. Hover for the active stage details.">File view</span>
-                        <span class="viewer-toolbar-hint">Single click smart-selects structures. Ctrl+click picks the
+                        <span class="viewer-toolbar-hint"
+                            title="Single click smart-selects structures. Ctrl+click picks the smallest matching token. Middle click jumps to the previous stage; Ctrl+middle click goes forward.">Single click smart-selects structures. Ctrl+click picks the
                             smallest matching token. Middle click jumps to the previous stage; Ctrl+middle click goes
                             forward.</span>
                     </div>
