@@ -108,14 +108,13 @@
 
         .app-shell {
             display: grid;
-            grid-template-rows: auto auto 1fr auto;
+            grid-template-rows: auto 1fr auto;
             gap: 12px;
             height: 100%;
             padding: 18px;
         }
 
         .topbar,
-        .toolbar,
         .statusbar,
         .workspace,
         .modal-card,
@@ -127,21 +126,26 @@
         }
 
         .topbar,
-        .toolbar,
         .statusbar {
             background: var(--panel);
             border-radius: var(--radius);
             padding: 12px 16px;
         }
 
+        /* One row while it fits - the hint gives way first, then the source info and the app
+           buttons move to a second row on the right */
         .topbar {
-            display: grid;
-            grid-template-columns: 1fr auto;
-            gap: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 12px;
             align-items: center;
             position: relative;
             z-index: 60;
             overflow: visible;
+        }
+
+        .topbar > .toolbar-section {
+            flex-wrap: nowrap;
         }
 
         .topbar-side {
@@ -150,24 +154,7 @@
             gap: 10px;
             flex-wrap: wrap;
             justify-content: flex-end;
-        }
-
-        .title-group {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .title-group h1 {
-            margin: 0;
-            font-size: 1.25rem;
-            letter-spacing: 0.02em;
-        }
-
-        .title-group p {
-            margin: 0;
-            color: var(--muted);
-            font-size: 0.92rem;
+            margin-left: auto;
         }
 
         .stats {
@@ -285,19 +272,6 @@
             font-size: 0.9rem;
         }
 
-        .toolbar {
-            display: grid;
-            grid-template-columns: auto minmax(0, 1fr);
-            gap: 12px;
-            position: relative;
-            z-index: 50;
-            overflow: visible;
-        }
-
-        .compact-toolbar {
-            align-items: center;
-        }
-
         .toolbar-section {
             display: flex;
             flex-wrap: wrap;
@@ -386,16 +360,14 @@
             font-size: 0.84rem;
         }
 
-        .toolbar input[type="text"],
-        .toolbar select,
-        .toolbar textarea,
-        .toolbar input[type="number"] {
-            padding: 8px 10px;
-        }
-
-        .toolbar .wide {
-            min-width: 180px;
-            flex: 1 1 180px;
+        /* Fills the room between the operations and the source info - at most two lines */
+        .topbar .toolbar-hint {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+            flex: 1 1 0;
+            min-width: 0;
         }
 
         .workspace {
@@ -1306,18 +1278,20 @@
                 grid-template-columns: 1fr;
             }
 
-            .toolbar {
-                grid-template-columns: 1fr;
+            /* Too narrow for a readable hint */
+            .topbar .toolbar-hint {
+                display: none;
             }
         }
 
         @media (max-width: 900px) {
-            .topbar {
-                grid-template-columns: 1fr;
+            .topbar > .toolbar-section {
+                flex-wrap: wrap;
             }
 
             .topbar-side {
                 justify-content: flex-start;
+                margin-left: 0;
             }
 
             .menu-grid {
@@ -1329,10 +1303,30 @@
 
 <body>
     <div class="app-shell">
+        <!-- One row: the operations, the hint, the source info and the app buttons. The app name
+             is the window/tab title - a heading here would only take a row from the file. -->
         <section class="topbar">
-            <div class="title-group">
-                <h1>Log Explorer</h1>
+            <div class="toolbar-section actions">
+                <button class="primary" id="addFilterButton"
+                    title="Keep or hide lines with the selected text (F; Enter keeps, Esc hides)">⊕ Filter</button>
+                <button id="addReplaceButton" title="Replace or delete the selected text (R; Delete deletes)">⇄ Replace</button>
+                <button id="addSortButton" title="Sort rows by a value (S)">⇅ Sort</button>
+                <button id="addDiffButton" title="Show how a value changes from row to row (D)">≠ Diff</button>
+                <details class="transform-menu" id="transformMenu">
+                    <summary title="Extract, deduplicate, or join values">Transform ▾</summary>
+                    <div class="transform-menu-panel">
+                        <button type="button" data-transform-type="extract"><strong>Extract</strong><span>Pull values out of the rows by column, delimiters, or regex</span></button>
+                        <button type="button" data-transform-type="unique"><strong>Unique</strong><span>Remove duplicate rows and optionally sort them</span></button>
+                        <button type="button" data-transform-type="join"><strong>Join</strong><span>Join all rows into one line, for example with |</span></button>
+                        <div class="transform-menu-separator"></div>
+                        <button type="button" data-transform-action="collect"><strong>Collect unique values</strong><span>Extract → Unique → Join in one step</span></button>
+                    </div>
+                </details>
             </div>
+            <span class="toolbar-hint"
+                title="Select text in the file: Enter keeps lines with it, Esc hides them, Delete removes the text. F1 shows all shortcuts.">Select
+                text in the file: Enter keeps lines with it, Esc hides them, Delete removes the text. F1 shows all
+                shortcuts.</span>
             <div class="topbar-side">
                 <div class="stats">
                     <span class="pill" id="fileInfo">No source loaded</span>
@@ -1379,30 +1373,6 @@
                     <input type="file" id="profileImportInput" accept=".json,application/json"
                         title="Import a profile bundle">
                 </div>
-            </div>
-        </section>
-
-        <section class="toolbar compact-toolbar">
-            <div class="toolbar-section actions">
-                <button class="primary" id="addFilterButton"
-                    title="Keep or hide lines with the selected text (F; Enter keeps, Esc hides)">⊕ Filter</button>
-                <button id="addReplaceButton" title="Replace or delete the selected text (R; Delete deletes)">⇄ Replace</button>
-                <button id="addSortButton" title="Sort rows by a value (S)">⇅ Sort</button>
-                <button id="addDiffButton" title="Show how a value changes from row to row (D)">≠ Diff</button>
-                <details class="transform-menu" id="transformMenu">
-                    <summary title="Extract, deduplicate, or join values">Transform ▾</summary>
-                    <div class="transform-menu-panel">
-                        <button type="button" data-transform-type="extract"><strong>Extract</strong><span>Pull values out of the rows by column, delimiters, or regex</span></button>
-                        <button type="button" data-transform-type="unique"><strong>Unique</strong><span>Remove duplicate rows and optionally sort them</span></button>
-                        <button type="button" data-transform-type="join"><strong>Join</strong><span>Join all rows into one line, for example with |</span></button>
-                        <div class="transform-menu-separator"></div>
-                        <button type="button" data-transform-action="collect"><strong>Collect unique values</strong><span>Extract → Unique → Join in one step</span></button>
-                    </div>
-                </details>
-            </div>
-            <div class="toolbar-section">
-                <span class="toolbar-hint">Select text in the file: Enter keeps lines with it, Esc hides them, Delete
-                    removes the text. F1 shows all shortcuts.</span>
             </div>
         </section>
 
