@@ -1012,6 +1012,24 @@
             color: var(--muted);
         }
 
+        .drop-zone .drop-zone-note {
+            margin-top: 18px;
+            max-width: 70ch;
+            max-height: 40vh;
+            overflow: auto;
+            color: var(--text);
+            white-space: pre-line;
+        }
+
+        .drop-zone .drop-zone-note.error {
+            color: var(--danger);
+        }
+
+        .drop-zone .drop-zone-close {
+            margin-top: 18px;
+            font-size: 0.85rem;
+        }
+
         .scrollbar-track {
             position: relative;
             background: linear-gradient(180deg, #edf3fb, #e1eaf7);
@@ -1467,6 +1485,8 @@
         <div>
             <h2>Drop files to open them</h2>
             <p>A JSON profile bundle is imported instead.</p>
+            <p class="drop-zone-note" id="dropZoneNote" hidden></p>
+            <p class="drop-zone-close">Click or press Esc to close.</p>
         </div>
     </div>
 
@@ -1862,6 +1882,9 @@
                 "⇄ Interleave rows (Zip)": "⇄ Střídat řádky (Proložit)",
                 "Drop files to open them": "Přetažením soubory otevřete",
                 "A JSON profile bundle is imported instead.": "Balíček profilů JSON se místo toho importuje.",
+                "Loading files: {0}…": "Načítání souborů: {0}…",
+                "Could not read files ({0}): {1}": "Nepodařilo se přečíst soubory ({0}): {1}",
+                "Click or press Esc to close.": "Kliknutím nebo klávesou Esc zavřete.",
                 "How should the new files be loaded?": "Jak se mají nové soubory načíst?",
                 "Loaded: {0}. New: {1}.": "Načteno: {0}. Nové: {1}.",
                 "Add to current": "Přidat k aktuálnímu",
@@ -2157,6 +2180,9 @@
                 "⇄ Interleave rows (Zip)": "⇄ Zeilen abwechseln (Verzahnen)",
                 "Drop files to open them": "Dateien zum Öffnen ablegen",
                 "A JSON profile bundle is imported instead.": "Ein JSON-Profilpaket wird stattdessen importiert.",
+                "Loading files: {0}…": "Dateien werden geladen: {0}…",
+                "Could not read files ({0}): {1}": "Nicht lesbare Dateien ({0}): {1}",
+                "Click or press Esc to close.": "Zum Schließen klicken oder Esc drücken.",
                 "How should the new files be loaded?": "Wie sollen die neuen Dateien geladen werden?",
                 "Loaded: {0}. New: {1}.": "Geladen: {0}. Neu: {1}.",
                 "Add to current": "Zur aktuellen hinzufügen",
@@ -2456,6 +2482,9 @@
                 "⇄ Interleave rows (Zip)": "⇄ Intercalar filas",
                 "Drop files to open them": "Suelte archivos para abrirlos",
                 "A JSON profile bundle is imported instead.": "Un paquete de perfiles JSON se importa en su lugar.",
+                "Loading files: {0}…": "Cargando archivos: {0}…",
+                "Could not read files ({0}): {1}": "No se pudieron leer archivos ({0}): {1}",
+                "Click or press Esc to close.": "Haga clic o pulse Esc para cerrar.",
                 "How should the new files be loaded?": "¿Cómo se deben cargar los archivos nuevos?",
                 "Loaded: {0}. New: {1}.": "Cargado: {0}. Nuevo: {1}.",
                 "Add to current": "Agregar al actual",
@@ -2752,6 +2781,9 @@
                 "⇄ Interleave rows (Zip)": "⇄ Alterner les lignes (Entrelacer)",
                 "Drop files to open them": "Déposez des fichiers pour les ouvrir",
                 "A JSON profile bundle is imported instead.": "Un lot de profils JSON est importé à la place.",
+                "Loading files: {0}…": "Chargement des fichiers : {0}…",
+                "Could not read files ({0}): {1}": "Fichiers illisibles ({0}) : {1}",
+                "Click or press Esc to close.": "Cliquez ou appuyez sur Échap pour fermer.",
                 "How should the new files be loaded?": "Comment charger les nouveaux fichiers ?",
                 "Loaded: {0}. New: {1}.": "Chargé : {0}. Nouveau : {1}.",
                 "Add to current": "Ajouter à l'actuel",
@@ -3052,6 +3084,9 @@
                 "⇄ Interleave rows (Zip)": "⇄ Interfoglia righe",
                 "Drop files to open them": "Trascina i file per aprirli",
                 "A JSON profile bundle is imported instead.": "Un pacchetto di profili JSON viene invece importato.",
+                "Loading files: {0}…": "Caricamento file: {0}…",
+                "Could not read files ({0}): {1}": "File non leggibili ({0}): {1}",
+                "Click or press Esc to close.": "Fai clic o premi Esc per chiudere.",
                 "How should the new files be loaded?": "Come caricare i nuovi file?",
                 "Loaded: {0}. New: {1}.": "Caricato: {0}. Nuovo: {1}.",
                 "Add to current": "Aggiungi all'attuale",
@@ -3352,6 +3387,9 @@
                 "⇄ Interleave rows (Zip)": "⇄ 行を交互に並べる",
                 "Drop files to open them": "ドロップしてファイルを開く",
                 "A JSON profile bundle is imported instead.": "JSON プロファイル バンドルの場合はインポートされます。",
+                "Loading files: {0}…": "ファイルを読み込み中: {0}…",
+                "Could not read files ({0}): {1}": "読み取れなかったファイル ({0}): {1}",
+                "Click or press Esc to close.": "クリックまたは Esc キーで閉じます。",
                 "How should the new files be loaded?": "新しいファイルをどのように読み込みますか?",
                 "Loaded: {0}. New: {1}.": "読み込み済み: {0}。新規: {1}。",
                 "Add to current": "現在の内容に追加",
@@ -3653,6 +3691,9 @@
                 "⇄ Interleave rows (Zip)": "⇄ 행 교차 배치",
                 "Drop files to open them": "파일을 끌어 놓아 열기",
                 "A JSON profile bundle is imported instead.": "JSON 프로필 번들은 대신 가져옵니다.",
+                "Loading files: {0}…": "파일 로드 중: {0}…",
+                "Could not read files ({0}): {1}": "읽을 수 없는 파일({0}): {1}",
+                "Click or press Esc to close.": "클릭하거나 Esc 키를 눌러 닫습니다.",
                 "How should the new files be loaded?": "새 파일을 어떻게 로드할까요?",
                 "Loaded: {0}. New: {1}.": "로드됨: {0}. 새 파일: {1}.",
                 "Add to current": "현재 내용에 추가",
@@ -3954,6 +3995,9 @@
                 "⇄ Interleave rows (Zip)": "⇄ Naprzemienne wiersze (Przeplataj)",
                 "Drop files to open them": "Upuść pliki, aby je otworzyć",
                 "A JSON profile bundle is imported instead.": "Pakiet profili JSON zostanie zamiast tego zaimportowany.",
+                "Loading files: {0}…": "Wczytywanie plików: {0}…",
+                "Could not read files ({0}): {1}": "Nie udało się odczytać plików ({0}): {1}",
+                "Click or press Esc to close.": "Kliknij lub naciśnij Esc, aby zamknąć.",
                 "How should the new files be loaded?": "Jak załadować nowe pliki?",
                 "Loaded: {0}. New: {1}.": "Załadowane: {0}. Nowe: {1}.",
                 "Add to current": "Dodaj do bieżących",
@@ -4253,6 +4297,9 @@
                 "⇄ Interleave rows (Zip)": "⇄ Intercalar linhas",
                 "Drop files to open them": "Solte arquivos para abri-los",
                 "A JSON profile bundle is imported instead.": "Um pacote de perfis JSON é importado em vez disso.",
+                "Loading files: {0}…": "Carregando arquivos: {0}…",
+                "Could not read files ({0}): {1}": "Não foi possível ler arquivos ({0}): {1}",
+                "Click or press Esc to close.": "Clique ou pressione Esc para fechar.",
                 "How should the new files be loaded?": "Como os novos arquivos devem ser carregados?",
                 "Loaded: {0}. New: {1}.": "Carregados: {0}. Novos: {1}.",
                 "Add to current": "Adicionar ao atual",
@@ -4552,6 +4599,9 @@
                 "⇄ Interleave rows (Zip)": "⇄ 逐行交错",
                 "Drop files to open them": "拖放文件以打开",
                 "A JSON profile bundle is imported instead.": "JSON 配置文件包将被导入。",
+                "Loading files: {0}…": "正在加载文件: {0}…",
+                "Could not read files ({0}): {1}": "无法读取的文件 ({0}): {1}",
+                "Click or press Esc to close.": "单击或按 Esc 关闭。",
                 "How should the new files be loaded?": "应如何加载新文件？",
                 "Loaded: {0}. New: {1}.": "已加载: {0}。新文件: {1}。",
                 "Add to current": "添加到当前",
@@ -4751,6 +4801,7 @@
                 horizontalTrack: document.getElementById("horizontalTrack"),
                 horizontalThumb: document.getElementById("horizontalThumb"),
                 dropZone: document.getElementById("dropZone"),
+                dropZoneNote: document.getElementById("dropZoneNote"),
                 helpModal: document.getElementById("helpModal"),
                 loadActionModal: document.getElementById("loadActionModal"),
                 cancelLoadActionButton: document.getElementById("cancelLoadActionButton"),
@@ -5230,6 +5281,26 @@
                 };
             }
 
+            // One unreadable file (e.g. a log that changed on disk after it was picked) must not cancel
+            // the others. Inputs keep the order of the files, null for an unreadable one.
+            async function readLoadInputs(files, paths) {
+                const results = await Promise.allSettled(files.map((file, index) => readFileAsInput(file, paths[index])));
+                const unreadable = [];
+                results.forEach((result, index) => {
+                    if (result.status === "rejected") {
+                        const reason = result.reason && result.reason.message ? result.reason.message : String(result.reason);
+                        unreadable.push((paths[index] || files[index].name) + " - " + reason);
+                    }
+                });
+                return { inputs: results.map((result) => result.status === "fulfilled" ? result.value : null), unreadable };
+            }
+
+            function reportUnreadable(unreadable) {
+                if (unreadable.length) {
+                    handleError(new Error(t("Could not read files ({0}): {1}", unreadable.length, unreadable.join("\n"))));
+                }
+            }
+
             function readClipboardTextAsInput(text, sourceName) {
                 try {
                     const payload = JSON.parse(text);
@@ -5304,6 +5375,9 @@
                 console.error(error);
                 updateStatus(error && error.message ? error.message : "Unexpected error.");
                 setBusy("");
+                if (elements.dropZone.classList.contains("visible")) {
+                    setDropZoneNote(t(error && error.message ? error.message : "Unexpected error."), true);
+                }
             }
 
             function createFilterClause(text) {
@@ -7202,6 +7276,16 @@
 
             function setDropZoneVisibility(visible) {
                 elements.dropZone.classList.toggle("visible", visible);
+                if (!visible) {
+                    setDropZoneNote("");
+                }
+            }
+
+            // Progress or a problem shown on the drop zone - it covers the status bar while no file is loaded
+            function setDropZoneNote(message, isError) {
+                elements.dropZoneNote.textContent = message;
+                elements.dropZoneNote.hidden = !message;
+                elements.dropZoneNote.classList.toggle("error", !!isError);
             }
 
             function renderOperatorList() {
@@ -10051,8 +10135,11 @@
                 elements.dropZone.classList.remove("drag-over");
                 const files = Array.from(event.dataTransfer ? event.dataTransfer.files : []);
                 if (files.length) {
-                    Promise.all(files.map((file) => readFileAsInput(file)))
-                        .then((results) => processLoadInputs(results))
+                    readLoadInputs(files, [])
+                        .then(async ({ inputs, unreadable }) => {
+                            await processLoadInputs(inputs);
+                            reportUnreadable(unreadable);
+                        })
                         .catch(handleError)
                         .finally(() => setDropZoneVisibility(!state.source.stage));
                 } else {
@@ -10151,6 +10238,11 @@
                 }
                 if (elements.helpModal.classList.contains("visible") && event.key === "Escape") {
                     elements.helpModal.classList.remove("visible");
+                    event.preventDefault();
+                    return;
+                }
+                if (elements.dropZone.classList.contains("visible") && event.key === "Escape") {
+                    setDropZoneVisibility(false);
                     event.preventDefault();
                     return;
                 }
@@ -10462,6 +10554,8 @@
                 });
                 elements.zipLoadedButton.addEventListener("click", () => zipLoadedSources().catch(handleError));
                 document.addEventListener("drop", handleDrop);
+                // The drop zone is also the start screen - it must never trap the app underneath
+                elements.dropZone.addEventListener("click", () => setDropZoneVisibility(false));
                 document.addEventListener("paste", handlePasteEvent);
                 document.addEventListener("copy", handleCopyEvent);
                 window.addEventListener("resize", renderSoon);
@@ -10496,7 +10590,10 @@
                         : { append: "replace-append", zip: "replace-zip" }[settings.combine] || null;
                     try {
                         const paths = Array.isArray(settings.paths) ? settings.paths : [];
-                        await processLoadInputs(await Promise.all(list.map((file, index) => readFileAsInput(file, paths[index]))), loadAction);
+                        setDropZoneNote(t("Loading files: {0}…", list.length));
+                        const { inputs, unreadable } = await readLoadInputs(list, paths);
+                        await processLoadInputs(inputs, loadAction);
+                        setDropZoneNote("");
                         const filter = settings.filter;
                         if (filter && filter.text && state.source.stage) {
                             const operator = createDefaultOperator("filter", null);
@@ -10505,6 +10602,7 @@
                             state.selectedOperatorId = operator.id;
                             invalidateAfterOperatorChange();
                         }
+                        reportUnreadable(unreadable);
                     } catch (error) {
                         handleError(error);
                     } finally {
