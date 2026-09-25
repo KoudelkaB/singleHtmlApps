@@ -5197,10 +5197,17 @@
                     fallbackSourceId: 0
                 })));
                 const names = catalog.map((descriptor) => ({ name: descriptor.label }));
+                // Only the row order changes - the view stays at the selected operation (the filter
+                // "Show in files" started with), which loading a source would reset
+                const selectedOperatorId = state.selectedOperatorId;
                 await loadTextSource(merged.text, t("Zipped: {0}", summarizeSourceNames(names)), state.source.originalEncoding, {
                     lineSourceIds: merged.lineSourceIds,
                     sourceCatalog: merged.sourceCatalog
                 });
+                if (selectedOperatorId != null && getOperatorIndexById(selectedOperatorId) !== -1) {
+                    state.selectedOperatorId = selectedOperatorId;
+                    invalidateAfterOperatorChange();
+                }
             }
 
             async function readFileAsInput(file, path) {
