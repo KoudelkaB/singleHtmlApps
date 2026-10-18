@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#6d42c6">
+  <title>Calculator — Standard &amp; Fractions</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #242038;
+      --muted: #706a80;
+      --accent: #6d42c6;
+      --line: #e7e2ee;
+      font-family: Inter, "Segoe UI", system-ui, sans-serif;
+      background: #f1eef8;
+      color: var(--ink);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100svh;
+      padding: 32px 16px;
+      background: radial-gradient(ellipse at 15% 0, #e0d7f7, transparent 65%), #f1eef8;
+    }
+    button, input { font: inherit; }
+    button { cursor: pointer; touch-action: manipulation; }
+    button:disabled { cursor: default; opacity: .45; }
+    button, input, summary { -webkit-tap-highlight-color: transparent; }
+    :focus-visible { outline: 3px solid #9766e7; outline-offset: 3px; }
+    [hidden] { display: none !important; }
+    .app { max-width: 890px; margin: auto; }
+    .heading { display: flex; align-items: baseline; gap: 14px; margin: 0 0 20px 4px; flex-wrap: wrap; }
+    h1 { margin: 0; font-size: 27px; letter-spacing: -.8px; }
+    .heading p { margin: 0; color: var(--muted); font-size: 14px; }
+    .layout { display: grid; grid-template-columns: minmax(0, 510px) minmax(240px, 1fr); gap: 20px; align-items: start; }
+    .calculator { border: 1px solid #fff; border-radius: 22px; background: #fff; box-shadow: 0 14px 45px #39215e12; overflow: hidden; }
+    .tabs { display: flex; padding: 6px; gap: 4px; background: #f7f5fb; border-bottom: 1px solid var(--line); }
+    .tab { flex: 1; min-height: 42px; border: 0; border-radius: 10px; color: var(--muted); background: none; font-weight: 600; }
+    .tab[aria-selected="true"] { color: var(--accent); background: white; box-shadow: 0 2px 5px #38215f0d; }
+    .display-area { padding: 20px 22px 12px; }
+    .expression-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+    .expression-label label { font-weight: 600; }
+    .expression {
+      display: block; width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px;
+      background: #faf9fc; color: var(--ink); font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      font-size: 21px; text-align: right; caret-color: var(--accent);
+    }
+    .expression[aria-invalid="true"] { border-color: #d04747; }
+    .result-label { margin: 18px 0 5px; color: var(--muted); font-size: 12px; text-align: right; }
+    .result-row { display: flex; justify-content: flex-end; align-items: center; gap: 8px; min-height: 58px; }
+    .approx { color: var(--muted); font-size: 25px; }
+    .result {
+      min-width: 0; max-height: 170px; overflow: auto; overflow-wrap: anywhere;
+      font-size: clamp(29px, 5vw, 40px); line-height: 1.25; font-weight: 650; text-align: right;
+      font-variant-numeric: tabular-nums; user-select: text;
+    }
+    .result.fraction-mode { font-size: 32px; }
+    .fraction { display: inline-flex; flex-direction: column; align-items: stretch; vertical-align: middle; text-align: center; font-size: .74em; margin: 0 .1em; }
+    .numerator { border-bottom: 2px solid currentColor; padding: 0 .16em .08em; }
+    .denominator { padding: .08em .16em 0; }
+    .equivalent { min-height: 25px; max-height: 65px; overflow: auto; overflow-wrap: anywhere; text-align: right; color: var(--muted); font-size: 13px; padding-top: 7px; }
+    .formats { display: flex; gap: 4px; background: #f5f2fa; padding: 4px; border-radius: 9px; margin-top: 12px; }
+    .formats button { flex: 1; min-height: 32px; border: none; border-radius: 6px; background: none; color: var(--muted); font-size: 12px; }
+    .formats button[aria-pressed="true"] { background: white; color: var(--accent); font-weight: 650; box-shadow: 0 1px 4px #39215e12; }
+    .actions { display: flex; gap: 8px; padding: 0 22px; }
+    .small-button { min-height: 36px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--accent); font-size: 13px; padding: 7px 11px; }
+    .actions .small-button { flex: 1; }
+    .manual-copy { margin: 10px 22px 0; padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: #faf9fc; }
+    .manual-copy label { display: block; color: var(--muted); font-size: 12px; }
+    .manual-copy input { width: 100%; min-width: 0; margin: 6px 0; padding: 8px; border: 1px solid var(--line); border-radius: 5px; color: var(--ink); }
+    .status { margin: 0; min-height: 36px; padding: 8px 22px 4px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .status.error { color: #b02f36; }
+    .fraction-tools { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0 12px 6px; }
+    .keypad { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 0 12px 12px; }
+    .key { min-height: 54px; border: none; border-radius: 10px; background: #f3f1f7; color: var(--ink); font-size: 21px; font-weight: 550; user-select: none; }
+    .key:hover, .small-button:hover { filter: brightness(.96); }
+    .key:active { transform: translateY(1px); filter: brightness(.92); }
+    .key.function { color: #62596f; background: #ebe7f1; font-size: 18px; }
+    .key.clear { color: #b02f36; background: #fcebed; }
+    .key.operator { color: var(--accent); background: #eee5fc; font-size: 24px; }
+    .key.equal { background: var(--accent); color: white; grid-row: span 2; font-size: 28px; }
+    .key.zero { grid-column: span 2; }
+    .fraction-tools .key { min-height: 42px; background: #fff3d6; color: #855b0f; font-size: 18px; }
+    .keypad-hint { margin: 0; padding: 0 16px 14px; text-align: center; font-size: 11px; color: var(--muted); }
+    .sidebar { display: grid; gap: 16px; min-width: 0; }
+    .panel { background: #ffffffa6; border: 1px solid #ffffff; border-radius: 16px; overflow: hidden; }
+    summary { cursor: pointer; padding: 16px; font-size: 14px; font-weight: 650; }
+    .count { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 5px; }
+    .history-list { list-style: none; margin: 0; padding: 0 10px; max-height: 420px; overflow-y: auto; }
+    .history-item { padding: 10px 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; align-items: center; }
+    .history-value { border: 0; border-radius: 6px; background: none; text-align: right; padding: 5px; min-width: 0; overflow-wrap: anywhere; }
+    .history-value:hover { background: #eee5fc; }
+    .history-expression { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+    .history-result { font-size: 17px; color: var(--accent); }
+    .edit-history { background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 6px; color: var(--muted); font-size: 11px; min-height: 34px; }
+    .history-footer { padding: 10px 16px 16px; }
+    .empty-history { margin: 0; padding: 0 16px 16px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .help { padding: 0 16px 16px; font-size: 13px; line-height: 1.65; color: var(--muted); }
+    .help p { margin: 0 0 10px; }
+    .help p:last-child { margin: 0; }
+    kbd { font: 11px ui-monospace, monospace; background: white; border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; white-space: nowrap; }
+    code { color: #514267; font: .95em ui-monospace, monospace; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+    @media (max-width: 740px) {
+      body { padding: 16px 12px; }
+      .app { max-width: 510px; }
+      .layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+      .heading { margin-bottom: 14px; gap: 8px; }
+      .heading p { font-size: 12px; }
+      .history-list { max-height: 250px; }
+    }
+    @media (max-width: 370px) {
+      body { padding: 10px 8px; }
+      .display-area { padding: 16px 14px 10px; }
+      .actions { padding: 0 14px; }
+      .status { padding-left: 14px; padding-right: 14px; }
+      .key { min-height: 48px; }
+      .expression-label span { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) { .key:active { transform: none; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="heading">
+      <h1>Calculator</h1>
+      <p>Standard &amp; exact fractions</p>
+    </header>
+    <div class="layout">
+      <section class="calculator" aria-label="Calculator">
+        <div class="tabs" role="tablist" aria-label="Keypad mode">
+          <button class="tab" id="standardTab" role="tab" aria-selected="true" aria-controls="keypadPanel" tabindex="0" data-mode="standard">Standard</button>
+          <button class="tab" id="fractionTab" role="tab" aria-selected="false" aria-controls="keypadPanel" tabindex="-1" data-mode="fraction">Fractions</button>
+        </div>
+        <div class="display-area">
+          <div class="expression-label"><label for="expression">Expression</label><span>Click anywhere to edit</span></div>
+          <input class="expression" id="expression" type="text" inputmode="text" enterkeyhint="done" maxlength="1200"
+            autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="0" aria-describedby="inputHint status" aria-invalid="false">
+          <p class="result-label" id="resultLabel">Result</p>
+          <div class="result-row">
+            <span class="approx" id="approx" aria-label="approximately" hidden>≈</span>
+            <output class="result" id="result" for="expression" aria-live="off">0</output>
+          </div>
+          <div class="equivalent" id="equivalent"></div>
+          <div class="formats" role="group" aria-label="Result format">
+            <button data-format="decimal" aria-pressed="true">Decimal</button>
+            <button data-format="fraction" aria-pressed="false">Fraction</button>
+            <button data-format="mixed" aria-pressed="false">Mixed</button>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="small-button" id="copyResult" title="Copy the result in the selected format (Ctrl/Cmd+C)">Copy result</button>
+          <button class="small-button" id="pasteExpression" title="Paste a number or expression (Ctrl/Cmd+V)">Paste</button>
+        </div>
+        <div class="manual-copy" id="manualCopy" hidden>
+          <label for="copyField">Result to copy<input id="copyField" type="text" readonly spellcheck="false"></label>
+          <button class="small-button" id="closeCopy">Close</button>
+        </div>
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+        <div id="keypadPanel" role="tabpanel" aria-labelledby="standardTab">
+          <div class="fraction-tools" id="fractionTools" hidden>
+            <button class="key" data-insert="(1/2)" aria-label="Insert one half">½</button>
+            <button class="key" data-insert="(1/4)" aria-label="Insert one quarter">¼</button>
+            <button class="key" data-insert="(3/4)" aria-label="Insert three quarters">¾</button>
+            <button class="key" data-action="fraction" title="Enter numerator, then a/b, then denominator" aria-label="Enter fraction denominator">a/b</button>
+          </div>
+          <div class="keypad" id="keypad">
+            <button class="key clear" data-action="clear" title="Clear expression (Esc)" aria-label="Clear expression">C</button>
+            <button class="key function" data-insert="(" aria-label="Open parenthesis">(</button>
+            <button class="key function" data-insert=")" aria-label="Close parenthesis">)</button>
+            <button class="key function" data-action="backspace" title="Backspace" aria-label="Delete previous character">⌫</button>
+            <button class="key function" data-action="sign" title="Change sign of the current number or selected expression (F9)" aria-label="Change sign">+/−</button>
+            <button class="key function" data-insert="%" title="Divide the current operand by 100" aria-label="Percent">%</button>
+            <button class="key operator" data-insert="/" aria-label="Divide">÷</button>
+            <button class="key operator" data-insert="*" aria-label="Multiply">×</button>
+            <button class="key" data-insert="7">7</button>
+            <button class="key" data-insert="8">8</button>
+            <button class="key" data-insert="9">9</button>
+            <button class="key operator" data-insert="-" aria-label="Subtract">−</button>
+            <button class="key" data-insert="4">4</button>
+            <button class="key" data-insert="5">5</button>
+            <button class="key" data-insert="6">6</button>
+            <button class="key operator" data-insert="+" aria-label="Add">+</button>
+            <button class="key" data-insert="1">1</button>
+            <button class="key" data-insert="2">2</button>
+            <button class="key" data-insert="3">3</button>
+            <button class="key equal" data-action="calculate" title="Calculate (Enter or =)" aria-label="Calculate">=</button>
+            <button class="key zero" data-insert="0">0</button>
+            <button class="key" data-insert="." title="Decimal point (also accepts comma)" aria-label="Decimal point">.</button>
+          </div>
+        </div>
+        <p class="keypad-hint" id="inputHint">Enter = calculate · Esc = clear · ↑ ↓ = history</p>
+      </section>
+      <aside class="sidebar">
+        <details class="panel" id="historyPanel" open>
+          <summary>History <span class="count" id="historyCount">0</span></summary>
+          <p class="empty-history" id="emptyHistory">Your last 30 calculations appear here.<br>Click a result to use it again, or Edit to change the expression.</p>
+          <ol class="history-list" id="historyList"></ol>
+          <div class="history-footer"><button class="small-button" id="clearHistory" disabled>Clear history</button></div>
+        </details>
+        <details class="panel" id="helpPanel">
+          <summary>Keyboard &amp; tips</summary>
+          <div class="help">
+            <p>Type or paste a complete expression. Multiplication and division come before addition and subtraction. Parentheses work in both modes: <code>2*(3+4)</code> or <code>2(3+4)</code>.</p>
+            <p>Use a decimal point or comma. Fractions: <code>1/2 + 3/4</code>. Mixed numbers: <code>2 1/3</code> or <code>-1 1/2</code>. Scientific notation: <code>1e-6</code>.</p>
+            <p><strong>% divides by 100:</strong> <code>200*10% = 20</code>. To add 10%, use <code>200*(1+10%) = 220</code>.</p>
+            <p><kbd>Enter</kbd> / <kbd>=</kbd> calculate · <kbd>Esc</kbd> clear · <kbd>Backspace</kbd> delete · <kbd>F9</kbd> change sign.</p>
+            <p><kbd>Ctrl/Cmd+C</kbd> copies selected text, or the result when nothing is selected. <kbd>Ctrl/Cmd+V</kbd> pastes at the cursor. <kbd>Ctrl/Cmd+Z</kbd> undoes edits; <kbd>Ctrl/Cmd+Shift+Z</kbd> redoes them.</p>
+            <p><kbd>↑</kbd> / <kbd>↓</kbd> recall expressions. A digit after <kbd>=</kbd> starts fresh; an operator continues with the exact result. Pressing <kbd>=</kbd> again keeps that result.</p>
+            <p><strong>≈</strong> marks a decimal rounded to 16 significant digits. Fraction and mixed views stay exact. Copy follows the selected result format. History is saved in this browser when storage is available.</p>
+          </div>
+        </details>
+      </aside>
+    </div>
+    <span class="sr-only" id="announcement" aria-live="polite" aria-atomic="true"></span>
+  </main>
+
+  <script id="calculator-engine">
+    // Pure arithmetic: both keypad modes use the same exact rational engine.
+    const CalculatorMath = (() => {
+      'use strict';
+      const MAX_INPUT = 1200;
+      const MAX_DIGITS = 2400;
+      const abs = n => n < 0n ? -n : n;
+      function gcd(a, b) {
+        a = abs(a); b = abs(b);
+        while (b) { const remainder = a % b; a = b; b = remainder; }
+        return a || 1n;
+      }
+      function rational(n, d = 1n) {
+        if (d === 0n) throw new Error('Cannot divide by zero.');
+        const factor = gcd(n, d);
+        n /= factor; d /= factor;
+        if (d < 0n) { n = -n; d = -d; }
+        if (abs(n).toString().length > MAX_DIGITS || d.toString().length > MAX_DIGITS) {
+          throw new Error('This result is too large. Use a shorter expression.');
+        }
+        return { n, d };
+      }
+      function operate(a, op, b) {
+        if (op === '+') return rational(a.n * b.d + b.n * a.d, a.d * b.d);
+        if (op === '-') return rational(a.n * b.d - b.n * a.d, a.d * b.d);
+        if (op === '*') return rational(a.n * b.n, a.d * b.d);
+        if (op === '/') return rational(a.n * b.d, a.d * b.n);
+        throw new Error('Unknown operator.');
+      }
+      function normalize(text) {
+        if (text.length > MAX_INPUT) throw new Error('An expression can have at most ' + MAX_INPUT + ' characters.');
+        const vulgar = { '½':'1/2', '¼':'1/4', '¾':'3/4', '⅓':'1/3', '⅔':'2/3', '⅕':'1/5', '⅖':'2/5', '⅗':'3/5', '⅘':'4/5', '⅙':'1/6', '⅚':'5/6', '⅛':'1/8', '⅜':'3/8', '⅝':'5/8', '⅞':'7/8', '⅐':'1/7', '⅑':'1/9', '⅒':'1/10' };
+        let source = text.replace(/[−–—]/g, '-').replace(/[×·⋅∙xX]/g, '*')
+          .replace(/[÷:⁄]/g, '/').replace(/,/g, '.').replace(/\u2212/g, '-');
+        source = source.replace(/(\d+[ \t\u00a0\u202f]*)?([½¼¾⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞⅐⅑⅒])/g, (_, whole, character, index) => {
+          if (whole && index > 0 && /[\d.]/.test(source[index - 1])) {
+            throw new Error('Use a whole number before a mixed fraction.');
+          }
+          return '(' + (whole ? whole.trim() + '+' : '') + vulgar[character] + ')';
+        });
+        // A leading unary minus applies to the WHOLE mixed number, including -0 1/2.
+        source = source.replace(/(^|[^\d.])(\d+)[ \t\u00a0\u202f]+(\d+)\s*\/\s*(\d+)/g,
+          (_, prefix, whole, n, d) => prefix + '(' + whole + '+' + n + '/' + d + ')');
+        // Accept space-grouped thousands, while leaving unrelated adjacent numbers invalid.
+        source = source.replace(/(^|[^\d.])(\d{1,3}(?:[ \u00a0\u202f]\d{3})+)(?!\d)/g,
+          (_, prefix, number) => prefix + number.replace(/[ \u00a0\u202f]/g, ''));
+        return source.trim().replace(/=\s*$/, '').trim();
+      }
+      function fromDecimal(text) {
+        const parts = text.toLowerCase().split('e');
+        const exponent = parts.length > 1 ? Number(parts[1]) : 0;
+        if (!Number.isInteger(exponent) || Math.abs(exponent) > 1000) throw new Error('Exponent must be between -1000 and 1000.');
+        const point = parts[0].indexOf('.');
+        const decimals = point < 0 ? 0 : parts[0].length - point - 1;
+        const digits = BigInt(parts[0].replace('.', ''));
+        const scale = decimals - exponent;
+        return scale >= 0 ? rational(digits, 10n ** BigInt(scale)) : rational(digits * 10n ** BigInt(-scale));
+      }
+      function evaluate(text) {
+        const source = normalize(text);
+        if (!source) throw new Error('Enter a number or expression.');
+        const tokens = [];
+        const pattern = /(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[()+*/%\-]/y;
+        let offset = 0;
+        while (offset < source.length) {
+          if (/\s/.test(source[offset])) { offset++; continue; }
+          pattern.lastIndex = offset;
+          const match = pattern.exec(source);
+          if (!match) throw new Error('Unexpected character at position ' + (offset + 1) + '.');
+          tokens.push(match[0]);
+          if (tokens.length > 600) throw new Error('Too many operations. Split this into smaller calculations.');
+          offset = pattern.lastIndex;
+        }
+        let cursor = 0, depth = 0;
+        const peek = () => tokens[cursor];
+        function primary() {
+          if (++depth > 80) throw new Error('Too many nested parentheses or signs.');
+          let value;
+          if (peek() === '(') {
+            cursor++;
+            value = sum();
+            if (peek() !== ')') throw new Error('Missing closing parenthesis.');
+            cursor++;
+          } else if (peek() && /^[\d.]/.test(peek())) {
+            value = fromDecimal(tokens[cursor++]);
+          } else {
+            throw new Error(peek() === undefined ? 'Complete the expression with a number.' : 'Expected a number or opening parenthesis.');
+          }
+          depth--;
+          return value;
+        }
+        function unary() {
+          if (peek() === '+' || peek() === '-') {
+            if (++depth > 80) throw new Error('Too many nested parentheses or signs.');
+            const sign = tokens[cursor++];
+            const value = unary();
+            depth--;
+            return sign === '-' ? rational(-value.n, value.d) : value;
+          }
+          let value = primary();
+          while (peek() === '%') { cursor++; value = rational(value.n, value.d * 100n); }
+          return value;
+        }
+        function product() {
+          let value = unary();
+          while (peek() === '*' || peek() === '/' || peek() === '(' ||
+            (tokens[cursor - 1] === ')' && peek() && /^[\d.]/.test(peek()))) {
+            const op = peek() === '*' || peek() === '/' ? tokens[cursor++] : '*';
+            value = operate(value, op, unary());
+          }
+          return value;
+        }
+        function sum() {
+          let value = product();
+          while (peek() === '+' || peek() === '-') {
+            const op = tokens[cursor++];
+            value = operate(value, op, product());
+          }
+          return value;
+        }
+        const result = sum();
+        if (cursor !== tokens.length) throw new Error(peek() === ')' ? 'Unexpected closing parenthesis.' : 'Add an operator between numbers.');
+        return result;
+      }
+      function fraction(value) { return value.d === 1n ? String(value.n) : value.n + '/' + value.d; }
+      function mixed(value) {
+        const whole = abs(value.n) / value.d, remainder = abs(value.n) % value.d;
+        if (!whole || !remainder) return fraction(value);
+        return (value.n < 0n ? '-' : '') + whole + ' ' + remainder + '/' + value.d;
+      }
+      function decimal(value) {
+        if (value.n === 0n) return { text: '0', approximate: false };
+        const n = abs(value.n), d = value.d;
+        let exponent = n.toString().length - d.toString().length;
+        if (exponent >= 0 ? n < d * 10n ** BigInt(exponent) : n * 10n ** BigInt(-exponent) < d) exponent--;
+        const scale = 15 - exponent;
+        const a = scale >= 0 ? n * 10n ** BigInt(scale) : n;
+        const b = scale >= 0 ? d : d * 10n ** BigInt(-scale);
+        const remainder = a % b;
+        let rounded = a / b + (remainder * 2n >= b ? 1n : 0n);
+        if (rounded.toString().length > 16) { rounded /= 10n; exponent++; }
+        const digits = rounded.toString().padStart(16, '0');
+        let text;
+        if (exponent >= 16 || exponent <= -7) {
+          const tail = digits.slice(1).replace(/0+$/, '');
+          text = digits[0] + (tail ? '.' + tail : '') + 'e' + (exponent >= 0 ? '+' : '') + exponent;
+        } else {
+          const point = exponent + 1;
+          text = point <= 0 ? '0.' + '0'.repeat(-point) + digits :
+            digits.slice(0, point) + (point < digits.length ? '.' + digits.slice(point) : '');
+          if (text.includes('.')) text = text.replace(/0+$/, '').replace(/\.$/, '');
+        }
+        return { text: (value.n < 0n ? '-' : '') + text, approximate: remainder !== 0n };
+      }
+      return Object.freeze({ MAX_INPUT, rational, evaluate, normalize, fraction, mixed, decimal, operate });
+    })();
+  </script>
+
+  <script id="calculator-app">
+    (() => {
+      'use strict';
+      const math = CalculatorMath;
+      const $ = id => document.getElementById(id);
+      const input = $('expression'), resultEl = $('result'), statusEl = $('status');
+      const STORAGE_KEY = 'singleHtmlApps.calculator.v2';
+      let mode = 'standard', format = 'decimal', history = [];
+      let value = math.rational(0n), solved = false, copyText = '0';
+      let undoStack = [], redoStack = [], beforeEdit = null;
+      let historyIndex = -1, historyDraft = '';
+      let revision = 0;
+
+      function tell(message = '', error = false) {
+        statusEl.textContent = message;
+        statusEl.classList.toggle('error', error);
+      }
+      function snapshot() { return { text: input.value, start: input.selectionStart, end: input.selectionEnd, solved }; }
+      function remember(state) {
+        undoStack.push(state);
+        if (undoStack.length > 100) undoStack.shift();
+        redoStack = [];
+      }
+      function focusInput(start = input.value.length, end = start) {
+        input.focus({ preventScroll: true });
+        input.setSelectionRange(start, end);
+      }
+      function refresh() {
+        revision++;
+        tell();
+        $('manualCopy').hidden = true;
+        input.setAttribute('aria-invalid', 'false');
+        try { value = input.value.trim() ? math.evaluate(input.value) : math.rational(0n); }
+        catch (_) { value = null; }
+        render();
+      }
+      function replace(text, start = text.length, end = start, options = {}) {
+        if (text.length > math.MAX_INPUT) { tell('An expression can have at most ' + math.MAX_INPUT + ' characters.', true); return false; }
+        remember(snapshot());
+        input.value = text;
+        solved = !!options.solved;
+        historyIndex = -1;
+        refresh();
+        focusInput(start, end);
+        return true;
+      }
+      function restore(state) {
+        input.value = state.text;
+        solved = state.solved;
+        historyIndex = -1;
+        refresh();
+        focusInput(state.start, state.end);
+      }
+      function undo(redo = false) {
+        const from = redo ? redoStack : undoStack, to = redo ? undoStack : redoStack;
+        if (!from.length) return;
+        to.push(snapshot());
+        restore(from.pop());
+      }
+      function resultOperand() {
+        const exact = math.fraction(value);
+        return value.d === 1n && value.n >= 0n ? exact : '(' + exact + ')';
+      }
+      function insert(text, literal = false) {
+        let source = input.value, start = input.selectionStart, end = input.selectionEnd;
+        if (solved && !literal && start === end && end === source.length) {
+          source = /^[+*/%\-]$/.test(text) && value ? resultOperand() : '';
+          start = end = source.length;
+        }
+        if (!literal && text === '.') {
+          const before = source.slice(0, start);
+          const number = before.match(/(?:\d+[.,]?\d*|[.,]\d*)$/);
+          if (number && /[.,]/.test(number[0]) && start === end) { focusInput(start); return; }
+          if (!/\d$/.test(before)) text = '0.';
+        }
+        // Fraction shortcuts are operands; make adjacency explicit, e.g. 2 × 1/2.
+        if (!literal && text.startsWith('(') && text.includes('/') && /[\d)%]$/.test(source.slice(0, start))) text = '*' + text;
+        return replace(source.slice(0, start) + text + source.slice(end), start + text.length);
+      }
+      function backspace() {
+        const start = input.selectionStart, end = input.selectionEnd;
+        if (start === end && start === 0) { focusInput(0); return; }
+        replace(input.value.slice(0, start === end ? start - 1 : start) + input.value.slice(end), start === end ? start - 1 : start);
+      }
+      function changeSign() {
+        if (solved && value && input.selectionStart === input.selectionEnd && input.selectionEnd === input.value.length) {
+          replace('-(' + math.fraction(value) + ')'); return;
+        }
+        let start = input.selectionStart, end = input.selectionEnd;
+        if (start !== end) {
+          const selected = input.value.slice(start, end);
+          const text = '-(' + selected + ')';
+          replace(input.value.slice(0, start) + text + input.value.slice(end), start + text.length);
+          return;
+        }
+        const before = input.value.slice(0, start);
+        // Find the operand at the caret, including an entire parenthesized expression.
+        if (before.endsWith(')')) {
+          let depth = 0, index = start - 1;
+          for (; index >= 0; index--) {
+            if (input.value[index] === ')') depth++;
+            if (input.value[index] === '(' && --depth === 0) break;
+          }
+          if (index >= 0) start = index;
+        } else {
+          const number = before.match(/(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?%?$/);
+          if (number) start -= number[0].length;
+        }
+        // Remove an existing unary minus, rather than introducing a second sign.
+        const prefix = input.value.slice(0, start);
+        if (prefix.endsWith('-') && (prefix.length === 1 || /[+*/(\-]$/.test(prefix.slice(0, -1)))) {
+          replace(prefix.slice(0, -1) + input.value.slice(start), end - 1);
+        } else {
+          replace(prefix + '-' + input.value.slice(start), end + 1);
+        }
+      }
+      function fractionEntry() {
+        if (input.selectionStart !== input.selectionEnd) {
+          const start = input.selectionStart, end = input.selectionEnd;
+          const text = '(' + input.value.slice(start, end) + ')/';
+          replace(input.value.slice(0, start) + text + input.value.slice(end), start + text.length);
+        } else {
+          if (!input.value.trim()) insert('1');
+          insert('/');
+        }
+      }
+      function renderFraction(number, mixedView) {
+        if (number.d === 1n) { resultEl.textContent = String(number.n); return; }
+        const magnitude = number.n < 0n ? -number.n : number.n;
+        const whole = mixedView ? magnitude / number.d : 0n;
+        const numerator = mixedView && whole ? magnitude % number.d : magnitude;
+        if (number.n < 0n) resultEl.append(document.createTextNode('−'));
+        if (whole) resultEl.append(document.createTextNode(whole + ' '));
+        const stack = document.createElement('span');
+        stack.className = 'fraction';
+        const top = document.createElement('span'), bottom = document.createElement('span');
+        top.className = 'numerator'; top.textContent = String(numerator);
+        bottom.className = 'denominator'; bottom.textContent = String(number.d);
+        stack.append(top, bottom); resultEl.append(stack);
+      }
+      function render() {
+        resultEl.replaceChildren();
+        $('approx').hidden = true;
+        resultEl.classList.toggle('fraction-mode', format !== 'decimal');
+        $('copyResult').disabled = value === null;
+        $('resultLabel').textContent = solved ? 'Result' : input.value.trim() ? 'Preview' : 'Result';
+        if (!value) {
+          resultEl.textContent = '—';
+          resultEl.setAttribute('aria-label', 'Incomplete or invalid expression');
+          $('equivalent').textContent = 'Complete the expression, then press Enter.';
+          copyText = '';
+          return;
+        }
+        const decimal = math.decimal(value), exact = math.fraction(value);
+        copyText = format === 'decimal' ? decimal.text : format === 'mixed' ? math.mixed(value) : exact;
+        resultEl.setAttribute('aria-label', copyText);
+        if (format === 'decimal') {
+          resultEl.textContent = decimal.text;
+          $('approx').hidden = !decimal.approximate;
+          $('equivalent').textContent = value.d !== 1n || decimal.approximate ? 'Exact: ' + exact : '';
+        } else {
+          renderFraction(value, format === 'mixed');
+          $('equivalent').textContent = (decimal.approximate ? '≈ ' : '= ') + decimal.text;
+        }
+      }
+      function calculate() {
+        if (solved) return;
+        try {
+          value = math.evaluate(input.value);
+          solved = true;
+          historyIndex = -1;
+          input.setAttribute('aria-invalid', 'false');
+          tell();
+          render();
+          const entry = { expression: input.value.trim(), n: String(value.n), d: String(value.d) };
+          const previous = history[0];
+          if (!previous || previous.expression !== entry.expression || previous.n !== entry.n || previous.d !== entry.d) {
+            history.unshift(entry);
+            history = history.slice(0, 30);
+            renderHistory();
+            save();
+          }
+          $('announcement').textContent = 'Result: ' + copyText;
+        } catch (error) {
+          solved = false;
+          value = null;
+          render();
+          input.setAttribute('aria-invalid', 'true');
+          tell(error.message, true);
+          focusInput(input.selectionStart, input.selectionEnd);
+        }
+      }
+      function save() {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode, format, history })); }
+        catch (_) { /* Storage may be unavailable on local files or in private browsing. */ }
+      }
+      function load() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+          if (!saved || typeof saved !== 'object') return;
+          if (saved.mode === 'standard' || saved.mode === 'fraction') mode = saved.mode;
+          if (['decimal', 'fraction', 'mixed'].includes(saved.format)) format = saved.format;
+          if (Array.isArray(saved.history)) {
+            history = saved.history.slice(0, 30).filter(entry => {
+              try {
+                if (!entry || typeof entry.expression !== 'string' || entry.expression.length > math.MAX_INPUT ||
+                  typeof entry.n !== 'string' || !/^-?\d{1,2400}$/.test(entry.n) ||
+                  typeof entry.d !== 'string' || !/^[1-9]\d{0,2399}$/.test(entry.d)) return false;
+                const checked = math.evaluate(entry.expression);
+                return String(checked.n) === entry.n && String(checked.d) === entry.d;
+              } catch (_) { return false; }
+            });
+          }
+        } catch (_) { /* Ignore corrupt or inaccessible storage. */ }
+      }
+      function renderHistory() {
+        $('historyList').replaceChildren();
+        $('historyCount').textContent = String(history.length);
+        $('emptyHistory').hidden = history.length > 0;
+        $('clearHistory').disabled = history.length === 0;
+        for (const entry of history) {
+          const item = document.createElement('li');
+          item.className = 'history-item';
+          const use = document.createElement('button');
+          use.className = 'history-value';
+          use.title = 'Use this exact result';
+          const expression = document.createElement('span'), result = document.createElement('span');
+          expression.className = 'history-expression'; expression.textContent = entry.expression + ' =';
+          result.className = 'history-result';
+          result.textContent = math.fraction(math.rational(BigInt(entry.n), BigInt(entry.d)));
+          use.append(expression, result);
+          use.addEventListener('click', () => replace(result.textContent, result.textContent.length, result.textContent.length, { solved: true }));
+          const edit = document.createElement('button');
+          edit.className = 'edit-history'; edit.textContent = 'Edit'; edit.setAttribute('aria-label', 'Edit expression ' + entry.expression);
+          edit.addEventListener('click', () => replace(entry.expression));
+          item.append(use, edit);
+          $('historyList').append(item);
+        }
+      }
+      function setMode(next, updateFormat = true) {
+        mode = next;
+        document.querySelectorAll('[data-mode]').forEach(button => {
+          const selected = button.dataset.mode === mode;
+          button.setAttribute('aria-selected', String(selected));
+          button.tabIndex = selected ? 0 : -1;
+        });
+        $('fractionTools').hidden = mode !== 'fraction';
+        $('keypadPanel').setAttribute('aria-labelledby', mode === 'fraction' ? 'fractionTab' : 'standardTab');
+        if (updateFormat) setFormat(mode === 'fraction' ? 'fraction' : 'decimal');
+        save();
+      }
+      function setFormat(next) {
+        format = next;
+        $('manualCopy').hidden = true;
+        document.querySelectorAll('[data-format]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.format === format)));
+        render();
+        save();
+      }
+      function recall(direction) {
+        if (!history.length) return;
+        if (historyIndex === -1) historyDraft = input.value;
+        const index = Math.max(-1, Math.min(history.length - 1, historyIndex + direction));
+        if (index === historyIndex) return;
+        const draft = historyDraft;
+        replace(index === -1 ? draft : history[index].expression);
+        historyIndex = index;
+        historyDraft = draft;
+      }
+      function pasteText(text) {
+        try {
+          const normalized = math.normalize(text);
+          if (!normalized || /[^0-9.eE+\-*/()% \t\r\n]/.test(normalized)) throw new Error('Paste a number or arithmetic expression only.');
+          // Pasting after = starts a new expression, but preserves an explicit selection.
+          if (solved && input.selectionStart === input.selectionEnd && input.selectionEnd === input.value.length) {
+            return replace(normalized);
+          }
+          return insert(normalized, true);
+        } catch (error) { tell(error.message, true); return false; }
+      }
+      async function pasteClipboard() {
+        const expectedRevision = revision;
+        const selection = { start: input.selectionStart, end: input.selectionEnd };
+        try {
+          if (!navigator.clipboard || !navigator.clipboard.readText) throw new Error('unavailable');
+          const text = await navigator.clipboard.readText();
+          if (revision !== expectedRevision || input.selectionStart !== selection.start || input.selectionEnd !== selection.end) {
+            tell('The expression or cursor changed. Paste again at the current cursor.'); return;
+          }
+          focusInput(selection.start, selection.end);
+          pasteText(text);
+        } catch (_) {
+          focusInput(selection.start, selection.end);
+          tell('Clipboard access is unavailable. Press Ctrl+V (Cmd+V on Mac) to paste.');
+        }
+      }
+      async function copyResult() {
+        if (!value) return;
+        const text = copyText;
+        const rounded = format === 'decimal' && math.decimal(value).approximate;
+        function fallback() {
+          const selection = snapshot(), active = document.activeElement;
+          const area = document.createElement('textarea');
+          area.value = text; area.setAttribute('aria-label', 'Result to copy');
+          area.style.cssText = 'position:fixed;left:-9999px;top:0';
+          document.body.append(area);
+          area.select();
+          let copied = false;
+          try { copied = document.execCommand('copy'); } catch (_) { /* Use manual selection below. */ }
+          area.remove();
+          if (active && active.focus) active.focus({ preventScroll: true });
+          input.setSelectionRange(selection.start, selection.end);
+          return copied;
+        }
+        let copied = false;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            copied = true;
+          } else copied = fallback();
+        } catch (_) { copied = fallback(); }
+        if (copied) tell('Result copied' + (rounded ? ' (rounded decimal).' : '.'));
+        else {
+          $('manualCopy').hidden = false;
+          $('copyField').value = text;
+          $('copyField').focus();
+          $('copyField').select();
+          tell('Copy was blocked. The result is selected; press Ctrl+C (Cmd+C on Mac).');
+        }
+      }
+
+      input.addEventListener('beforeinput', event => {
+        if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') {
+          event.preventDefault(); undo(event.inputType === 'historyRedo'); return;
+        }
+        beforeEdit = snapshot();
+        // Native keyboard input should start fresh after =, just like keypad digits.
+        if (solved && event.inputType === 'insertText' && event.data && !event.isComposing) {
+          const text = event.data === ',' ? '.' : event.data;
+          event.preventDefault();
+          insert(text);
+          beforeEdit = null;
+        }
+      });
+      input.addEventListener('input', () => {
+        if (beforeEdit) remember(beforeEdit);
+        beforeEdit = null;
+        solved = false; historyIndex = -1;
+        refresh();
+      });
+      // Keep the caret when clicking the keypad, without suppressing keyboard activation.
+      document.querySelectorAll('.key').forEach(button => button.addEventListener('pointerdown', event => {
+        if (event.pointerType === 'mouse') event.preventDefault();
+      }));
+      document.querySelectorAll('[data-insert]').forEach(button => button.addEventListener('click', () => insert(button.dataset.insert)));
+      document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => {
+        const actions = { clear: () => replace(''), backspace, sign: changeSign, fraction: fractionEntry, calculate };
+        actions[button.dataset.action]();
+      }));
+      document.querySelectorAll('[data-mode]').forEach(button => {
+        button.addEventListener('click', () => setMode(button.dataset.mode));
+        button.addEventListener('keydown', event => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === 'Home' ? 'standard' : event.key === 'End' ? 'fraction' : mode === 'standard' ? 'fraction' : 'standard';
+          setMode(next);
+          $(next === 'standard' ? 'standardTab' : 'fractionTab').focus();
+        });
+      });
+      document.querySelectorAll('[data-format]').forEach(button => button.addEventListener('click', () => setFormat(button.dataset.format)));
+      $('copyResult').addEventListener('click', copyResult);
+      $('pasteExpression').addEventListener('click', pasteClipboard);
+      function closeCopy() { $('manualCopy').hidden = true; focusInput(input.selectionStart, input.selectionEnd); }
+      $('closeCopy').addEventListener('click', closeCopy);
+      $('copyField').addEventListener('keydown', event => {
+        if (event.key === 'Escape') { event.preventDefault(); closeCopy(); }
+      });
+      $('clearHistory').addEventListener('click', () => { history = []; historyIndex = -1; renderHistory(); save(); tell('History cleared.'); });
+
+      function otherEditor(target) {
+        return target && target !== input && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+      }
+      document.addEventListener('paste', event => {
+        if (otherEditor(event.target) || !event.clipboardData) return;
+        event.preventDefault();
+        pasteText(event.clipboardData.getData('text/plain'));
+      });
+      document.addEventListener('keydown', event => {
+        if (event.isComposing || otherEditor(event.target) || event.altKey) return;
+        const key = event.key, modified = event.ctrlKey || event.metaKey;
+        if (modified) {
+          if (key.toLowerCase() === 'c') {
+            const selectedInput = document.activeElement === input && input.selectionStart !== input.selectionEnd;
+            if (!selectedInput && !String(window.getSelection()) && value) { event.preventDefault(); copyResult(); }
+          } else if (key.toLowerCase() === 'a' && document.activeElement !== input) {
+            event.preventDefault(); focusInput(0, input.value.length);
+          } else if (key.toLowerCase() === 'v') {
+            if (document.activeElement !== input) focusInput(input.selectionStart, input.selectionEnd);
+          } else if (key.toLowerCase() === 'z' || key.toLowerCase() === 'y') {
+            event.preventDefault(); undo(event.shiftKey || key.toLowerCase() === 'y');
+          }
+          return;
+        }
+        if (key === 'Escape') { event.preventDefault(); replace(''); return; }
+        if (key === 'F9') { event.preventDefault(); changeSign(); return; }
+        // Enter and Space activate focused controls normally.
+        if (event.target !== input && /^(BUTTON|SUMMARY)$/.test(event.target.tagName) && (key === 'Enter' || key === ' ')) return;
+        if (key === 'Enter' || key === '=') { event.preventDefault(); calculate(); return; }
+        if (event.target === input && !event.shiftKey && (key === 'ArrowUp' || key === 'ArrowDown')) {
+          event.preventDefault(); recall(key === 'ArrowUp' ? 1 : -1); return;
+        }
+        if (event.target !== input) {
+          if (/^[0-9.,()+*/%\-]$/.test(key)) { event.preventDefault(); insert(key === ',' ? '.' : key); }
+          else if (key === 'Backspace') { event.preventDefault(); backspace(); }
+        }
+      });
+      load();
+      setMode(mode, false);
+      setFormat(format);
+      renderHistory();
+    })();
+  </script>
+</body>
+</html>
