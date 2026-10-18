@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#6d42c6">
-  <title>Calculator — Standard &amp; Fractions</title>
+  <title>Calculator — Scientific &amp; Programmer</title>
   <style>
     :root {
       color-scheme: light;
@@ -23,7 +23,7 @@
       padding: 32px 16px;
       background: radial-gradient(ellipse at 15% 0, #e0d7f7, transparent 65%), #f1eef8;
     }
-    button, input { font: inherit; }
+    button, input, select { font: inherit; }
     button { cursor: pointer; touch-action: manipulation; }
     button:disabled { cursor: default; opacity: .45; }
     button, input, summary { -webkit-tap-highlight-color: transparent; }
@@ -34,11 +34,12 @@
     h1 { margin: 0; font-size: 27px; letter-spacing: -.8px; }
     .heading p { margin: 0; color: var(--muted); font-size: 14px; }
     .layout { display: grid; grid-template-columns: minmax(0, 510px) minmax(240px, 1fr); gap: 20px; align-items: start; }
-    .calculator { border: 1px solid #fff; border-radius: 22px; background: #fff; box-shadow: 0 14px 45px #39215e12; overflow: hidden; }
+    .calculator { border: 1px solid #fff; border-radius: 22px; background: #fff; box-shadow: 0 14px 45px #39215e12; overflow: clip; }
     .tabs { display: flex; padding: 6px; gap: 4px; background: #f7f5fb; border-bottom: 1px solid var(--line); }
     .tab { flex: 1; min-height: 42px; border: 0; border-radius: 10px; color: var(--muted); background: none; font-weight: 600; }
     .tab[aria-selected="true"] { color: var(--accent); background: white; box-shadow: 0 2px 5px #38215f0d; }
     .display-area { padding: 20px 22px 12px; }
+    .calculator.extended .display-area { position: sticky; top: 0; z-index: 2; background: #fff; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
     .expression-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
     .expression-label label { font-weight: 600; }
     .expression {
@@ -82,6 +83,24 @@
     .key.equal { background: var(--accent); color: white; grid-row: span 2; font-size: 28px; }
     .key.zero { grid-column: span 2; }
     .fraction-tools .key { min-height: 42px; background: #fff3d6; color: #855b0f; font-size: 18px; }
+    .mode-options { padding: 12px 22px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+    .mode-options button, .mode-options select { min-height: 34px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); }
+    .mode-options button[aria-pressed="true"] { background: #eee5fc; color: var(--accent); border-color: #c5afe7; }
+    .memory-row { display: flex; gap: 4px; padding: 0 12px 8px; align-items: center; }
+    .memory-row button { flex: 1; min-height: 32px; border: 0; border-radius: 6px; background: #faf9fc; color: var(--accent); font-size: 12px; }
+    .memory-note { padding: 0 22px 8px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; max-height: 42px; overflow: auto; }
+    .extra-keys { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; padding: 0 12px 8px; }
+    .extra-keys .key { min-height: 40px; font-size: 15px; color: #514267; background: #f3eefb; }
+    .hex-keys { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .base-readings { padding: 0 22px 14px; display: grid; gap: 5px; }
+    .base-reading { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 8px; text-align: left; border: 0; border-radius: 5px; background: #f7f5fb; padding: 7px; color: var(--muted); font-size: 11px; }
+    .base-reading output { overflow-wrap: anywhere; font-family: ui-monospace, monospace; color: var(--ink); }
+    .bit-grid { padding: 0 12px 12px; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; }
+    .bit { border: 1px solid var(--line); border-radius: 5px; background: #faf9fc; color: var(--muted); min-height: 35px; font: 13px ui-monospace, monospace; }
+    .bit[aria-pressed="true"] { background: #eee5fc; color: var(--accent); border-color: #c5afe7; }
+    .bit small { display: block; font-size: 8px; opacity: .7; }
+    .program-note { color: var(--muted); font-size: 11px; padding: 0 22px 12px; margin: 0; line-height: 1.5; }
+    .tab { font-size: 12px; padding: 5px 3px; }
     .keypad-hint { margin: 0; padding: 0 16px 14px; text-align: center; font-size: 11px; color: var(--muted); }
     .sidebar { display: grid; gap: 16px; min-width: 0; }
     .panel { background: #ffffffa6; border: 1px solid #ffffff; border-radius: 16px; overflow: hidden; }
@@ -125,13 +144,30 @@
   <main class="app">
     <header class="heading">
       <h1>Calculator</h1>
-      <p>Standard &amp; exact fractions</p>
+      <p>Exact fractions · Science · Programming</p>
     </header>
     <div class="layout">
       <section class="calculator" aria-label="Calculator">
         <div class="tabs" role="tablist" aria-label="Keypad mode">
           <button class="tab" id="standardTab" role="tab" aria-selected="true" aria-controls="keypadPanel" tabindex="0" data-mode="standard">Standard</button>
           <button class="tab" id="fractionTab" role="tab" aria-selected="false" aria-controls="keypadPanel" tabindex="-1" data-mode="fraction">Fractions</button>
+          <button class="tab" id="scientificTab" role="tab" aria-selected="false" aria-controls="keypadPanel" tabindex="-1" data-mode="scientific">Scientific</button>
+          <button class="tab" id="programmerTab" role="tab" aria-selected="false" aria-controls="keypadPanel" tabindex="-1" data-mode="programmer">Programmer</button>
+        </div>
+        <div class="mode-options" id="scienceOptions" hidden role="group" aria-label="Angle unit">
+          <span>Angles</span>
+          <button data-angle="deg" aria-pressed="true" title="Degrees: a full turn is 360°">DEG</button>
+          <button data-angle="rad" aria-pressed="false" title="Radians: a full turn is 2π">RAD</button>
+        </div>
+        <div class="mode-options" id="programOptions" hidden>
+          <div role="group" aria-label="Number base">
+            <button data-base="2" aria-pressed="false">BIN</button>
+            <button data-base="8" aria-pressed="false">OCT</button>
+            <button data-base="10" aria-pressed="true">DEC</button>
+            <button data-base="16" aria-pressed="false">HEX</button>
+          </div>
+          <label for="wordSize">Word <select id="wordSize"><option value="8">8 bit</option><option value="16">16 bit</option><option value="32">32 bit</option><option value="64" selected>64 bit</option></select></label>
+          <button id="signedToggle" aria-pressed="true" title="Interpret the high bit as a sign bit (two's complement)">Signed</button>
         </div>
         <div class="display-area">
           <div class="expression-label"><label for="expression">Expression</label><span>Click anywhere to edit</span></div>
@@ -143,11 +179,17 @@
             <output class="result" id="result" for="expression" aria-live="off">0</output>
           </div>
           <div class="equivalent" id="equivalent"></div>
-          <div class="formats" role="group" aria-label="Result format">
+          <div class="formats" id="resultFormats" role="group" aria-label="Result format">
             <button data-format="decimal" aria-pressed="true">Decimal</button>
             <button data-format="fraction" aria-pressed="false">Fraction</button>
             <button data-format="mixed" aria-pressed="false">Mixed</button>
           </div>
+        </div>
+        <div class="base-readings" id="baseReadings" hidden aria-label="Base conversions; click a row to copy">
+          <button class="base-reading" data-copy-base="16" title="Copy hexadecimal with 0x prefix"><span>HEX</span><output id="hexReading">0</output></button>
+          <button class="base-reading" data-copy-base="10" title="Copy decimal"><span>DEC</span><output id="decReading">0</output></button>
+          <button class="base-reading" data-copy-base="8" title="Copy octal with 0o prefix"><span>OCT</span><output id="octReading">0</output></button>
+          <button class="base-reading" data-copy-base="2" title="Copy binary with 0b prefix"><span>BIN</span><output id="binReading">0</output></button>
         </div>
         <div class="actions">
           <button class="small-button" id="copyResult" title="Copy the result in the selected format (Ctrl/Cmd+C)">Copy result</button>
@@ -158,12 +200,39 @@
           <button class="small-button" id="closeCopy">Close</button>
         </div>
         <p class="status" id="status" role="status" aria-live="polite"></p>
+        <p class="memory-note" id="memoryNote" aria-live="polite">Memory empty</p>
+        <div class="memory-row" role="group" aria-label="Memory">
+          <button data-memory="clear" title="Clear memory">MC</button>
+          <button data-memory="recall" title="Recall memory at the cursor">MR</button>
+          <button data-memory="store" title="Store current result">MS</button>
+          <button data-memory="add" title="Add current result to memory">M+</button>
+          <button data-memory="subtract" title="Subtract current result from memory">M−</button>
+          <button data-constant="ans" title="Insert last calculated answer">Ans</button>
+        </div>
         <div id="keypadPanel" role="tabpanel" aria-labelledby="standardTab">
           <div class="fraction-tools" id="fractionTools" hidden>
             <button class="key" data-insert="(1/2)" aria-label="Insert one half">½</button>
             <button class="key" data-insert="(1/4)" aria-label="Insert one quarter">¼</button>
             <button class="key" data-insert="(3/4)" aria-label="Insert three quarters">¾</button>
             <button class="key" data-action="fraction" title="Enter numerator, then a/b, then denominator" aria-label="Enter fraction denominator">a/b</button>
+          </div>
+          <div class="extra-keys" id="scientificTools" hidden>
+            <button class="key" data-function="sin">sin</button><button class="key" data-function="cos">cos</button><button class="key" data-function="tan">tan</button><button class="key" data-constant="pi" aria-label="Pi">π</button><button class="key" data-constant="e" aria-label="Euler's number">e</button>
+            <button class="key" data-function="asin" title="Inverse sine">sin⁻¹</button><button class="key" data-function="acos" title="Inverse cosine">cos⁻¹</button><button class="key" data-function="atan" title="Inverse tangent">tan⁻¹</button><button class="key" data-function="ln">ln</button><button class="key" data-function="log" title="Base-10 logarithm">log</button>
+            <button class="key" data-function="sqrt" aria-label="Square root">√x</button><button class="key" data-function="cbrt" aria-label="Cube root">∛x</button><button class="key" data-science="square">x²</button><button class="key" data-insert="^" aria-label="Power">xʸ</button><button class="key" data-science="reciprocal" aria-label="Reciprocal">1/x</button>
+            <button class="key" data-function="exp" title="e to the power x">eˣ</button><button class="key" data-science="tenPower">10ˣ</button><button class="key" data-function="log2">log₂</button><button class="key" data-insert="!" aria-label="Factorial">n!</button><button class="key" data-function="abs">|x|</button>
+            <button class="key" data-function="sinh">sinh</button><button class="key" data-function="cosh">cosh</button><button class="key" data-function="tanh">tanh</button><button class="key" data-function="floor" title="Round down">floor</button><button class="key" data-function="ceil" title="Round up">ceil</button>
+          </div>
+          <div id="programmerTools" hidden>
+            <div class="extra-keys hex-keys" id="hexKeys">
+              <button class="key" data-hex="A">A</button><button class="key" data-hex="B">B</button><button class="key" data-hex="C">C</button><button class="key" data-hex="D">D</button><button class="key" data-hex="E">E</button><button class="key" data-hex="F">F</button>
+            </div>
+            <div class="extra-keys">
+              <button class="key" data-insert=" &amp; ">AND</button><button class="key" data-insert=" | ">OR</button><button class="key" data-insert=" ^ ">XOR</button><button class="key" data-program="not">NOT</button><button class="key" data-insert=" % ">mod</button>
+              <button class="key" data-insert=" &lt;&lt; ">«</button><button class="key" data-insert=" &gt;&gt; ">»</button><button class="key" data-insert=" &gt;&gt;&gt; " title="Logical right shift">»₀</button><button class="key" data-program="left" title="Shift left by one bit">Lsh 1</button><button class="key" data-program="right" title="Shift right by one bit">Rsh 1</button>
+            </div>
+            <p class="program-note" id="wordNote">Integer arithmetic wraps to the selected word size. % is remainder; ^ is XOR. Click a bit to toggle it.</p>
+            <details id="bitPanel"><summary id="bitSummary">Bit editor</summary><div class="bit-grid" id="bitGrid" role="group" aria-label="Bits, highest first"></div></details>
           </div>
           <div class="keypad" id="keypad">
             <button class="key clear" data-action="clear" title="Clear expression (Esc)" aria-label="Clear expression">C</button>
@@ -209,6 +278,11 @@
             <p><kbd>Ctrl/Cmd+C</kbd> copies selected text, or the result when nothing is selected. <kbd>Ctrl/Cmd+V</kbd> pastes at the cursor. <kbd>Ctrl/Cmd+Z</kbd> undoes edits; <kbd>Ctrl/Cmd+Shift+Z</kbd> redoes them.</p>
             <p><kbd>↑</kbd> / <kbd>↓</kbd> recall expressions. A digit after <kbd>=</kbd> starts fresh; an operator continues with the exact result. Pressing <kbd>=</kbd> again keeps that result.</p>
             <p><strong>≈</strong> marks a decimal rounded to 16 significant digits. Fraction and mixed views stay exact. Copy follows the selected result format. History is saved in this browser when storage is available.</p>
+            <p><strong>Scientific:</strong> functions use parentheses, e.g. <code>sin(30)</code>, <code>ln(e)</code>, <code>sqrt(2)</code>. DEG/RAD also controls inverse trig. Powers associate right: <code>2^3^2 = 512</code>; <code>-2^2 = -4</code>. Factorial requires an integer from 0 to 1000. Other functions include <code>round</code>, <code>trunc</code> and <code>log10</code>.</p>
+            <p>Scientific approximations show <strong>≈</strong> and 15 significant digits; they stay approximate in history, memory and later calculations. Exact roots, integer powers and factorials keep full precision. <strong>Ans</strong> inserts the last calculated answer; memory buttons work in every mode.</p>
+            <p><strong>Programmer:</strong> unprefixed numbers use the selected base. Prefixes override it: <code>0xFF</code>, <code>0b1010</code>, <code>0o77</code>, <code>0d255</code>. Underscores can group digits. Changing base converts the expression without changing its value.</p>
+            <p>Arithmetic wraps after each operation to 8, 16, 32 or 64 bits. Signed uses two's complement; integer division truncates toward zero. Operators: <code>~</code> (NOT), <code>&amp;</code> (AND), <code>|</code> (OR), <code>^</code> (XOR), <code>&lt;&lt;</code>, <code>&gt;&gt;</code> and <code>&gt;&gt;&gt;</code> (logical shift). Shift counts must be between zero and the word size. Typed aliases <code>AND OR XOR NOT MOD SHL SHR USHR</code> also work.</p>
+            <p>Math and programmer modes keep separate drafts. History entries remember their angle unit, base and word settings. Click a base conversion to copy it with an explicit prefix.</p>
           </div>
         </details>
       </aside>
@@ -217,11 +291,10 @@
   </main>
 
   <script id="calculator-engine">
-    // Pure arithmetic: both keypad modes use the same exact rational engine.
+    // Exact rational arithmetic, approximate scientific functions, and fixed-width integers.
     const CalculatorMath = (() => {
       'use strict';
-      const MAX_INPUT = 1200;
-      const MAX_DIGITS = 2400;
+      const MAX_INPUT = 1200, MAX_DIGITS = 3000;
       const abs = n => n < 0n ? -n : n;
       function gcd(a, b) {
         a = abs(a); b = abs(b);
@@ -233,33 +306,38 @@
         const factor = gcd(n, d);
         n /= factor; d /= factor;
         if (d < 0n) { n = -n; d = -d; }
-        if (abs(n).toString().length > MAX_DIGITS || d.toString().length > MAX_DIGITS) {
-          throw new Error('This result is too large. Use a shorter expression.');
-        }
+        if (abs(n).toString().length > MAX_DIGITS || d.toString().length > MAX_DIGITS) throw new Error('This result is too large. Use a shorter expression.');
         return { n, d };
       }
+      function mark(result, ...inputs) {
+        if (inputs.some(input => input.approximate)) result.approximate = true;
+        return result;
+      }
       function operate(a, op, b) {
-        if (op === '+') return rational(a.n * b.d + b.n * a.d, a.d * b.d);
-        if (op === '-') return rational(a.n * b.d - b.n * a.d, a.d * b.d);
-        if (op === '*') return rational(a.n * b.n, a.d * b.d);
-        if (op === '/') return rational(a.n * b.d, a.d * b.n);
-        throw new Error('Unknown operator.');
+        let result;
+        if (op === '+') result = rational(a.n * b.d + b.n * a.d, a.d * b.d);
+        else if (op === '-') result = rational(a.n * b.d - b.n * a.d, a.d * b.d);
+        else if (op === '*') result = rational(a.n * b.n, a.d * b.d);
+        else if (op === '/') result = rational(a.n * b.d, a.d * b.n);
+        else if (op === '^') return power(a, b);
+        else throw new Error('Unknown operator.');
+        return mark(result, a, b);
+      }
+      function checkLength(text) {
+        if (typeof text !== 'string' || text.length > MAX_INPUT) throw new Error('An expression can have at most ' + MAX_INPUT + ' characters.');
       }
       function normalize(text) {
-        if (text.length > MAX_INPUT) throw new Error('An expression can have at most ' + MAX_INPUT + ' characters.');
+        checkLength(text);
         const vulgar = { '½':'1/2', '¼':'1/4', '¾':'3/4', '⅓':'1/3', '⅔':'2/3', '⅕':'1/5', '⅖':'2/5', '⅗':'3/5', '⅘':'4/5', '⅙':'1/6', '⅚':'5/6', '⅛':'1/8', '⅜':'3/8', '⅝':'5/8', '⅞':'7/8', '⅐':'1/7', '⅑':'1/9', '⅒':'1/10' };
-        let source = text.replace(/[−–—]/g, '-').replace(/[×·⋅∙xX]/g, '*')
-          .replace(/[÷:⁄]/g, '/').replace(/,/g, '.').replace(/\u2212/g, '-');
+        let source = text.replace(/[−–—]/g, '-').replace(/[×·⋅∙]/g, '*')
+          .replace(/(\d|\))\s*[xX]\s*(?=\d|\()/g, '$1*')
+          .replace(/[÷:⁄]/g, '/').replace(/,/g, '.').replace(/π/g, 'pi').replace(/√/g, 'sqrt').replace(/\*\*/g, '^');
         source = source.replace(/(\d+[ \t\u00a0\u202f]*)?([½¼¾⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞⅐⅑⅒])/g, (_, whole, character, index) => {
-          if (whole && index > 0 && /[\d.]/.test(source[index - 1])) {
-            throw new Error('Use a whole number before a mixed fraction.');
-          }
+          if (whole && index > 0 && /[\d.]/.test(source[index - 1])) throw new Error('Use a whole number before a mixed fraction.');
           return '(' + (whole ? whole.trim() + '+' : '') + vulgar[character] + ')';
         });
-        // A leading unary minus applies to the WHOLE mixed number, including -0 1/2.
         source = source.replace(/(^|[^\d.])(\d+)[ \t\u00a0\u202f]+(\d+)\s*\/\s*(\d+)/g,
           (_, prefix, whole, n, d) => prefix + '(' + whole + '+' + n + '/' + d + ')');
-        // Accept space-grouped thousands, while leaving unrelated adjacent numbers invalid.
         source = source.replace(/(^|[^\d.])(\d{1,3}(?:[ \u00a0\u202f]\d{3})+)(?!\d)/g,
           (_, prefix, number) => prefix + number.replace(/[ \u00a0\u202f]/g, ''));
         return source.trim().replace(/=\s*$/, '').trim();
@@ -274,92 +352,26 @@
         const scale = decimals - exponent;
         return scale >= 0 ? rational(digits, 10n ** BigInt(scale)) : rational(digits * 10n ** BigInt(-scale));
       }
-      function evaluate(text) {
-        const source = normalize(text);
-        if (!source) throw new Error('Enter a number or expression.');
-        const tokens = [];
-        const pattern = /(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[()+*/%\-]/y;
-        let offset = 0;
-        while (offset < source.length) {
-          if (/\s/.test(source[offset])) { offset++; continue; }
-          pattern.lastIndex = offset;
-          const match = pattern.exec(source);
-          if (!match) throw new Error('Unexpected character at position ' + (offset + 1) + '.');
-          tokens.push(match[0]);
-          if (tokens.length > 600) throw new Error('Too many operations. Split this into smaller calculations.');
-          offset = pattern.lastIndex;
-        }
-        let cursor = 0, depth = 0;
-        const peek = () => tokens[cursor];
-        function primary() {
-          if (++depth > 80) throw new Error('Too many nested parentheses or signs.');
-          let value;
-          if (peek() === '(') {
-            cursor++;
-            value = sum();
-            if (peek() !== ')') throw new Error('Missing closing parenthesis.');
-            cursor++;
-          } else if (peek() && /^[\d.]/.test(peek())) {
-            value = fromDecimal(tokens[cursor++]);
-          } else {
-            throw new Error(peek() === undefined ? 'Complete the expression with a number.' : 'Expected a number or opening parenthesis.');
-          }
-          depth--;
-          return value;
-        }
-        function unary() {
-          if (peek() === '+' || peek() === '-') {
-            if (++depth > 80) throw new Error('Too many nested parentheses or signs.');
-            const sign = tokens[cursor++];
-            const value = unary();
-            depth--;
-            return sign === '-' ? rational(-value.n, value.d) : value;
-          }
-          let value = primary();
-          while (peek() === '%') { cursor++; value = rational(value.n, value.d * 100n); }
-          return value;
-        }
-        function product() {
-          let value = unary();
-          while (peek() === '*' || peek() === '/' || peek() === '(' ||
-            (tokens[cursor - 1] === ')' && peek() && /^[\d.]/.test(peek()))) {
-            const op = peek() === '*' || peek() === '/' ? tokens[cursor++] : '*';
-            value = operate(value, op, unary());
-          }
-          return value;
-        }
-        function sum() {
-          let value = product();
-          while (peek() === '+' || peek() === '-') {
-            const op = tokens[cursor++];
-            value = operate(value, op, product());
-          }
-          return value;
-        }
-        const result = sum();
-        if (cursor !== tokens.length) throw new Error(peek() === ')' ? 'Unexpected closing parenthesis.' : 'Add an operator between numbers.');
-        return result;
-      }
       function fraction(value) { return value.d === 1n ? String(value.n) : value.n + '/' + value.d; }
       function mixed(value) {
         const whole = abs(value.n) / value.d, remainder = abs(value.n) % value.d;
         if (!whole || !remainder) return fraction(value);
         return (value.n < 0n ? '-' : '') + whole + ' ' + remainder + '/' + value.d;
       }
-      function decimal(value) {
-        if (value.n === 0n) return { text: '0', approximate: false };
+      function decimal(value, precision = value.approximate ? 15 : 16) {
+        if (value.n === 0n) return { text: '0', approximate: !!value.approximate };
         const n = abs(value.n), d = value.d;
         let exponent = n.toString().length - d.toString().length;
         if (exponent >= 0 ? n < d * 10n ** BigInt(exponent) : n * 10n ** BigInt(-exponent) < d) exponent--;
-        const scale = 15 - exponent;
+        const scale = precision - 1 - exponent;
         const a = scale >= 0 ? n * 10n ** BigInt(scale) : n;
         const b = scale >= 0 ? d : d * 10n ** BigInt(-scale);
         const remainder = a % b;
         let rounded = a / b + (remainder * 2n >= b ? 1n : 0n);
-        if (rounded.toString().length > 16) { rounded /= 10n; exponent++; }
-        const digits = rounded.toString().padStart(16, '0');
+        if (rounded.toString().length > precision) { rounded /= 10n; exponent++; }
+        const digits = rounded.toString().padStart(precision, '0');
         let text;
-        if (exponent >= 16 || exponent <= -7) {
+        if (exponent >= precision || exponent <= -7) {
           const tail = digits.slice(1).replace(/0+$/, '');
           text = digits[0] + (tail ? '.' + tail : '') + 'e' + (exponent >= 0 ? '+' : '') + exponent;
         } else {
@@ -368,30 +380,340 @@
             digits.slice(0, point) + (point < digits.length ? '.' + digits.slice(point) : '');
           if (text.includes('.')) text = text.replace(/0+$/, '').replace(/\.$/, '');
         }
-        return { text: (value.n < 0n ? '-' : '') + text, approximate: remainder !== 0n };
+        return { text: (value.n < 0n ? '-' : '') + text, approximate: !!value.approximate || remainder !== 0n };
       }
-      return Object.freeze({ MAX_INPUT, rational, evaluate, normalize, fraction, mixed, decimal, operate });
+      function toNumber(value) {
+        const number = Number(decimal(value, 17).text);
+        if (!Number.isFinite(number)) throw new Error('Scientific functions require a finite number in floating-point range.');
+        if (number === 0 && value.n !== 0n) throw new Error('This number is too small for a scientific function.');
+        return number;
+      }
+      function approximate(number) {
+        if (!Number.isFinite(number)) throw new Error('The scientific result is outside the finite real-number range.');
+        const result = fromDecimal(String(number));
+        result.approximate = true;
+        return result;
+      }
+      function logMagnitude(n) {
+        const digits = abs(n).toString();
+        return Math.log10(Number(digits.slice(0, 15))) + Math.max(0, digits.length - 15);
+      }
+      function power(a, b) {
+        if (b.d === 1n) {
+          const exponent = abs(b.n);
+          if (exponent > 10000n) throw new Error('Integer powers are limited to exponents from -10000 to 10000.');
+          if (a.n === 0n && b.n < 0n) throw new Error('Cannot divide by zero.');
+          if (exponent && ((a.n && logMagnitude(a.n) * Number(exponent) >= MAX_DIGITS) ||
+            logMagnitude(a.d) * Number(exponent) >= MAX_DIGITS)) throw new Error('This power is too large.');
+          const result = b.n < 0n ? rational(a.d ** exponent, a.n ** exponent) : rational(a.n ** exponent, a.d ** exponent);
+          return mark(result, a, b);
+        }
+        if (a.n < 0n) throw new Error('Fractional powers of negative numbers are not real here; use cbrt for cube roots.');
+        if (a.n === 0n && b.n < 0n) throw new Error('Cannot divide by zero.');
+        const result = Math.pow(toNumber(a), toNumber(b));
+        if (result === 0 && a.n !== 0n) throw new Error('This power is too small for floating-point arithmetic.');
+        return approximate(result);
+      }
+      function integerRoot(n, degree) {
+        if (n < 2n) return n;
+        const k = BigInt(degree);
+        let root = 1n << BigInt(Math.ceil(n.toString(2).length / degree));
+        while (true) {
+          const next = ((k - 1n) * root + n / root ** (k - 1n)) / k;
+          if (next >= root) return root;
+          root = next;
+        }
+      }
+      function factorial(value) {
+        if (value.d !== 1n || value.n < 0n || value.n > 1000n) throw new Error('Factorial requires an integer from 0 to 1000.');
+        let result = 1n;
+        for (let n = 2n; n <= value.n; n++) result *= n;
+        return mark(rational(result), value);
+      }
+      const FUNCTIONS = new Set(['sqrt', 'cbrt', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh',
+        'ln', 'log', 'log10', 'log2', 'exp', 'abs', 'floor', 'ceil', 'round', 'trunc', 'fact', 'inv', 'approx']);
+      function scientific(name, value, angle) {
+        if (name === 'approx') return mark({ ...value }, { approximate: true });
+        if (name === 'fact') return factorial(value);
+        if (name === 'inv') return operate(rational(1n), '/', value);
+        if (name === 'abs') return mark(rational(abs(value.n), value.d), value);
+        if (['floor', 'ceil', 'round', 'trunc'].includes(name)) {
+          let n = value.n / value.d;
+          if (name === 'floor' && value.n < 0n && value.n % value.d) n--;
+          if (name === 'ceil' && value.n > 0n && value.n % value.d) n++;
+          if (name === 'round') n = (abs(value.n) * 2n + value.d) / (2n * value.d) * (value.n < 0n ? -1n : 1n);
+          return mark(rational(n), value);
+        }
+        if (name === 'sqrt' || name === 'cbrt') {
+          const degree = name === 'sqrt' ? 2 : 3;
+          if (degree === 2 && value.n < 0n) throw new Error('Square root requires a non-negative number.');
+          const n = integerRoot(abs(value.n), degree), d = integerRoot(value.d, degree);
+          if (n ** BigInt(degree) === abs(value.n) && d ** BigInt(degree) === value.d) {
+            return mark(rational(value.n < 0n ? -n : n, d), value);
+          }
+          return approximate(Math[name](toNumber(value)));
+        }
+        if (['ln', 'log', 'log10', 'log2'].includes(name)) {
+          if (value.n <= 0n) throw new Error('Logarithms require a positive number.');
+          if (!value.approximate && value.n === value.d) return rational(0n);
+          if (!value.approximate && name === 'log2' && (value.n & (value.n - 1n)) === 0n && (value.d & (value.d - 1n)) === 0n) {
+            return rational(BigInt(value.n.toString(2).length - value.d.toString(2).length));
+          }
+          if (!value.approximate && (name === 'log' || name === 'log10') && /^10*$/.test(String(value.n)) && /^10*$/.test(String(value.d))) {
+            return rational(BigInt(String(value.n).length - String(value.d).length));
+          }
+          const number = toNumber(value);
+          return approximate(name === 'ln' ? Math.log(number) : name === 'log2' ? Math.log2(number) : Math.log10(number));
+        }
+        if (name === 'exp' && value.n === 0n && !value.approximate) return rational(1n);
+        if (['sin', 'cos', 'tan'].includes(name)) {
+          let reduced = value;
+          if (angle === 'deg') {
+            reduced = mark(rational(value.n % (360n * value.d), value.d), value);
+            if (reduced.d === 1n && reduced.n % 90n === 0n) {
+              const quarter = Number((reduced.n / 90n % 4n + 4n) % 4n);
+              if (name === 'tan' && quarter % 2) throw new Error('Tangent is undefined at odd multiples of 90 degrees.');
+              return mark(rational(BigInt(name === 'sin' ? [0, 1, 0, -1][quarter] : name === 'cos' ? [1, 0, -1, 0][quarter] : 0)), value);
+            }
+          }
+          const number = toNumber(reduced) * (angle === 'deg' ? Math.PI / 180 : 1);
+          if (name === 'tan' && Math.abs(Math.cos(number)) < 1e-15) throw new Error('Tangent is undefined at this angle.');
+          return approximate(Math[name](number));
+        }
+        const number = toNumber(value);
+        if ((name === 'asin' || name === 'acos') && Math.abs(number) > 1) throw new Error('Inverse sine and cosine require a value between -1 and 1.');
+        let result = Math[name](number);
+        if (['asin', 'acos', 'atan'].includes(name) && angle === 'deg') result *= 180 / Math.PI;
+        if (name === 'exp' && result === 0) throw new Error('This exponential result is too small for floating-point arithmetic.');
+        return approximate(result);
+      }
+      function evaluate(text, options = {}) {
+        const source = normalize(text);
+        if (!source) throw new Error('Enter a number or expression.');
+        const tokens = [];
+        const pattern = /(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[a-zA-Z][a-zA-Z0-9]*|[()+*/%^!\-]/y;
+        let offset = 0;
+        while (offset < source.length) {
+          if (/\s/.test(source[offset])) { offset++; continue; }
+          pattern.lastIndex = offset;
+          const match = pattern.exec(source);
+          if (!match) throw new Error('Unexpected character at position ' + (offset + 1) + '.');
+          tokens.push(match[0].toLowerCase());
+          if (tokens.length > 600) throw new Error('Too many operations. Split this into smaller calculations.');
+          offset = pattern.lastIndex;
+        }
+        let cursor = 0, depth = 0;
+        const peek = () => tokens[cursor];
+        function enter() { if (++depth > 80) throw new Error('Too many nested parentheses, functions or powers.'); }
+        function primary() {
+          enter();
+          let value;
+          if (peek() === '(') {
+            cursor++; value = sum();
+            if (peek() !== ')') throw new Error('Missing closing parenthesis.');
+            cursor++;
+          } else if (peek() && /^[\d.]/.test(peek())) {
+            value = fromDecimal(tokens[cursor++]);
+          } else if (['pi', 'e', 'ans'].includes(peek())) {
+            const name = tokens[cursor++];
+            value = name === 'ans' ? options.ans || rational(0n) : approximate(name === 'pi' ? Math.PI : Math.E);
+          } else if (FUNCTIONS.has(peek())) {
+            const name = tokens[cursor++];
+            if (peek() !== '(') throw new Error('Use parentheses after ' + name + '.');
+            cursor++; const argument = sum();
+            if (peek() !== ')') throw new Error('Missing closing parenthesis after ' + name + '.');
+            cursor++; value = scientific(name, argument, options.angle === 'rad' ? 'rad' : 'deg');
+          } else throw new Error(peek() === undefined ? 'Complete the expression with a number.' : 'Expected a number, constant or function.');
+          depth--; return value;
+        }
+        function postfix() {
+          let value = primary();
+          while (peek() === '%' || peek() === '!') {
+            const op = tokens[cursor++];
+            value = op === '!' ? factorial(value) : mark(rational(value.n, value.d * 100n), value);
+          }
+          return value;
+        }
+        function exponentiation() {
+          let value = postfix();
+          if (peek() === '^') { cursor++; enter(); value = power(value, unary()); depth--; }
+          return value;
+        }
+        function unary() {
+          if (peek() === '+' || peek() === '-') {
+            enter(); const sign = tokens[cursor++], value = unary(); depth--;
+            return sign === '-' ? mark(rational(-value.n, value.d), value) : value;
+          }
+          return exponentiation();
+        }
+        function product() {
+          let value = unary();
+          while (peek() === '*' || peek() === '/' || peek() === '(' ||
+            (peek() && /^[a-z]/.test(peek()) && (peek() !== 'e' || tokens[cursor - 1] === ')')) ||
+            (tokens[cursor - 1] === ')' && peek() && /^[\d.]/.test(peek()))) {
+            const op = peek() === '*' || peek() === '/' ? tokens[cursor++] : '*';
+            value = operate(value, op, unary());
+          }
+          return value;
+        }
+        function sum() {
+          let value = product();
+          while (peek() === '+' || peek() === '-') { const op = tokens[cursor++]; value = operate(value, op, product()); }
+          return value;
+        }
+        const result = sum();
+        if (cursor !== tokens.length) throw new Error(peek() === ')' ? 'Unexpected closing parenthesis.' : 'Add an operator between numbers.');
+        return result;
+      }
+      function programOptions(options = {}) {
+        const base = options.base === undefined ? 10 : Number(options.base);
+        const bits = options.bits === undefined ? 64 : Number(options.bits);
+        if (![2, 8, 10, 16].includes(base) || ![8, 16, 32, 64].includes(bits)) throw new Error('Choose BIN/OCT/DEC/HEX and an 8/16/32/64-bit word.');
+        return { base, bits, signed: options.signed !== false };
+      }
+      function word(number, options = {}) {
+        const settings = programOptions(options);
+        return settings.signed ? BigInt.asIntN(settings.bits, number) : BigInt.asUintN(settings.bits, number);
+      }
+      function programNormalize(text) {
+        checkLength(text);
+        return text.replace(/[−–—]/g, '-').replace(/×/g, '*').replace(/÷/g, '/').trim().replace(/=\s*$/, '').trim();
+      }
+      function programTokens(text, options = {}) {
+        const source = programNormalize(text), settings = programOptions(options);
+        const tokens = [];
+        const aliases = { AND: '&', OR: '|', XOR: '^', NOT: '~', MOD: '%', SHL: '<<', SHR: '>>', USHR: '>>>' };
+        let offset = 0;
+        while (offset < source.length) {
+          if (/\s/.test(source[offset])) { offset++; continue; }
+          const rest = source.slice(offset);
+          const named = rest.match(/^(AND|OR|XOR|NOT|MOD|SHL|SHR|USHR|ANS)\b/i);
+          if (named) {
+            const name = named[0].toUpperCase();
+            tokens.push({ type: name === 'ANS' ? 'ans' : 'op', text: aliases[name] || 'ans' });
+            offset += named[0].length;
+          } else {
+            const operator = rest.match(/^(>>>|>>|<<|[()+*/%&|^~\-])/);
+            if (operator) { tokens.push({ type: 'op', text: operator[0] }); offset += operator[0].length; }
+            else {
+              const match = rest.match(/^(?:0[xobd][0-9a-z_]+|[0-9a-f][0-9a-f_]*)/i);
+              if (!match) throw new Error('Expected an integer or bitwise operator at position ' + (offset + 1) + '.');
+              const literal = match[0], prefix = literal.match(/^0([xobd])/i);
+              const base = prefix ? { x: 16, o: 8, b: 2, d: 10 }[prefix[1].toLowerCase()] : settings.base;
+              const digits = prefix ? literal.slice(2) : literal;
+              const patterns = { 2: /^[01](?:_?[01])*$/, 8: /^[0-7](?:_?[0-7])*$/, 10: /^\d(?:_?\d)*$/, 16: /^[0-9a-f](?:_?[0-9a-f])*$/i };
+              if (!patterns[base].test(digits)) throw new Error('Invalid digit or separator for base ' + base + '.');
+              const number = BigInt((base === 10 ? '' : { 2:'0b', 8:'0o', 16:'0x' }[base]) + digits.replace(/_/g, ''));
+              tokens.push({ type: 'number', text: literal, number, explicit: !!prefix });
+              offset += literal.length;
+            }
+          }
+          if (tokens.length > 600) throw new Error('Too many operations.');
+        }
+        return tokens;
+      }
+      function qualifyProgrammer(text, options = {}) {
+        const settings = programOptions(options);
+        const prefix = { 2:'0b', 8:'0o', 10:'0d', 16:'0x' }[settings.base];
+        return programTokens(text, settings).map(token => token.type === 'number' && !token.explicit ? prefix + token.text : token.text).join(' ');
+      }
+      function evaluateProgrammer(text, options = {}) {
+        const settings = programOptions(options), tokens = programTokens(text, settings);
+        if (!tokens.length) throw new Error('Enter an integer expression.');
+        let cursor = 0, depth = 0;
+        const peek = () => tokens[cursor] && tokens[cursor].text;
+        const wrap = number => word(number, settings);
+        function unary() {
+          if (++depth > 80) throw new Error('Too many nested parentheses or signs.');
+          const token = tokens[cursor++];
+          let value;
+          if (!token) throw new Error('Complete the expression with an integer.');
+          if (token.text === '+' || token.text === '-' || token.text === '~') {
+            const operand = unary();
+            value = wrap(token.text === '-' ? -operand : token.text === '~' ? ~operand : operand);
+          } else if (token.text === '(') {
+            value = binary(1);
+            if (peek() !== ')') throw new Error('Missing closing parenthesis.');
+            cursor++;
+          } else if (token.type === 'number') value = wrap(token.number);
+          else if (token.type === 'ans') {
+            const ans = options.ans || rational(0n);
+            if (ans.d !== 1n || ans.approximate) throw new Error('Ans must be an exact integer in programmer mode.');
+            value = wrap(ans.n);
+          } else throw new Error('Expected an integer or opening parenthesis.');
+          depth--; return value;
+        }
+        const precedence = { '|':1, '^':2, '&':3, '<<':4, '>>':4, '>>>':4, '+':5, '-':5, '*':6, '/':6, '%':6 };
+        function apply(a, op, b) {
+          if (op === '+') return wrap(a + b);
+          if (op === '-') return wrap(a - b);
+          if (op === '*') return wrap(a * b);
+          if (op === '/' || op === '%') {
+            if (b === 0n) throw new Error('Cannot divide by zero.');
+            return wrap(op === '/' ? a / b : a % b);
+          }
+          if (op === '&') return wrap(a & b);
+          if (op === '|') return wrap(a | b);
+          if (op === '^') return wrap(a ^ b);
+          if (b < 0n || b > BigInt(settings.bits)) throw new Error('Shift count must be between 0 and ' + settings.bits + '.');
+          if (op === '<<') return wrap(a << b);
+          if (op === '>>') return wrap(a >> b);
+          return wrap(BigInt.asUintN(settings.bits, a) >> b);
+        }
+        function binary(minimum) {
+          let value = unary();
+          while (precedence[peek()] >= minimum) {
+            const op = tokens[cursor++].text;
+            value = apply(value, op, binary(precedence[op] + 1));
+          }
+          return value;
+        }
+        const value = binary(1);
+        if (cursor !== tokens.length) throw new Error('Unexpected token; add an operator or check parentheses.');
+        return rational(value);
+      }
+      function baseText(number, base, options = {}, prefixed = false) {
+        const settings = programOptions(options);
+        if (base === 10) {
+          const integer = word(number, settings);
+          return prefixed ? (integer < 0n ? '-' : '') + '0d' + abs(integer) : String(integer);
+        }
+        const raw = BigInt.asUintN(settings.bits, number);
+        const digits = raw.toString(base).toUpperCase().padStart(Math.ceil(settings.bits / Math.log2(base)), '0');
+        return (prefixed ? { 2:'0b', 8:'0o', 16:'0x' }[base] : '') + digits;
+      }
+      return Object.freeze({ MAX_INPUT, MAX_DIGITS, rational, evaluate, normalize, fraction, mixed, decimal, operate,
+        evaluateProgrammer, programNormalize, programTokens, qualifyProgrammer, word, baseText });
     })();
   </script>
 
   <script id="calculator-app">
     (() => {
       'use strict';
-      const math = CalculatorMath;
-      const $ = id => document.getElementById(id);
+      const math = CalculatorMath, $ = id => document.getElementById(id);
       const input = $('expression'), resultEl = $('result'), statusEl = $('status');
       const STORAGE_KEY = 'singleHtmlApps.calculator.v2';
-      let mode = 'standard', format = 'decimal', history = [];
-      let value = math.rational(0n), solved = false, copyText = '0';
-      let undoStack = [], redoStack = [], beforeEdit = null;
-      let historyIndex = -1, historyDraft = '';
-      let revision = 0;
-
+      const MODES = ['standard', 'fraction', 'scientific', 'programmer'];
+      const tabId = { standard:'standardTab', fraction:'fractionTab', scientific:'scientificTab', programmer:'programmerTab' };
+      let mode = 'standard', format = 'decimal', history = [], angle = 'deg', base = 10, bits = 64, signed = true;
+      let value = math.rational(0n), solved = false, copyText = '0', memory = null, answer = math.rational(0n);
+      let undoStack = [], redoStack = [], beforeEdit = null, historyIndex = -1, historyDraft = null, revision = 0, lastTransform = null;
+      const drafts = { math: null, programmer: null };
+      const isProgrammer = () => mode === 'programmer';
+      const settings = () => ({ base, bits, signed });
+      const family = () => isProgrammer() ? 'programmer' : 'math';
+      function evaluate(source, options = {}) {
+        return options.mode === 'programmer' ? math.evaluateProgrammer(source, { ...settings(), ...options, ans: answer }) :
+          math.evaluate(source, { angle, ans: answer, ...options });
+      }
+      function currentEvaluate(source) { return evaluate(source, { mode }); }
       function tell(message = '', error = false) {
         statusEl.textContent = message;
         statusEl.classList.toggle('error', error);
       }
-      function snapshot() { return { text: input.value, start: input.selectionStart, end: input.selectionEnd, solved }; }
+      function snapshot() {
+        return { text: input.value, start: input.selectionStart, end: input.selectionEnd, solved, mode, base, bits, signed, angle };
+      }
       function remember(state) {
         undoStack.push(state);
         if (undoStack.length > 100) undoStack.shift();
@@ -402,55 +724,60 @@
         input.setSelectionRange(start, end);
       }
       function refresh() {
-        revision++;
-        tell();
-        $('manualCopy').hidden = true;
+        revision++; tell(); $('manualCopy').hidden = true;
         input.setAttribute('aria-invalid', 'false');
-        try { value = input.value.trim() ? math.evaluate(input.value) : math.rational(0n); }
+        try { value = input.value.trim() ? currentEvaluate(input.value) : math.rational(0n); }
         catch (_) { value = null; }
         render();
       }
       function replace(text, start = text.length, end = start, options = {}) {
         if (text.length > math.MAX_INPUT) { tell('An expression can have at most ' + math.MAX_INPUT + ' characters.', true); return false; }
-        remember(snapshot());
-        input.value = text;
-        solved = !!options.solved;
-        historyIndex = -1;
-        refresh();
-        focusInput(start, end);
-        return true;
+        remember(snapshot()); input.value = text; solved = !!options.solved; historyIndex = -1;
+        refresh(); focusInput(start, end); return true;
       }
       function restore(state) {
-        input.value = state.text;
-        solved = state.solved;
-        historyIndex = -1;
-        refresh();
-        focusInput(state.start, state.end);
+        if (family() !== (state.mode === 'programmer' ? 'programmer' : 'math')) {
+          drafts[family()] = { state: snapshot() };
+        }
+        mode = state.mode; base = state.base; bits = state.bits; signed = state.signed; angle = state.angle;
+        input.value = state.text; solved = state.solved; historyIndex = -1;
+        updateControls(); refresh(); focusInput(state.start, state.end); save();
       }
       function undo(redo = false) {
         const from = redo ? redoStack : undoStack, to = redo ? undoStack : redoStack;
         if (!from.length) return;
-        to.push(snapshot());
-        restore(from.pop());
+        to.push(snapshot()); restore(from.pop());
+      }
+      function canonical(number, programmer = isProgrammer()) {
+        if (programmer) {
+          if (number.d !== 1n || number.approximate) throw new Error('Programmer mode requires an exact integer.');
+          return '(' + (number.n < 0n ? '-' : '') + '0d' + (number.n < 0n ? -number.n : number.n) + ')';
+        }
+        const text = math.fraction(number);
+        return number.approximate ? 'approx(' + text + ')' : text;
       }
       function resultOperand() {
-        const exact = math.fraction(value);
-        return value.d === 1n && value.n >= 0n ? exact : '(' + exact + ')';
+        if (isProgrammer()) return canonical(value);
+        const exact = canonical(value);
+        if (exact.length > math.MAX_INPUT - 20) return '(' + input.value + ')';
+        return value.d === 1n && value.n >= 0n && !value.approximate ? exact : '(' + exact + ')';
       }
-      function insert(text, literal = false) {
+      function insert(text, literal = false, operand = false) {
         let source = input.value, start = input.selectionStart, end = input.selectionEnd;
+        const trimmed = text.trim();
         if (solved && !literal && start === end && end === source.length) {
-          source = /^[+*/%\-]$/.test(text) && value ? resultOperand() : '';
+          source = /^(?:[+*/%^!&|~\-]|<<|>>|>>>)$/.test(trimmed) && value ? resultOperand() : '';
           start = end = source.length;
         }
+        if (!literal && text === ')' && source[start] === ')' && start === end) { focusInput(start + 1); return true; }
         if (!literal && text === '.') {
-          const before = source.slice(0, start);
-          const number = before.match(/(?:\d+[.,]?\d*|[.,]\d*)$/);
-          if (number && /[.,]/.test(number[0]) && start === end) { focusInput(start); return; }
+          if (isProgrammer()) { tell('Programmer mode uses integers only.', true); return false; }
+          const before = source.slice(0, start), number = before.match(/(?:\d+[.,]?\d*|[.,]\d*)$/);
+          if (number && /[.,]/.test(number[0]) && start === end) { focusInput(start); return false; }
           if (!/\d$/.test(before)) text = '0.';
         }
-        // Fraction shortcuts are operands; make adjacency explicit, e.g. 2 × 1/2.
-        if (!literal && text.startsWith('(') && text.includes('/') && /[\d)%]$/.test(source.slice(0, start))) text = '*' + text;
+        if (!isProgrammer() && !literal && (operand || text.startsWith('(') && text.includes('/')) &&
+          /[\d)%!a-z]$/i.test(source.slice(0, start))) text = '*' + text;
         return replace(source.slice(0, start) + text + source.slice(end), start + text.length);
       }
       function backspace() {
@@ -458,307 +785,412 @@
         if (start === end && start === 0) { focusInput(0); return; }
         replace(input.value.slice(0, start === end ? start - 1 : start) + input.value.slice(end), start === end ? start - 1 : start);
       }
-      function changeSign() {
-        if (solved && value && input.selectionStart === input.selectionEnd && input.selectionEnd === input.value.length) {
-          replace('-(' + math.fraction(value) + ')'); return;
-        }
-        let start = input.selectionStart, end = input.selectionEnd;
-        if (start !== end) {
-          const selected = input.value.slice(start, end);
-          const text = '-(' + selected + ')';
-          replace(input.value.slice(0, start) + text + input.value.slice(end), start + text.length);
-          return;
-        }
-        const before = input.value.slice(0, start);
-        // Find the operand at the caret, including an entire parenthesized expression.
-        if (before.endsWith(')')) {
-          let depth = 0, index = start - 1;
+      function operandStart(end) {
+        const before = input.value.slice(0, end);
+        const trailing = before.match(/[!%]*$/)[0].length;
+        let cursor = end - trailing;
+        if (input.value[cursor - 1] === ')') {
+          let depth = 0, index = cursor - 1;
           for (; index >= 0; index--) {
             if (input.value[index] === ')') depth++;
             if (input.value[index] === '(' && --depth === 0) break;
           }
-          if (index >= 0) start = index;
-        } else {
-          const number = before.match(/(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?%?$/);
-          if (number) start -= number[0].length;
+          if (index < 0) return end;
+          const name = input.value.slice(0, index).match(/[a-z][a-z0-9]*$/i);
+          return name ? index - name[0].length : index;
         }
-        // Remove an existing unary minus, rather than introducing a second sign.
+        const pattern = isProgrammer() ? /(?:0[xobd])?[0-9a-f_]+$/i : /(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?$|(?:pi|ans|e|π)$/i;
+        const match = input.value.slice(0, cursor).match(pattern);
+        return match ? cursor - match[0].length : end;
+      }
+      function wrapOperand(prefix, suffix) {
+        let start = input.selectionStart, end = input.selectionEnd, source = input.value;
+        if (solved && value && start === end && end === source.length) {
+          const text = prefix + resultOperand() + suffix;
+          if (replace(text)) lastTransform = { start: 0, end: text.length, revision };
+          return;
+        }
+        if (start === end) start = lastTransform && lastTransform.revision === revision && lastTransform.end === end ?
+          lastTransform.start : operandStart(end);
+        const empty = start === end;
+        const text = prefix + source.slice(start, end) + suffix;
+        if (replace(source.slice(0, start) + text + source.slice(end), start + (empty ? prefix.length : text.length)) && !empty) {
+          lastTransform = { start, end: start + text.length, revision };
+        }
+      }
+      function changeSign() {
+        if (solved && value && input.selectionStart === input.selectionEnd && input.selectionEnd === input.value.length) {
+          replace('-(' + resultOperand() + ')'); return;
+        }
+        let start = input.selectionStart, end = input.selectionEnd;
+        if (start !== end) { wrapOperand('-(', ')'); return; }
+        start = operandStart(end);
         const prefix = input.value.slice(0, start);
-        if (prefix.endsWith('-') && (prefix.length === 1 || /[+*/(\-]$/.test(prefix.slice(0, -1)))) {
+        if (prefix.endsWith('-') && (prefix.length === 1 || /[+*/(^&|~\-]$/.test(prefix.slice(0, -1)))) {
           replace(prefix.slice(0, -1) + input.value.slice(start), end - 1);
-        } else {
-          replace(prefix + '-' + input.value.slice(start), end + 1);
-        }
+        } else replace(prefix + '-' + input.value.slice(start), end + 1);
       }
       function fractionEntry() {
         if (input.selectionStart !== input.selectionEnd) {
-          const start = input.selectionStart, end = input.selectionEnd;
-          const text = '(' + input.value.slice(start, end) + ')/';
+          const start = input.selectionStart, end = input.selectionEnd, text = '(' + input.value.slice(start, end) + ')/';
           replace(input.value.slice(0, start) + text + input.value.slice(end), start + text.length);
-        } else {
-          if (!input.value.trim()) insert('1');
-          insert('/');
-        }
+        } else { if (!input.value.trim()) insert('1'); insert('/'); }
       }
       function renderFraction(number, mixedView) {
         if (number.d === 1n) { resultEl.textContent = String(number.n); return; }
         const magnitude = number.n < 0n ? -number.n : number.n;
-        const whole = mixedView ? magnitude / number.d : 0n;
-        const numerator = mixedView && whole ? magnitude % number.d : magnitude;
+        const whole = mixedView ? magnitude / number.d : 0n, numerator = mixedView && whole ? magnitude % number.d : magnitude;
         if (number.n < 0n) resultEl.append(document.createTextNode('−'));
         if (whole) resultEl.append(document.createTextNode(whole + ' '));
-        const stack = document.createElement('span');
-        stack.className = 'fraction';
-        const top = document.createElement('span'), bottom = document.createElement('span');
-        top.className = 'numerator'; top.textContent = String(numerator);
+        const stack = document.createElement('span'), top = document.createElement('span'), bottom = document.createElement('span');
+        stack.className = 'fraction'; top.className = 'numerator'; top.textContent = String(numerator);
         bottom.className = 'denominator'; bottom.textContent = String(number.d);
         stack.append(top, bottom); resultEl.append(stack);
       }
-      function render() {
-        resultEl.replaceChildren();
-        $('approx').hidden = true;
-        resultEl.classList.toggle('fraction-mode', format !== 'decimal');
-        $('copyResult').disabled = value === null;
-        $('resultLabel').textContent = solved ? 'Result' : input.value.trim() ? 'Preview' : 'Result';
-        if (!value) {
-          resultEl.textContent = '—';
-          resultEl.setAttribute('aria-label', 'Incomplete or invalid expression');
-          $('equivalent').textContent = 'Complete the expression, then press Enter.';
-          copyText = '';
-          return;
-        }
-        const decimal = math.decimal(value), exact = math.fraction(value);
-        copyText = format === 'decimal' ? decimal.text : format === 'mixed' ? math.mixed(value) : exact;
-        resultEl.setAttribute('aria-label', copyText);
-        if (format === 'decimal') {
-          resultEl.textContent = decimal.text;
-          $('approx').hidden = !decimal.approximate;
-          $('equivalent').textContent = value.d !== 1n || decimal.approximate ? 'Exact: ' + exact : '';
-        } else {
-          renderFraction(value, format === 'mixed');
-          $('equivalent').textContent = (decimal.approximate ? '≈ ' : '= ') + decimal.text;
+      function renderBits() {
+        if (!isProgrammer()) return;
+        $('bitGrid').replaceChildren();
+        const raw = value ? BigInt.asUintN(bits, value.n) : 0n;
+        for (let index = bits - 1; index >= 0; index--) {
+          const on = !!(raw & 1n << BigInt(index)), button = document.createElement('button');
+          button.className = 'bit'; button.disabled = !value;
+          button.setAttribute('aria-pressed', String(on));
+          button.setAttribute('aria-label', 'Bit ' + index + ': ' + (on ? '1' : '0') + '; toggle');
+          const label = document.createElement('small'); label.textContent = String(index);
+          button.append(label, document.createTextNode(on ? '1' : '0'));
+          button.addEventListener('click', () => {
+            const next = math.word(raw ^ 1n << BigInt(index), settings());
+            replace(canonical(math.rational(next)), undefined, undefined, { solved: true });
+          });
+          $('bitGrid').append(button);
         }
       }
-      function calculate() {
-        if (solved) return;
-        try {
-          value = math.evaluate(input.value);
-          solved = true;
-          historyIndex = -1;
-          input.setAttribute('aria-invalid', 'false');
-          tell();
-          render();
-          const entry = { expression: input.value.trim(), n: String(value.n), d: String(value.d) };
-          const previous = history[0];
-          if (!previous || previous.expression !== entry.expression || previous.n !== entry.n || previous.d !== entry.d) {
-            history.unshift(entry);
-            history = history.slice(0, 30);
-            renderHistory();
-            save();
+      function renderMemory() {
+        $('memoryNote').textContent = memory ? 'M = ' + (memory.approximate ? '≈ ' + math.decimal(memory).text : math.fraction(memory)) : 'Memory empty';
+        document.querySelectorAll('[data-memory]').forEach(button => {
+          button.disabled = ['clear', 'recall'].includes(button.dataset.memory) ? memory === null : value === null;
+        });
+      }
+      function render() {
+        resultEl.replaceChildren(); $('approx').hidden = true;
+        const fractional = !isProgrammer() && format !== 'decimal' && !(value && value.approximate);
+        resultEl.classList.toggle('fraction-mode', fractional);
+        $('copyResult').disabled = value === null;
+        $('resultLabel').textContent = (solved ? 'Result' : input.value.trim() ? 'Preview' : 'Result') +
+          (isProgrammer() ? ' · ' + { 2:'BIN', 8:'OCT', 10:'DEC', 16:'HEX' }[base] : '');
+        document.querySelectorAll('[data-format]').forEach(button => {
+          button.disabled = button.dataset.format !== 'decimal' && !!(value && value.approximate);
+          button.setAttribute('aria-pressed', String(button.dataset.format === (value && value.approximate ? 'decimal' : format)));
+        });
+        if (!value) {
+          resultEl.textContent = '—'; resultEl.setAttribute('aria-label', 'Incomplete or invalid expression');
+          $('equivalent').textContent = 'Complete the expression, then press Enter.'; copyText = '';
+        } else if (isProgrammer()) {
+          resultEl.textContent = math.baseText(value.n, base, settings());
+          copyText = math.baseText(value.n, base, settings(), base !== 10);
+          resultEl.setAttribute('aria-label', copyText);
+          $('equivalent').textContent = bits + '-bit ' + (signed ? 'signed' : 'unsigned') + ' integer';
+        } else {
+          const decimal = math.decimal(value), exact = math.fraction(value);
+          copyText = value.approximate || format === 'decimal' ? decimal.text : format === 'mixed' ? math.mixed(value) : exact;
+          resultEl.setAttribute('aria-label', copyText);
+          if (!fractional) {
+            resultEl.textContent = decimal.text; $('approx').hidden = !decimal.approximate;
+            $('equivalent').textContent = value.approximate ? 'Scientific approximation · 15 significant digits' :
+              value.d !== 1n || decimal.approximate ? 'Exact: ' + exact : '';
+          } else {
+            renderFraction(value, format === 'mixed');
+            $('equivalent').textContent = (decimal.approximate ? '≈ ' : '= ') + decimal.text;
           }
+        }
+        for (const [id, radix] of [['hexReading', 16], ['decReading', 10], ['octReading', 8], ['binReading', 2]]) {
+          const text = isProgrammer() && value ? math.baseText(value.n, radix, settings()) : '—';
+          $(id).textContent = radix === 2 && text !== '—' ? text.match(/.{1,4}/g).join(' ') : text;
+        }
+        document.querySelectorAll('[data-copy-base]').forEach(button => { button.disabled = !value; });
+        renderMemory(); renderBits();
+      }
+      function serialize(number) { return number ? { n: String(number.n), d: String(number.d), approximate: !!number.approximate } : null; }
+      function deserialize(saved) {
+        if (!saved || typeof saved.n !== 'string' || saved.n.length > math.MAX_DIGITS + 1 || !/^-?\d+$/.test(saved.n) ||
+          typeof saved.d !== 'string' || saved.d.length > math.MAX_DIGITS || !/^[1-9]\d*$/.test(saved.d)) throw new Error('Invalid saved number.');
+        const number = math.rational(BigInt(saved.n), BigInt(saved.d));
+        if (saved.approximate === true) number.approximate = true;
+        return number;
+      }
+      function entrySettings(entry) {
+        return { mode: MODES.includes(entry.mode) ? entry.mode : 'standard', angle: entry.angle === 'rad' ? 'rad' : 'deg',
+          base: [2, 8, 10, 16].includes(entry.base) ? entry.base : 10,
+          bits: [8, 16, 32, 64].includes(entry.bits) ? entry.bits : 64, signed: entry.signed !== false };
+      }
+      function calculate() {
+        try {
+          // Freeze Ans in the stored expression, so later answers do not change its meaning.
+          const source = input.value.replace(/\bans\b/gi, () => '(' + canonical(answer) + ')');
+          math.programNormalize(source); // Enforce the length limit before replacing the editor contents.
+          value = currentEvaluate(source);
+          input.value = source; focusInput(source.length);
+          solved = true; historyIndex = -1;
+          input.setAttribute('aria-invalid', 'false'); tell(); render();
+          const entry = { expression: source.trim(), ...serialize(value), mode, angle, base, bits, signed };
+          const previous = history[0];
+          if (!previous || JSON.stringify(previous) !== JSON.stringify(entry)) {
+            history.unshift(entry); history = history.slice(0, 30); renderHistory();
+          }
+          answer = { ...value }; save();
           $('announcement').textContent = 'Result: ' + copyText;
         } catch (error) {
-          solved = false;
-          value = null;
-          render();
-          input.setAttribute('aria-invalid', 'true');
-          tell(error.message, true);
-          focusInput(input.selectionStart, input.selectionEnd);
+          solved = false; value = null; render(); input.setAttribute('aria-invalid', 'true');
+          tell(error.message, true); focusInput(input.selectionStart, input.selectionEnd);
         }
       }
       function save() {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode, format, history })); }
-        catch (_) { /* Storage may be unavailable on local files or in private browsing. */ }
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode, format, history, angle, base, bits, signed, memory: serialize(memory), answer: serialize(answer) })); }
+        catch (_) { /* Storage can be blocked for local files or private browsing. */ }
       }
       function load() {
         try {
           const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
           if (!saved || typeof saved !== 'object') return;
-          if (saved.mode === 'standard' || saved.mode === 'fraction') mode = saved.mode;
+          const options = entrySettings(saved);
+          ({ mode, angle, base, bits, signed } = options);
           if (['decimal', 'fraction', 'mixed'].includes(saved.format)) format = saved.format;
-          if (Array.isArray(saved.history)) {
-            history = saved.history.slice(0, 30).filter(entry => {
-              try {
-                if (!entry || typeof entry.expression !== 'string' || entry.expression.length > math.MAX_INPUT ||
-                  typeof entry.n !== 'string' || !/^-?\d{1,2400}$/.test(entry.n) ||
-                  typeof entry.d !== 'string' || !/^[1-9]\d{0,2399}$/.test(entry.d)) return false;
-                const checked = math.evaluate(entry.expression);
-                return String(checked.n) === entry.n && String(checked.d) === entry.d;
-              } catch (_) { return false; }
-            });
-          }
+          try { if (saved.memory) memory = deserialize(saved.memory); } catch (_) {}
+          try { if (saved.answer) answer = deserialize(saved.answer); } catch (_) {}
+          if (Array.isArray(saved.history)) history = saved.history.slice(0, 30).filter(entry => {
+            try {
+              if (!entry || typeof entry.expression !== 'string' || entry.expression.length > math.MAX_INPUT) return false;
+              const number = deserialize(entry), options = entrySettings(entry);
+              const checked = evaluate(entry.expression, options);
+              return checked.n === number.n && checked.d === number.d && !!checked.approximate === !!number.approximate;
+            } catch (_) { return false; }
+          });
         } catch (_) { /* Ignore corrupt or inaccessible storage. */ }
       }
+      function useEntry(entry, edit) {
+        const original = snapshot();
+        const options = entrySettings(entry);
+        setMode(options.mode, false);
+        ({ angle, base, bits, signed } = options); updateControls();
+        const number = deserialize(entry), exact = canonical(number);
+        const text = edit || exact.length > math.MAX_INPUT ? entry.expression : exact;
+        if (replace(text, text.length, text.length, { solved: !edit })) undoStack[undoStack.length - 1] = original;
+        save();
+      }
       function renderHistory() {
-        $('historyList').replaceChildren();
-        $('historyCount').textContent = String(history.length);
-        $('emptyHistory').hidden = history.length > 0;
-        $('clearHistory').disabled = history.length === 0;
+        $('historyList').replaceChildren(); $('historyCount').textContent = String(history.length);
+        $('emptyHistory').hidden = history.length > 0; $('clearHistory').disabled = history.length === 0;
         for (const entry of history) {
-          const item = document.createElement('li');
-          item.className = 'history-item';
-          const use = document.createElement('button');
-          use.className = 'history-value';
-          use.title = 'Use this exact result';
+          const item = document.createElement('li'), use = document.createElement('button');
+          item.className = 'history-item'; use.className = 'history-value'; use.title = 'Use this result with its original settings';
           const expression = document.createElement('span'), result = document.createElement('span');
-          expression.className = 'history-expression'; expression.textContent = entry.expression + ' =';
+          const options = entrySettings(entry), number = deserialize(entry);
+          const context = options.mode === 'programmer' ? ' [' + { 2:'BIN', 8:'OCT', 10:'DEC', 16:'HEX' }[options.base] + ' · ' + options.bits + (options.signed ? ' signed' : ' unsigned') + ']' :
+            options.mode === 'scientific' || /\b(?:a?sin|a?cos|a?tan)\(/i.test(entry.expression) ? ' [' + options.angle.toUpperCase() + ']' : '';
+          expression.className = 'history-expression'; expression.textContent = entry.expression + context + ' =';
           result.className = 'history-result';
-          result.textContent = math.fraction(math.rational(BigInt(entry.n), BigInt(entry.d)));
-          use.append(expression, result);
-          use.addEventListener('click', () => replace(result.textContent, result.textContent.length, result.textContent.length, { solved: true }));
+          const exact = math.fraction(number), decimal = math.decimal(number);
+          result.textContent = options.mode === 'programmer' ? math.baseText(number.n, options.base, options, true) :
+            number.approximate || exact.length > 64 ? (decimal.approximate ? '≈ ' : '') + decimal.text : exact;
+          use.append(expression, result); use.addEventListener('click', () => useEntry(entry, false));
           const edit = document.createElement('button');
           edit.className = 'edit-history'; edit.textContent = 'Edit'; edit.setAttribute('aria-label', 'Edit expression ' + entry.expression);
-          edit.addEventListener('click', () => replace(entry.expression));
-          item.append(use, edit);
-          $('historyList').append(item);
+          edit.addEventListener('click', () => useEntry(entry, true));
+          item.append(use, edit); $('historyList').append(item);
         }
       }
-      function setMode(next, updateFormat = true) {
-        mode = next;
+      function updateControls() {
+        document.querySelectorAll('.calculator').forEach(element => element.classList.toggle('extended', mode === 'scientific' || isProgrammer()));
         document.querySelectorAll('[data-mode]').forEach(button => {
           const selected = button.dataset.mode === mode;
-          button.setAttribute('aria-selected', String(selected));
-          button.tabIndex = selected ? 0 : -1;
+          button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1;
         });
         $('fractionTools').hidden = mode !== 'fraction';
-        $('keypadPanel').setAttribute('aria-labelledby', mode === 'fraction' ? 'fractionTab' : 'standardTab');
-        if (updateFormat) setFormat(mode === 'fraction' ? 'fraction' : 'decimal');
-        save();
+        $('scientificTools').hidden = mode !== 'scientific'; $('scienceOptions').hidden = mode !== 'scientific';
+        $('programmerTools').hidden = !isProgrammer(); $('programOptions').hidden = !isProgrammer();
+        $('baseReadings').hidden = !isProgrammer(); $('resultFormats').hidden = isProgrammer();
+        $('keypadPanel').setAttribute('aria-labelledby', tabId[mode]);
+        document.querySelectorAll('[data-angle]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.angle === angle)));
+        document.querySelectorAll('[data-base]').forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.base) === base)));
+        $('wordSize').value = String(bits);
+        $('bitSummary').textContent = 'Bit editor · ' + bits + ' bits';
+        $('signedToggle').setAttribute('aria-pressed', String(signed)); $('signedToggle').textContent = signed ? 'Signed' : 'Unsigned';
+        document.querySelectorAll('[data-hex]').forEach(button => { button.disabled = base !== 16; });
+        document.querySelectorAll('[data-insert]').forEach(button => {
+          const text = button.dataset.insert;
+          button.disabled = isProgrammer() && (text === '.' || /^\d$/.test(text) && Number(text) >= base);
+          if (text === '%') {
+            button.title = isProgrammer() ? 'Integer remainder (modulo)' : 'Divide the current operand by 100';
+            button.setAttribute('aria-label', isProgrammer() ? 'Remainder' : 'Percent');
+          }
+        });
+        $('wordNote').textContent = bits + '-bit ' + (signed ? "signed two's complement" : 'unsigned') +
+          '. Wrap after every operation; % = remainder, ^ = XOR. Click a bit to toggle it.';
       }
-      function setFormat(next) {
-        format = next;
-        $('manualCopy').hidden = true;
-        document.querySelectorAll('[data-format]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.format === format)));
-        render();
-        save();
+      function setMode(next, updateFormat = true) {
+        if (!MODES.includes(next)) return;
+        const previousFamily = family(), nextFamily = next === 'programmer' ? 'programmer' : 'math';
+        if (previousFamily !== nextFamily) {
+          drafts[previousFamily] = { state: snapshot() };
+          const draft = drafts[nextFamily];
+          let seed = '';
+          if (!draft && nextFamily === 'programmer' && value && value.d === 1n && !value.approximate && input.value.trim()) seed = canonical(value, true);
+          mode = next;
+          input.value = draft ? draft.state.text : seed;
+          solved = draft ? draft.state.solved : !!seed;
+          input.setSelectionRange(input.value.length, input.value.length);
+          historyIndex = -1;
+          refresh();
+        } else mode = next;
+        if (updateFormat) format = mode === 'fraction' ? 'fraction' : 'decimal';
+        updateControls(); render(); save();
+      }
+      function setFormat(next) { format = next; $('manualCopy').hidden = true; render(); save(); }
+      function changeBase(next) {
+        if (base === next) return;
+        try {
+          const source = math.qualifyProgrammer(input.value, settings());
+          if (source.length > math.MAX_INPUT) throw new Error('The converted expression is too long; clear it or use its result first.');
+          remember(snapshot()); input.value = source; base = next;
+          updateControls(); refresh(); focusInput(); save();
+        } catch (error) { tell(error.message, true); }
       }
       function recall(direction) {
         if (!history.length) return;
-        if (historyIndex === -1) historyDraft = input.value;
+        if (historyIndex === -1) historyDraft = snapshot();
         const index = Math.max(-1, Math.min(history.length - 1, historyIndex + direction));
         if (index === historyIndex) return;
         const draft = historyDraft;
-        replace(index === -1 ? draft : history[index].expression);
-        historyIndex = index;
-        historyDraft = draft;
+        if (index === -1) { restore(draft); }
+        else useEntry(history[index], true);
+        historyIndex = index; historyDraft = draft;
+      }
+      function memoryAction(action) {
+        try {
+          if (action === 'clear') { memory = null; tell('Memory cleared.'); }
+          else if (action === 'recall') {
+            if (memory) insert('(' + canonical(memory) + ')', false, true);
+          } else if (value) {
+            memory = action === 'store' ? { ...value } :
+              math.operate(memory || math.rational(0n), action === 'add' ? '+' : '-', value);
+            tell('Memory updated.');
+          }
+          renderMemory(); save();
+        } catch (error) { tell(error.message, true); }
       }
       function pasteText(text) {
         try {
-          const normalized = math.normalize(text);
-          if (!normalized || /[^0-9.eE+\-*/()% \t\r\n]/.test(normalized)) throw new Error('Paste a number or arithmetic expression only.');
-          // Pasting after = starts a new expression, but preserves an explicit selection.
-          if (solved && input.selectionStart === input.selectionEnd && input.selectionEnd === input.value.length) {
-            return replace(normalized);
+          const normalized = isProgrammer() ? math.programNormalize(text) : math.normalize(text);
+          if (!normalized || (isProgrammer() ? /[^0-9a-z_+\-*/%()&|^~<>= \t\r\n]/i : /[^0-9a-z.+\-*/()%!^ \t\r\n]/i).test(normalized)) {
+            throw new Error('Paste a number or arithmetic expression only.');
           }
+          if (solved && input.selectionStart === input.selectionEnd && input.selectionEnd === input.value.length) return replace(normalized);
           return insert(normalized, true);
         } catch (error) { tell(error.message, true); return false; }
       }
       async function pasteClipboard() {
-        const expectedRevision = revision;
-        const selection = { start: input.selectionStart, end: input.selectionEnd };
+        const expectedRevision = revision, selection = { start: input.selectionStart, end: input.selectionEnd };
         try {
           if (!navigator.clipboard || !navigator.clipboard.readText) throw new Error('unavailable');
           const text = await navigator.clipboard.readText();
           if (revision !== expectedRevision || input.selectionStart !== selection.start || input.selectionEnd !== selection.end) {
             tell('The expression or cursor changed. Paste again at the current cursor.'); return;
           }
-          focusInput(selection.start, selection.end);
-          pasteText(text);
+          focusInput(selection.start, selection.end); pasteText(text);
         } catch (_) {
-          focusInput(selection.start, selection.end);
-          tell('Clipboard access is unavailable. Press Ctrl+V (Cmd+V on Mac) to paste.');
+          focusInput(selection.start, selection.end); tell('Clipboard access is unavailable. Press Ctrl+V (Cmd+V on Mac) to paste.');
         }
       }
-      async function copyResult() {
+      async function copyResult(text = copyText, rounded = !isProgrammer() && value && math.decimal(value).approximate && (format === 'decimal' || value.approximate)) {
         if (!value) return;
-        const text = copyText;
-        const rounded = format === 'decimal' && math.decimal(value).approximate;
         function fallback() {
-          const selection = snapshot(), active = document.activeElement;
-          const area = document.createElement('textarea');
-          area.value = text; area.setAttribute('aria-label', 'Result to copy');
-          area.style.cssText = 'position:fixed;left:-9999px;top:0';
-          document.body.append(area);
-          area.select();
+          const selection = snapshot(), active = document.activeElement, area = document.createElement('textarea');
+          area.value = text; area.setAttribute('aria-label', 'Result to copy'); area.style.cssText = 'position:fixed;left:-9999px;top:0';
+          document.body.append(area); area.select();
           let copied = false;
-          try { copied = document.execCommand('copy'); } catch (_) { /* Use manual selection below. */ }
+          try { copied = document.execCommand('copy'); } catch (_) {}
           area.remove();
           if (active && active.focus) active.focus({ preventScroll: true });
-          input.setSelectionRange(selection.start, selection.end);
-          return copied;
+          input.setSelectionRange(selection.start, selection.end); return copied;
         }
         let copied = false;
         try {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(text);
-            copied = true;
-          } else copied = fallback();
+          if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); copied = true; }
+          else copied = fallback();
         } catch (_) { copied = fallback(); }
         if (copied) tell('Result copied' + (rounded ? ' (rounded decimal).' : '.'));
         else {
-          $('manualCopy').hidden = false;
-          $('copyField').value = text;
-          $('copyField').focus();
-          $('copyField').select();
+          $('manualCopy').hidden = false; $('copyField').value = text; $('copyField').focus(); $('copyField').select();
           tell('Copy was blocked. The result is selected; press Ctrl+C (Cmd+C on Mac).');
         }
       }
-
       input.addEventListener('beforeinput', event => {
-        if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') {
-          event.preventDefault(); undo(event.inputType === 'historyRedo'); return;
-        }
+        if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') { event.preventDefault(); undo(event.inputType === 'historyRedo'); return; }
         beforeEdit = snapshot();
-        // Native keyboard input should start fresh after =, just like keypad digits.
         if (solved && event.inputType === 'insertText' && event.data && !event.isComposing) {
-          const text = event.data === ',' ? '.' : event.data;
-          event.preventDefault();
-          insert(text);
-          beforeEdit = null;
+          event.preventDefault(); insert(event.data === ',' ? '.' : event.data); beforeEdit = null;
         }
       });
       input.addEventListener('input', () => {
         if (beforeEdit) remember(beforeEdit);
-        beforeEdit = null;
-        solved = false; historyIndex = -1;
-        refresh();
+        beforeEdit = null; solved = false; historyIndex = -1; refresh();
       });
-      // Keep the caret when clicking the keypad, without suppressing keyboard activation.
       document.querySelectorAll('.key').forEach(button => button.addEventListener('pointerdown', event => {
         if (event.pointerType === 'mouse') event.preventDefault();
       }));
       document.querySelectorAll('[data-insert]').forEach(button => button.addEventListener('click', () => insert(button.dataset.insert)));
       document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => {
-        const actions = { clear: () => replace(''), backspace, sign: changeSign, fraction: fractionEntry, calculate };
-        actions[button.dataset.action]();
+        ({ clear: () => replace(''), backspace, sign: changeSign, fraction: fractionEntry, calculate })[button.dataset.action]();
+      }));
+      document.querySelectorAll('[data-function]').forEach(button => button.addEventListener('click', () => wrapOperand(button.dataset.function + '(', ')')));
+      document.querySelectorAll('[data-science]').forEach(button => button.addEventListener('click', () => {
+        const templates = { square:['(', ')^2'], reciprocal:['1/(', ')'], tenPower:['10^(', ')'] };
+        wrapOperand(...templates[button.dataset.science]);
+      }));
+      document.querySelectorAll('[data-constant]').forEach(button => button.addEventListener('click', () => insert(button.dataset.constant, false, true)));
+      document.querySelectorAll('[data-memory]').forEach(button => button.addEventListener('click', () => memoryAction(button.dataset.memory)));
+      document.querySelectorAll('[data-hex]').forEach(button => button.addEventListener('click', () => insert(button.dataset.hex)));
+      document.querySelectorAll('[data-program]').forEach(button => button.addEventListener('click', () => {
+        const templates = { not:['~(', ')'], left:['(', ')<<1'], right:['(', ')>>1'] };
+        wrapOperand(...templates[button.dataset.program]);
       }));
       document.querySelectorAll('[data-mode]').forEach(button => {
         button.addEventListener('click', () => setMode(button.dataset.mode));
         button.addEventListener('keydown', event => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
           event.preventDefault();
-          const next = event.key === 'Home' ? 'standard' : event.key === 'End' ? 'fraction' : mode === 'standard' ? 'fraction' : 'standard';
-          setMode(next);
-          $(next === 'standard' ? 'standardTab' : 'fractionTab').focus();
+          const index = MODES.indexOf(mode);
+          const next = event.key === 'Home' ? MODES[0] : event.key === 'End' ? MODES.at(-1) :
+            MODES[(index + (event.key === 'ArrowLeft' ? MODES.length - 1 : 1)) % MODES.length];
+          setMode(next); $(tabId[next]).focus();
         });
       });
       document.querySelectorAll('[data-format]').forEach(button => button.addEventListener('click', () => setFormat(button.dataset.format)));
-      $('copyResult').addEventListener('click', copyResult);
+      document.querySelectorAll('[data-angle]').forEach(button => button.addEventListener('click', () => {
+        if (angle !== button.dataset.angle) { remember(snapshot()); angle = button.dataset.angle; solved = false; updateControls(); refresh(); save(); }
+      }));
+      document.querySelectorAll('[data-base]').forEach(button => button.addEventListener('click', () => changeBase(Number(button.dataset.base))));
+      $('wordSize').addEventListener('change', () => {
+        remember(snapshot()); bits = Number($('wordSize').value); solved = false; updateControls(); refresh(); save();
+      });
+      $('signedToggle').addEventListener('click', () => {
+        remember(snapshot()); signed = !signed; solved = false; updateControls(); refresh(); save();
+      });
+      document.querySelectorAll('[data-copy-base]').forEach(button => button.addEventListener('click', () => {
+        if (value) copyResult(math.baseText(value.n, Number(button.dataset.copyBase), settings(), true), false);
+      }));
+      $('copyResult').addEventListener('click', () => copyResult());
       $('pasteExpression').addEventListener('click', pasteClipboard);
       function closeCopy() { $('manualCopy').hidden = true; focusInput(input.selectionStart, input.selectionEnd); }
       $('closeCopy').addEventListener('click', closeCopy);
-      $('copyField').addEventListener('keydown', event => {
-        if (event.key === 'Escape') { event.preventDefault(); closeCopy(); }
-      });
+      $('copyField').addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeCopy(); } });
       $('clearHistory').addEventListener('click', () => { history = []; historyIndex = -1; renderHistory(); save(); tell('History cleared.'); });
-
       function otherEditor(target) {
         return target && target !== input && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
       }
       document.addEventListener('paste', event => {
         if (otherEditor(event.target) || !event.clipboardData) return;
-        event.preventDefault();
-        pasteText(event.clipboardData.getData('text/plain'));
+        event.preventDefault(); pasteText(event.clipboardData.getData('text/plain'));
       });
       document.addEventListener('keydown', event => {
         if (event.isComposing || otherEditor(event.target) || event.altKey) return;
@@ -767,32 +1199,24 @@
           if (key.toLowerCase() === 'c') {
             const selectedInput = document.activeElement === input && input.selectionStart !== input.selectionEnd;
             if (!selectedInput && !String(window.getSelection()) && value) { event.preventDefault(); copyResult(); }
-          } else if (key.toLowerCase() === 'a' && document.activeElement !== input) {
-            event.preventDefault(); focusInput(0, input.value.length);
-          } else if (key.toLowerCase() === 'v') {
-            if (document.activeElement !== input) focusInput(input.selectionStart, input.selectionEnd);
-          } else if (key.toLowerCase() === 'z' || key.toLowerCase() === 'y') {
-            event.preventDefault(); undo(event.shiftKey || key.toLowerCase() === 'y');
-          }
+          } else if (key.toLowerCase() === 'a' && document.activeElement !== input) { event.preventDefault(); focusInput(0, input.value.length); }
+          else if (key.toLowerCase() === 'v') { if (document.activeElement !== input) focusInput(input.selectionStart, input.selectionEnd); }
+          else if (key.toLowerCase() === 'z' || key.toLowerCase() === 'y') { event.preventDefault(); undo(event.shiftKey || key.toLowerCase() === 'y'); }
           return;
         }
         if (key === 'Escape') { event.preventDefault(); replace(''); return; }
         if (key === 'F9') { event.preventDefault(); changeSign(); return; }
-        // Enter and Space activate focused controls normally.
         if (event.target !== input && /^(BUTTON|SUMMARY)$/.test(event.target.tagName) && (key === 'Enter' || key === ' ')) return;
         if (key === 'Enter' || key === '=') { event.preventDefault(); calculate(); return; }
         if (event.target === input && !event.shiftKey && (key === 'ArrowUp' || key === 'ArrowDown')) {
           event.preventDefault(); recall(key === 'ArrowUp' ? 1 : -1); return;
         }
         if (event.target !== input) {
-          if (/^[0-9.,()+*/%\-]$/.test(key)) { event.preventDefault(); insert(key === ',' ? '.' : key); }
+          if (/^[0-9a-z.,()+*/%!^&|~<>\-]$/i.test(key)) { event.preventDefault(); insert(key === ',' ? '.' : key); }
           else if (key === 'Backspace') { event.preventDefault(); backspace(); }
         }
       });
-      load();
-      setMode(mode, false);
-      setFormat(format);
-      renderHistory();
+      load(); updateControls(); render(); renderHistory();
     })();
   </script>
 </body>

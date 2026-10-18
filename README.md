@@ -4,6 +4,7 @@ Open any app directly from the links below. The list mirrors the repository stru
 
 ## Apps
 
+- [Calculator](https://koudelkab.github.io/singleHtmlApps/calculator.html) - Standard, exact-fraction, scientific, and programmer calculator with DEG/RAD, base conversion, 8–64-bit integer and bitwise operations, memory, history, keyboard input, and clipboard support.
 - [Hex Editor and Comparer](https://koudelkab.github.io/singleHtmlApps/HexEditorAndComparer.html) - Hex editor for inspecting, editing, and comparing binary files, with search, selection, and download support.
 - [Image Browser for Chrome](https://koudelkab.github.io/singleHtmlApps/ImageBrowser_chrome.html) - Chrome File System Access based image browser with directory history, folder navigation, filtering, sorting, lazy-loaded previews, virtual scrolling, and fullscreen lightbox browsing.
 - [Log Explorer](https://koudelkab.github.io/singleHtmlApps/LogExplorer.html) - UTF-8 log viewer with virtual scrolling, staged Filter/Replace/Sort/Diff operations, drag-and-drop multi-file input, clipboard input, and profile persistence. [Pipeline examples](https://koudelkab.github.io/singleHtmlApps/LogExplorerGuide.html).

@@ -41,7 +41,7 @@ test('mixed numbers, negative fractions, decimal comma, scientific notation and 
 
 test('invalid and incomplete expressions fail explicitly, without executing code', () => {
   for (const source of ['', '.', '1/0', '0/0', '1/(2-2)', '1 0/0', '2+', '(2+3', '2+3)',
-    '2 3', '1.2 1/2', '0.5½', '1234 567', '1.2.3', '1e', 'alert(1)', 'Infinity', 'NaN', '2**3', '1,234.56', '1=2',
+    '2 3', '1.2 1/2', '0.5½', '1234 567', '1.2.3', '1e', 'alert(1)', 'Infinity', 'NaN', '1,234.56', '1=2',
     '1e1001', '1e-1001', '('.repeat(81) + '1' + ')'.repeat(81), '1'.repeat(1201)]) {
     assert.throws(() => math.evaluate(source), undefined, source.slice(0, 100));
   }
@@ -134,7 +134,8 @@ function app(options = {}) {
   for (const [, tag, attrs] of body.matchAll(/<([a-z][\w-]*)\b([^<>]*?)>/gi)) {
     const element = new Element(tag, document);
     for (const [, name, , quoted, unquoted] of attrs.matchAll(/([^\s=]+)(?:\s*=\s*(?:(["'])(.*?)\2|([^\s"'=<>]+)))?/g)) {
-      element.setAttribute(name, quoted ?? unquoted ?? '');
+      const value = (quoted ?? unquoted ?? '').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      element.setAttribute(name, value);
     }
     document.nodes.push(element);
   }
@@ -411,4 +412,359 @@ test('paste respects a caret inside a solved expression and Shift+arrows keep na
   const event = await page.press('ArrowUp', { shiftKey: true });
   assert.equal(event.defaultPrevented, undefined);
   assert.equal(page.get('expression').value, '102+3');
+});
+
+const numeric = (source, options) => {
+  const value = math.evaluate(source, options);
+  return Number(value.n) / Number(value.d);
+};
+const close = (actual, expected, tolerance = 1e-12) => assert.ok(Math.abs(actual - expected) <= tolerance * Math.max(1, Math.abs(expected)), actual + ' ≠ ' + expected);
+const prog = (source, options) => math.evaluateProgrammer(source, options).n;
+
+test('scientific exact arithmetic: right-associative powers, roots, factorials, rounding and logarithms', () => {
+  const cases = {
+    '2^3^2': '512', '-2^2': '-4', '(-2)^2': '4', '2^-3': '1/8', '2**3': '8',
+    '3!^2': '36', '0!': '1', '5!': '120', 'fact(6)': '720', '(1/2)^-3': '8',
+    'sqrt(81/16)': '9/4', 'sqrt(0)': '0', 'cbrt(-8/27)': '-2/3',
+    'abs(-7/3)': '7/3', 'inv(3)': '1/3', 'floor(-3/2)': '-2', 'ceil(-3/2)': '-1',
+    'round(-3/2)': '-2', 'round(3/2)': '2', 'trunc(-3/2)': '-1',
+    'ln(1)': '0', 'log(1000)': '3', 'log10(0.01)': '-2', 'log2(1/8)': '-3',
+    'sin(90)': '1', 'cos(180)': '-1', 'tan(180)': '0', 'exp(0)': '1',
+    'sqrt(1e1000)': '1' + '0'.repeat(500),
+  };
+  for (const [source, expected] of Object.entries(cases)) {
+    const value = math.evaluate(source);
+    assert.equal(math.fraction(value), expected, source);
+    assert.equal(!!value.approximate, false, 'Should stay exact: ' + source);
+  }
+});
+
+test('scientific approximations, angle units, constants, domain checks and bounded work', () => {
+  close(numeric('sin(30)'), .5);
+  close(numeric('sin(pi/6)', { angle: 'rad' }), .5);
+  close(numeric('asin(0.5)'), 30);
+  close(numeric('acos(0)', { angle: 'rad' }), Math.PI / 2);
+  close(numeric('atan(1)'), 45);
+  close(numeric('tan(45)'), 1);
+  close(numeric('ln(e)'), 1);
+  close(numeric('log2(3)'), Math.log2(3));
+  close(numeric('exp(2)'), Math.exp(2));
+  close(numeric('sqrt(2)'), Math.sqrt(2));
+  close(numeric('2^0.5'), Math.sqrt(2));
+  close(numeric('cbrt(-2)'), Math.cbrt(-2));
+  close(numeric('sinh(1)+cosh(1)'), Math.exp(1));
+  close(numeric('tanh(1)'), Math.tanh(1));
+  close(numeric('2pi'), 2 * Math.PI);
+  close(numeric('√(4)'), 2);
+  for (const source of ['pi', 'e', 'sqrt(2)', 'sin(30)', 'approx(1/3)', 'sqrt(2)*0']) {
+    assert.equal(math.evaluate(source).approximate, true, source);
+  }
+  assert.equal(math.decimal(math.evaluate('sin(30)')).text, '0.5');
+  for (const source of ['sqrt(-1)', 'ln(0)', 'log(-3)', 'asin(2)', 'acos(-2)', 'tan(90)',
+    '(-2)^0.5', '(-1)!', '1.5!', '1001!', '10^10000', '2^10001',
+    'exp(1000)', 'exp(-1000)', 'inv(0)', 'sin30', 'sin()', 'constructor(1)', '1e-999^0.5']) {
+    assert.throws(() => math.evaluate(source), undefined, source);
+  }
+  assert.throws(() => math.evaluate('sin('.repeat(81) + '0' + ')'.repeat(81)));
+  assert.throws(() => math.evaluate('2^'.repeat(81) + '1'));
+  assert.throws(() => math.evaluate('tan(pi/2)', { angle: 'rad' }));
+});
+
+test('programmer bases, prefixes, integer arithmetic, aliases and precedence', () => {
+  const cases = {
+    'FF+1': 256n, '0b1010+0o7+0d3': 20n, '0xFF & 0x0F': 15n,
+    '0xF0 OR 0x0F': 255n, '0xFF XOR 0x0F': 240n,
+    'NOT 0': -1n, '~0xF0': -241n, '10/3': 5n, // unprefixed 10 is HEX 16
+    '0d10/0d3': 3n, '-0d10/0d3': -3n, '-0d10 MOD 0d3': -1n,
+    '0d1+0d2<<0d2': 12n, '0d1|0d2&0d4': 1n,
+    '0d1 SHL 0d4': 16n, '-0d8 SHR 0d1': -4n, '0xFF_FF': 65535n,
+    '(0d3+0d5)*0d2': 16n, 'FACE': 64206n,
+  };
+  for (const [source, expected] of Object.entries(cases)) assert.equal(prog(source, { base: 16 }), expected, source);
+  assert.equal(prog('1010+1', { base: 2 }), 11n);
+  assert.equal(prog('77', { base: 8 }), 63n);
+  assert.equal(prog('255', { base: 10 }), 255n);
+  assert.equal(prog('9007199254740993+1'), 9007199254740994n);
+});
+
+test('programmer word wrapping, signedness, division and logical/arithmetic shifts at every width', () => {
+  for (const bits of [8, 16, 32, 64]) {
+    const modulus = 1n << BigInt(bits), sign = modulus / 2n;
+    assert.equal(prog(String(modulus - 1n), { bits, signed: false }), modulus - 1n);
+    assert.equal(prog(String(modulus - 1n), { bits, signed: true }), -1n);
+    assert.equal(prog(String(modulus - 1n) + '+1', { bits, signed: false }), 0n);
+    assert.equal(prog(String(sign - 1n) + '+1', { bits, signed: true }), -sign);
+    assert.equal(prog('-1>>1', { bits }), -1n);
+    assert.equal(prog('-1>>>1', { bits }), sign - 1n);
+    assert.equal(prog('1<<' + bits, { bits }), 0n);
+    assert.equal(prog('-1>>' + bits, { bits }), -1n);
+    assert.equal(prog('-1>>>' + bits, { bits }), 0n);
+    assert.equal(prog(String(-sign) + '/-1', { bits }), -sign);
+    assert.equal(prog('NOT 0', { bits, signed: false }), modulus - 1n);
+  }
+  for (const source of ['1/0', '1%0', '1<<-1', '1<<65', '1.5', 'sqrt(4)', '0xGG', '0b102',
+    '0o8', '0dFF', '1__2', '_1', '1_', '1 2', '()', '(1', '1)', 'alert(1)', '1**2']) {
+    assert.throws(() => prog(source), undefined, source);
+  }
+  assert.throws(() => prog('2', { base: 2 }));
+  assert.throws(() => prog('8', { base: 8 }));
+  assert.throws(() => prog('A', { base: 10 }));
+  assert.throws(() => prog('1', { bits: 24 }));
+});
+
+test('base conversions round-trip without losing 64-bit precision or signed bit patterns', () => {
+  for (const bits of [8, 16, 32, 64]) for (const signed of [true, false]) for (const n of [0n, 1n, -1n, (1n << BigInt(bits - 1)) - 1n, -(1n << BigInt(bits - 1))]) {
+    const settings = { bits, signed };
+    for (const base of [2, 8, 10, 16]) {
+      const text = math.baseText(n, base, settings, true);
+      assert.equal(prog(text, { ...settings, base: 16 }), math.word(n, settings), text);
+    }
+  }
+  const source = 'FF AND (F OR 0d16)';
+  const qualified = math.qualifyProgrammer(source, { base: 16 });
+  assert.equal(prog(qualified, { base: 2 }), prog(source, { base: 16 }));
+});
+
+test('scientific UI wraps an operand or selection and puts the caret inside an empty function', async () => {
+  const page = app();
+  await page.click('mode', 'scientific');
+  assert.equal(page.get('scientificTools').hidden, false);
+  await page.click('function', 'sqrt');
+  assert.equal(page.get('expression').value, 'sqrt()');
+  assert.equal(page.get('expression').selectionStart, 5);
+  await page.click('insert', '9'); await page.click('insert', ')'); await page.press('Enter');
+  assert.equal(page.get('result').textContent, '3');
+  await page.click('science', 'square'); await page.press('Enter');
+  assert.equal(page.get('result').textContent, '9');
+  await page.enter('2+9');
+  page.get('expression').setSelectionRange(2, 3);
+  await page.click('function', 'sqrt');
+  assert.equal(page.get('expression').value, '2+sqrt(9)');
+  assert.equal(page.get('result').textContent, '5');
+  await page.enter('1');
+  await page.click('science', 'reciprocal');
+  assert.equal(page.get('result').textContent, '1');
+  await page.click('science', 'tenPower');
+  assert.equal(page.get('result').textContent, '10');
+});
+
+test('scientific approximate results never display or persist as exact fractions', async () => {
+  const page = app();
+  await page.click('mode', 'scientific'); await page.enter('sqrt(2)');
+  assert.equal(page.get('approx').hidden, false);
+  assert.equal(page.find('format', 'fraction').disabled, true);
+  assert.doesNotMatch(page.get('equivalent').textContent, /Exact:/);
+  await page.click('memory', 'store');
+  await page.get('historyList').children[0].children[0].fire('click');
+  assert.equal(page.get('approx').hidden, false);
+  await page.click('insert', '*'); await page.type('2'); await page.press('Enter');
+  assert.equal(page.get('approx').hidden, false);
+  const restored = app({ storage: page.store.get('singleHtmlApps.calculator.v2') });
+  assert.equal(restored.get('historyCount').textContent, '2');
+  assert.match(restored.get('memoryNote').textContent, /≈/);
+  await restored.click('memory', 'recall');
+  assert.equal(restored.get('approx').hidden, false);
+});
+
+test('angle changes re-evaluate the preview and history restores the original angle context', async () => {
+  const page = app();
+  await page.click('mode', 'scientific'); await page.enter('sin(30)');
+  assert.equal(page.get('result').textContent, '0.5');
+  await page.click('angle', 'rad');
+  assert.notEqual(page.get('result').textContent, '0.5');
+  await page.get('historyList').children[0].children[1].fire('click');
+  assert.equal(page.find('angle', 'deg').getAttribute('aria-pressed'), 'true');
+  assert.equal(page.get('result').textContent, '0.5');
+});
+
+test('programmer UI bases preserve the expression value, settings undo, and math draft is separate', async () => {
+  const page = app();
+  await page.enter('1/2');
+  await page.click('mode', 'programmer');
+  assert.equal(page.get('expression').value, '');
+  assert.equal(page.get('programmerTools').hidden, false);
+  await page.enter('10+5');
+  assert.equal(page.get('result').textContent, '15');
+  await page.click('base', '16');
+  assert.equal(page.get('result').textContent, '000000000000000F');
+  assert.equal(page.get('expression').value, '0d10 + 0d5');
+  await page.press('z', { ctrlKey: true });
+  assert.equal(page.get('result').textContent, '15');
+  assert.equal(page.find('base', '10').getAttribute('aria-pressed'), 'true');
+  await page.click('mode', 'standard');
+  assert.equal(page.get('expression').value, '1/2');
+  assert.equal(page.get('result').textContent, '0.5');
+  await page.click('mode', 'programmer');
+  assert.equal(page.get('expression').value, '10+5');
+});
+
+test('programmer keypad, bit toggling, signed control and word selector use the same word settings', async () => {
+  const page = app();
+  await page.click('mode', 'programmer'); await page.click('base', '16');
+  page.get('wordSize').value = '8'; await page.get('wordSize').fire('change');
+  await page.click('hex', 'F'); await page.click('hex', 'F'); await page.press('Enter');
+  assert.equal(page.get('result').textContent, 'FF');
+  assert.equal(page.get('decReading').textContent, '-1');
+  assert.equal(page.get('bitGrid').children.length, 8);
+  await page.click('id', 'signedToggle');
+  assert.equal(page.get('decReading').textContent, '255');
+  await page.get('bitGrid').children[0].fire('click');
+  assert.equal(page.get('result').textContent, '7F');
+  assert.equal(page.get('decReading').textContent, '127');
+  await page.click('program', 'not');
+  assert.equal(page.get('result').textContent, '80');
+  await page.click('base', '2');
+  assert.equal(page.find('insert', '2').disabled, true);
+  assert.equal(page.find('insert', '.').disabled, true);
+  assert.equal(page.find('hex', 'A').disabled, true);
+  assert.equal(page.get('result').textContent, '10000000');
+});
+
+test('memory and Ans preserve exact values and Ans is frozen when a calculation is saved', async () => {
+  const page = app();
+  await page.enter('1/3'); await page.click('memory', 'store');
+  await page.enter('1/6'); await page.click('memory', 'add');
+  await page.click('action', 'clear'); await page.click('memory', 'recall'); await page.press('Enter');
+  assert.equal(page.get('result').textContent, '0.5');
+  await page.enter('ans+1');
+  assert.equal(page.get('result').textContent, '1.5');
+  assert.doesNotMatch(page.get('expression').value, /ans/);
+  await page.enter('100');
+  await page.get('historyList').children[1].children[1].fire('click');
+  assert.equal(page.get('result').textContent, '1.5');
+  await page.click('memory', 'clear');
+  assert.equal(page.find('memory', 'recall').disabled, true);
+});
+
+test('programmer history, persistence and clipboard preserve base, word size and signed interpretation', async () => {
+  const copied = [];
+  const page = app({ navigator: { clipboard: { writeText: async text => copied.push(text) } } });
+  await page.click('mode', 'programmer'); await page.click('base', '16');
+  page.get('wordSize').value = '8'; await page.get('wordSize').fire('change');
+  await page.enter('FF'); await page.click('id', 'copyResult');
+  assert.equal(copied.at(-1), '0xFF');
+  await page.click('copyBase', '10');
+  assert.equal(copied.at(-1), '-0d1');
+  await page.click('id', 'signedToggle'); await page.enter('0d128');
+  await page.get('historyList').children[1].children[1].fire('click');
+  assert.equal(page.get('signedToggle').getAttribute('aria-pressed'), 'true');
+  assert.equal(page.get('decReading').textContent, '-1');
+  const restored = app({ storage: page.store.get('singleHtmlApps.calculator.v2') });
+  assert.equal(restored.get('historyCount').textContent, '2');
+  assert.equal(restored.get('wordSize').value, '8');
+  await restored.get('historyList').children[0].children[0].fire('click');
+  assert.equal(restored.get('decReading').textContent, '128');
+  assert.equal(restored.get('signedToggle').getAttribute('aria-pressed'), 'false');
+});
+
+test('scientific and programmer expressions can be pasted and all four tabs support keyboard navigation', async () => {
+  const page = app();
+  await page.click('mode', 'scientific');
+  await page.document.fire('paste', { clipboardData: { getData: () => 'sin(30)+log(100)' } });
+  await page.press('Enter');
+  assert.equal(page.get('result').textContent, '2.5');
+  await page.get('scientificTab').fire('keydown', { key: 'ArrowRight' });
+  assert.equal(page.get('programmerTab').getAttribute('aria-selected'), 'true');
+  await page.document.fire('paste', { clipboardData: { getData: () => '0xFF AND 0b1111' } });
+  await page.press('Enter');
+  assert.equal(page.get('decReading').textContent, '15');
+  await page.get('programmerTab').fire('keydown', { key: 'ArrowRight' });
+  assert.equal(page.get('standardTab').getAttribute('aria-selected'), 'true');
+});
+
+test('a previous approximate answer does not prevent unrelated integer programmer calculations', async () => {
+  const page = app();
+  await page.enter('sqrt(2)');
+  await page.click('mode', 'programmer'); await page.enter('42');
+  assert.equal(page.get('result').textContent, '42');
+});
+
+test('1000! remains exact, persists, and can be reused without overflowing the editor', async () => {
+  const result = math.evaluate('1000!');
+  assert.equal(result.d, 1n);
+  assert.equal(result.n.toString().length, 2568);
+  assert.equal(result.n.toString().slice(0, 10), '4023872600');
+  const page = app();
+  await page.click('mode', 'scientific'); await page.enter('1000!');
+  assert.notEqual(page.get('result').textContent, '—');
+  assert.ok(page.get('historyList').children[0].children[0].children[1].textContent.length < 64);
+  await page.click('insert', '*'); await page.type('2'); await page.press('Enter');
+  assert.equal(page.get('expression').value, '(1000!)*2');
+  const restored = app({ storage: page.store.get('singleHtmlApps.calculator.v2') });
+  assert.equal(restored.get('historyCount').textContent, '2');
+  await restored.get('historyList').children[0].children[0].fire('click');
+  assert.notEqual(restored.get('result').textContent, '—');
+});
+
+test('programmer arithmetic properties hold for all widths without Number rounding', () => {
+  let seed = 314159;
+  const next = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return BigInt(seed); };
+  for (const bits of [8, 16, 32, 64]) for (const signed of [true, false]) {
+    const settings = { bits, signed };
+    for (let index = 0; index < 30; index++) {
+      const a = next() << 32n | next(), b = next() << 32n | next();
+      const wa = math.word(a, settings), wb = math.word(b, settings);
+      assert.equal(prog('0x' + a.toString(16) + '+0x' + b.toString(16), settings), math.word(wa + wb, settings));
+      assert.equal(prog('0x' + a.toString(16) + '^0x' + b.toString(16), settings), math.word(wa ^ wb, settings));
+      assert.equal(prog('0x' + a.toString(16) + '*0x' + b.toString(16), settings), math.word(wa * wb, settings));
+    }
+  }
+});
+
+test('every scientific function button inserts a valid expression and both programmer shift shortcuts work', async () => {
+  const page = app();
+  await page.click('mode', 'scientific');
+  for (const node of page.document.nodes.filter(node => node.dataset.function)) {
+    await page.enter('1');
+    await page.click('function', node.dataset.function);
+    await page.press('Enter');
+    assert.notEqual(page.get('result').textContent, '—', node.dataset.function);
+    assert.equal(page.get('expression').getAttribute('aria-invalid'), 'false', node.dataset.function);
+  }
+  await page.click('mode', 'programmer'); await page.enter('8');
+  await page.click('program', 'left');
+  assert.equal(page.get('result').textContent, '16');
+  await page.click('program', 'right');
+  assert.equal(page.get('result').textContent, '8');
+});
+
+test('memory rejects fractions in programmer mode without losing either draft', async () => {
+  const page = app();
+  await page.enter('1/3'); await page.click('memory', 'store');
+  await page.click('mode', 'programmer');
+  await page.click('memory', 'recall');
+  assert.match(page.get('status').textContent, /exact integer/);
+  assert.equal(page.get('expression').value, '');
+  await page.click('mode', 'standard');
+  assert.equal(page.get('expression').value, '1/3');
+});
+
+test('undoing history reuse restores the prior expression and its angle/base/mode context', async () => {
+  const page = app();
+  await page.click('mode', 'scientific'); await page.enter('sin(30)');
+  await page.click('angle', 'rad');
+  const radians = page.get('result').textContent;
+  await page.get('historyList').children[0].children[1].fire('click');
+  assert.equal(page.get('result').textContent, '0.5');
+  await page.press('z', { ctrlKey: true });
+  assert.equal(page.find('angle', 'rad').getAttribute('aria-pressed'), 'true');
+  assert.equal(page.get('result').textContent, radians);
+  await page.click('mode', 'programmer'); await page.enter('42');
+  await page.click('mode', 'scientific');
+  await page.get('historyList').children[0].children[1].fire('click');
+  assert.equal(page.get('programmerTab').getAttribute('aria-selected'), 'true');
+  await page.press('z', { ctrlKey: true });
+  assert.equal(page.get('scientificTab').getAttribute('aria-selected'), 'true');
+  assert.equal(page.get('expression').value, 'sin(30)');
+});
+
+test('a bit edit can be saved to history with Enter and repeated Enter does not duplicate it', async () => {
+  const page = app();
+  await page.click('mode', 'programmer'); await page.enter('0');
+  await page.get('bitGrid').children.at(-1).fire('click');
+  assert.equal(page.get('decReading').textContent, '1');
+  await page.press('Enter');
+  assert.equal(page.get('historyCount').textContent, '2');
+  await page.press('Enter');
+  assert.equal(page.get('historyCount').textContent, '2');
 });
