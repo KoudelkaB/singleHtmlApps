@@ -98,6 +98,7 @@
         const ROW_HEIGHT = 20; 
         let fileBytes = null;
         let totalRows = 0;
+        let readVersion = 0;
 
         function formatBytes(bytes, format = 'auto') {
             if (bytes === 0) return '0 Bytes';
@@ -128,12 +129,17 @@
         }, false);
 
         async function readFile(file) {
+            const version = ++readVersion;
+            fileBytes = null;
+            totalRows = 0;
+            content.style.height = 'auto';
             content.innerHTML = '<div style="padding: 20px;">Loading file into memory...</div>';
             title.textContent = file.name;
             fileInfo.textContent = `Size: ${formatBytes(file.size)}`;
             
             try {
                 const buffer = await file.arrayBuffer();
+                if (version !== readVersion) return;
                 fileBytes = new Uint8Array(buffer);
                 totalRows = Math.ceil(fileBytes.length / BYTES_PER_ROW);
                 
@@ -142,7 +148,11 @@
                 renderVisibleRows();
                 container.focus();
             } catch (err) {
-                content.innerHTML = `<div style="padding: 20px; color: #f44747;">Error: ${err.message}</div>`;
+                if (version !== readVersion) return;
+                const message = document.createElement('div');
+                message.style.cssText = 'padding:20px;color:#f44747';
+                message.textContent = 'Error: ' + err.message;
+                content.replaceChildren(message);
             }
         }
 
@@ -179,7 +189,12 @@
                 const rowDiv = document.createElement('div');
                 rowDiv.className = 'hex-row';
                 rowDiv.style.top = `${i * ROW_HEIGHT}px`;
-                rowDiv.innerHTML = `<span class="offset">${rowOffset}</span><span class="hex-bytes">${hexPart}</span><span class="ascii">${asciiPart}</span>`;
+                for (const [name, text] of [['offset', rowOffset], ['hex-bytes', hexPart], ['ascii', asciiPart]]) {
+                    const span = document.createElement('span');
+                    span.className = name;
+                    span.textContent = text;
+                    rowDiv.appendChild(span);
+                }
                 fragment.appendChild(rowDiv);
             }
 
@@ -189,6 +204,7 @@
         container.addEventListener('scroll', () => {
             requestAnimationFrame(renderVisibleRows);
         });
+        window.addEventListener('resize', () => requestAnimationFrame(renderVisibleRows));
 
         container.addEventListener('keydown', (e) => {
             const step = ROW_HEIGHT;

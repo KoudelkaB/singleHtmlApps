@@ -24,12 +24,14 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100svh;
+            padding: 12px;
+            box-sizing: border-box;
             margin: 0;
         }
 
         .calculator {
-            width: 350px;
+            width: min(350px, calc(100vw - 24px));
             background-color: var(--calculator-bg);
             border: 1px solid var(--border-color);
             border-radius: 8px;
@@ -141,7 +143,7 @@
 <body>
 
     <div class="calculator" id="calculator">
-        <div class="mode-toggle" onclick="toggleMode()">Basic / Scientific</div>
+        <button class="mode-toggle" type="button" onclick="toggleMode()">Basic / Scientific</button>
         <div class="display">
             <div id="history"></div>
             <div id="expression"></div>
@@ -193,7 +195,9 @@
         let currentInput = '0';
         let expression = '';
         let isScientificMode = false;
-
+        let waitingForOperand = false;
+        let closedGroup = false;
+        let justCalculated = false;
         const displayValue = document.getElementById('current-value');
         const displayExpression = document.getElementById('expression');
         const calculator = document.getElementById('calculator');
@@ -202,205 +206,138 @@
             displayValue.innerText = currentInput;
             displayExpression.innerText = expression;
         }
-
         function toggleMode() {
             isScientificMode = !isScientificMode;
-            if (isScientificMode) {
-                calculator.classList.add('scientific');
-            } else {
-                calculator.classList.remove('scientific');
-            }
+            calculator.classList.toggle('scientific', isScientificMode);
         }
-
-        function appendNumber(number) {
-            if (currentInput === '0' && number !== '.') {
-                currentInput = number;
-            } else {
-                if (number === '.' && currentInput.includes('.')) return;
-                currentInput += number;
-            }
-            updateDisplay();
-        }
-
-        function appendOperator(op) {
-            if (currentInput === '0' && expression === '') {
-                // Do nothing if we are just starting
-            } else {
-                expression += currentInput + ' ' + op + ' ';
-            }
-            currentInput = '0';
-            updateDisplay();
-        }
-
-        function appendFunction(func) {
-            try {
-                let val = parseFloat(currentInput);
-                let result = 0;
-                switch (func) {
-                    case 'sin': result = Math.sin(val); break;
-                    case 'cos': result = Math.cos(val); break;
-                    case 'tan': result = Math.tan(val); break;
-                    case 'log': result = Math.log10(val); break;
-                    case 'ln': result = Math.log(val); break;
-                    case 'sqrt': result = Math.sqrt(val); break;
-                    case 'pi': result = Math.PI; break;
-                    case 'e': result = Math.E; break;
-                    case 'pow':
-                        expression += currentInput + ' ** ';
-                        currentInput = '0';
-                        updateDisplay();
-                        return;
-                }
-                currentInput = result.toString();
-                expression = '';
-                updateDisplay();
-            } catch (e) {
-                currentInput = 'Error';
-                updateDisplay();
-            }
-        }
-
         function clearDisplay() {
-            currentInput = '0';
-            expression = '';
+            currentInput = '0'; expression = '';
+            waitingForOperand = closedGroup = justCalculated = false;
             updateDisplay();
         }
-
-        function deleteLast() {
-            if (currentInput.length > 1) {
-                currentInput = currentInput.slice(0, -1);
-            } else {
-                currentInput = '0';
+        function appendNumber(number) {
+            if (!/^(?:\d|\.)$/.test(number)) return;
+            if (currentInput === 'Error' || justCalculated) clearDisplay();
+            if (closedGroup) expression += ' * ';
+            if (waitingForOperand) currentInput = '0';
+            waitingForOperand = closedGroup = false;
+            if (number === '.') {
+                if (currentInput.includes('.')) return;
+                if (currentInput === '-') currentInput = '-0';
+                currentInput += '.';
+            } else currentInput = currentInput === '0' ? number : currentInput + number;
+            updateDisplay();
+        }
+        function appendOperator(op) {
+            if (currentInput === 'Error') clearDisplay();
+            if (op === '%') {
+                if (closedGroup) expression += '/100';
+                else {
+                    currentInput = String(Number(currentInput) / 100);
+                    waitingForOperand = false;
+                }
+                justCalculated = false; updateDisplay(); return;
             }
+            if (op === '(') {
+                if (justCalculated) clearDisplay();
+                if (closedGroup) expression += ' * ';
+                else if (!waitingForOperand && currentInput !== '0') expression += currentInput + ' * ';
+                expression += '(';
+                currentInput = '0'; waitingForOperand = true; closedGroup = false;
+                updateDisplay(); return;
+            }
+            if (op === ')') {
+                const opens = (expression.match(/\(/g) || []).length;
+                const closes = (expression.match(/\)/g) || []).length;
+                if (opens <= closes || waitingForOperand && !closedGroup) return;
+                if (!waitingForOperand) expression += currentInput;
+                expression += ')'; closedGroup = waitingForOperand = true;
+                currentInput = '0'; updateDisplay(); return;
+            }
+            if (!['+', '-', '*', '/', '**'].includes(op)) return;
+            if (waitingForOperand && !closedGroup) {
+                if (op === '-') {
+                    currentInput = '-'; waitingForOperand = false; updateDisplay(); return;
+                }
+                if (/[+*/-]\s*$/.test(expression)) expression = expression.replace(/(?:\*\*|[+*/-])\s*$/, op + ' ');
+                updateDisplay(); return;
+            }
+            if (!closedGroup) expression += (op === '**' && currentInput.startsWith('-') ? '(' + currentInput + ')' : currentInput);
+            expression += ' ' + op + ' ';
+            currentInput = '0'; waitingForOperand = true; closedGroup = justCalculated = false;
             updateDisplay();
         }
-
-        function calculate() {
-            if (expression === '' && currentInput === '0') return;
-
-            let fullExpression = expression + currentInput;
-            let jsExpression = fullExpression.replace(/×/g, '*').replace(/÷/g, '/').replace(/%/g, '/100');
-
+        function appendFunction(func) {
+            if (func === 'pow') { appendOperator('**'); return; }
+            if (currentInput === 'Error') clearDisplay();
             try {
-                let result = eval(jsExpression);
-                let historyEntry = fullExpression + ' = ' + result;
-
-                const historyDiv = document.getElementById('history');
-                const entry = document.createElement('div');
-                entry.innerText = historyEntry;
-                historyDiv.prepend(entry);
-
-                expression = '';
-                currentInput = result.toString();
-                updateDisplay();
-            } catch (e) {
+                let val = Number(currentInput);
+                let groupStart = -1;
+                if (closedGroup && !['pi', 'e'].includes(func)) {
+                    let depth = 0;
+                    for (let index = expression.length - 1; index >= 0; index--) {
+                        if (expression[index] === ')') depth++;
+                        if (expression[index] === '(' && --depth === 0) { groupStart = index; break; }
+                    }
+                    if (groupStart >= 0) val = eval(expression.slice(groupStart));
+                }
+                const functions = { sin:Math.sin, cos:Math.cos, tan:Math.tan, log:Math.log10, ln:Math.log, sqrt:Math.sqrt };
+                const result = func === 'pi' ? Math.PI : func === 'e' ? Math.E : functions[func](val);
+                if (!Number.isFinite(result)) throw new Error('Invalid result');
+                if (groupStart >= 0) expression = expression.slice(0, groupStart);
+                currentInput = String(result); waitingForOperand = closedGroup = justCalculated = false;
+            } catch (error) {
                 currentInput = 'Error';
-                updateDisplay();
             }
+            updateDisplay();
         }
-
-        // Keyboard Support
-        document.addEventListener('keydown', (event) => {
+        function deleteLast() {
+            if (currentInput === 'Error') { clearDisplay(); return; }
+            if (waitingForOperand && expression) {
+                const tail = expression.match(/(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)\s+(?:\*\*|[+*/-])\s*$/i);
+                if (tail) {
+                    currentInput = tail[1]; expression = expression.slice(0, tail.index);
+                    waitingForOperand = closedGroup = false;
+                }
+            } else currentInput = currentInput.length > 1 ? currentInput.slice(0, -1) : '0';
+            justCalculated = false; updateDisplay();
+        }
+        function calculate() {
+            if (justCalculated) return;
+            const fullExpression = expression + (waitingForOperand ? '' : currentInput);
+            try {
+                if (!fullExpression || !/^[0-9eE.+*/()\s-]+$/.test(fullExpression)) throw new Error('Invalid expression');
+                const result = eval(fullExpression);
+                if (typeof result !== 'number' || !Number.isFinite(result)) throw new Error('Invalid result');
+                const entry = document.createElement('div');
+                entry.innerText = fullExpression + ' = ' + result;
+                const history = document.getElementById('history');
+                history.prepend(entry);
+                while (history.children.length > 20) history.children[history.children.length - 1].remove();
+                currentInput = String(result); expression = '';
+                waitingForOperand = closedGroup = false; justCalculated = true;
+            } catch (error) {
+                currentInput = 'Error'; expression = '';
+                waitingForOperand = closedGroup = justCalculated = false;
+            }
+            updateDisplay();
+        }
+        document.addEventListener('keydown', event => {
+            if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
             const key = event.key;
-            if (/[0-9.]/.test(key)) {
-                appendNumber(key);
+            if (event.target.tagName === 'BUTTON' && (key === 'Enter' || key === ' ')) return;
+            if (/^[0-9.]$/.test(key) || key === ',') {
+                event.preventDefault(); appendNumber(key === ',' ? '.' : key);
             } else if (['+', '-', '*', '/', '%', '(', ')'].includes(key)) {
-                let op = key;
-                if (key === '*') op = '*';
-                if (key === '/') op = '/';
-                if (key === '*') appendOperator('*');
-                else if (key === '/') appendOperator('/');
-                else appendOperator(key);
+                event.preventDefault(); appendOperator(key);
             } else if (key === 'Enter' || key === '=') {
-                event.preventDefault();
-                calculate();
+                event.preventDefault(); calculate();
             } else if (key === 'Backspace') {
-                deleteLast();
+                event.preventDefault(); deleteLast();
             } else if (key === 'Escape') {
-                clearDisplay();
+                event.preventDefault(); clearDisplay();
             }
         });
-
-        function appendNumber(number) {
-            if (currentInput === '0' && number !== '.') {
-                currentInput = number;
-            } else {
-                if (number === '.' && currentInput.includes('.')) return;
-                currentInput += number;
-            }
-            updateDisplay();
-        }
-
-        function appendOperator(op) {
-            if (currentInput === '0' && expression === '') {
-                // Do nothing if we are just starting
-            } else {
-                expression += currentInput + ' ' + op + ' ';
-            }
-            currentInput = '0';
-            updateDisplay();
-        }
-
-        function clearDisplay() {
-            currentInput = '0';
-            expression = '';
-            updateDisplay();
-        }
-
-        function deleteLast() {
-            if (currentInput.length > 1) {
-                currentInput = currentInput.slice(0, -1);
-            } else {
-                currentInput = '0';
-            }
-            updateDisplay();
-        }
-
-        function appendFunction(func) {
-            try {
-                let val = parseFloat(currentInput);
-                let result = 0;
-                switch (func) {
-                    case 'sin': result = Math.sin(val); break;
-                    case 'cos': result = Math.cos(val); break;
-                    case 'tan': result = Math.tan(val); break;
-                    case 'log': result = Math.log10(val); break;
-                    case 'ln': result = Math.log(val); break;
-                    case 'sqrt': result = Math.sqrt(val); break;
-                    case 'pi': result = Math.PI; break;
-                    case 'e': result = Math.E; break;
-                    case 'pow':
-                        expression += currentInput + ' ** ';
-                        currentInput = '0';
-                        updateDisplay();
-                        return;
-                }
-                currentInput = result.toString();
-                updateDisplay();
-            } catch (e) {
-                currentInput = 'Error';
-                updateDisplay();
-            }
-        }
-
-        function calculate() {
-            if (expression === '' || currentInput === '0') return;
-
-            let fullExpression = expression + currentInput;
-            // Replace visual operators with JS operators
-            let jsExpression = fullExpression.replace(/×/g, '*').replace(/÷/g, '/').replace(/%/g, '/100');
-
-            try {
-                let result = eval(jsExpression);
-                expression = fullExpression + ' =';
-                currentInput = result.toString();
-                updateDisplay();
-                expression = ''; // Reset expression after calculation
-            } catch (e) {
-                currentInput = 'Error';
-                updateDisplay();
-            }
-        }
     </script>
 </body>
 

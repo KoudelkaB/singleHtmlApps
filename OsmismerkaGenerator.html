@@ -1309,6 +1309,7 @@ dew</textarea>
             clearSavedSettings();
             applySettings(defaultSettings);
             state.puzzle = null;
+            state.restoringHistory = false;
             clearPrintSheet();
             updateStats();
             runGenerate();
@@ -2174,14 +2175,19 @@ dew</textarea>
                 };
             `;
             const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
-            const worker = new Worker(url);
-            worker.objectUrl = url;
-            return worker;
+            try {
+                const worker = new Worker(url);
+                worker.objectUrl = url;
+                return worker;
+            } catch (error) {
+                URL.revokeObjectURL(url);
+                throw error;
+            }
         }
 
         function buildPuzzleOffThread(config) {
             if (!window.Worker) {
-                return Promise.resolve(buildPuzzle(config));
+                return Promise.resolve().then(() => buildPuzzle(config));
             }
 
             return new Promise((resolve, reject) => {
@@ -2193,10 +2199,19 @@ dew</textarea>
                     return;
                 }
 
+                let disposed = false;
                 const disposeWorker = () => {
+                    if (disposed) return;
+                    disposed = true;
                     worker.terminate();
                     URL.revokeObjectURL(worker.objectUrl);
+                    if (state.cancelGeneration === cancelGeneration) state.cancelGeneration = null;
                 };
+                const cancelGeneration = () => {
+                    disposeWorker();
+                    reject(new Error("Generation cancelled"));
+                };
+                state.cancelGeneration = cancelGeneration;
 
                 worker.onmessage = event => {
                     disposeWorker();
@@ -2210,23 +2225,24 @@ dew</textarea>
                     disposeWorker();
                     reject(new Error(error.message || text.requiredFailed));
                 };
-                worker.postMessage({ config, messages: getBuildErrorMessages() });
+                try {
+                    worker.postMessage({ config, messages: getBuildErrorMessages() });
+                } catch (error) {
+                    disposeWorker();
+                    reject(error);
+                }
             });
         }
 
         function runGenerate(options = {}) {
-            if (state.busy) {
-                if (typeof options.after === "function") {
-                    options.after();
-                }
-                return;
-            }
+            const generationId = ++state.generationId;
+            if (typeof state.cancelGeneration === "function") state.cancelGeneration();
             state.busy = true;
             els.generate.disabled = true;
             setStatus(text.generatingTitle, text.generatingDetail, "running", text.runningBadge);
 
             window.setTimeout(() => {
-                const generationId = ++state.generationId;
+                if (generationId !== state.generationId) return;
                 let config;
                 let generatedSettings;
                 let generatedKey;

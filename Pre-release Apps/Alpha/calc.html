@@ -10,7 +10,9 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100svh;
+            padding: 12px;
+            box-sizing: border-box;
             margin: 0;
             font-family: sans-array, sans-serif;
             background-color: #f4f4f9;
@@ -87,7 +89,7 @@
 <body>
 
     <div class="calculator">
-        <input type="text" id="display" disabled>
+        <input type="text" id="display" readonly aria-label="Calculator expression and result">
         <div class="buttons">
             <button class="clear" onclick="clearDisplay()">C</button>
             <button class="operator" onclick="appendToDisplay('/')">/</button>
@@ -119,20 +121,27 @@
 
     <script>
         const display = document.getElementById('display');
+        let justCalculated = false;
 
         function appendToDisplay(input) {
+            if (display.value === 'Error' || (justCalculated && !/^[+*/\-]/.test(input))) display.value = '';
+            justCalculated = false;
             display.value += input;
         }
 
         function clearDisplay() {
             display.value = '';
+            justCalculated = false;
         }
 
         function calculate() {
             try {
                 // Replace common math notation for eval
                 let expression = display.value.replace(/×/g, '*').replace(/÷/g, '/');
-                display.value = eval(expression);
+                const result = eval(expression);
+                if (typeof result !== 'number' || !Number.isFinite(result)) throw new Error('Invalid result');
+                display.value = String(result);
+                justCalculated = true;
             } catch (error) {
                 display.value = 'Error';
             }
@@ -140,15 +149,20 @@
 
         document.addEventListener('keydown', (event) => {
             const key = event.key;
-            if (/[0-9\+\-\*\/\.]/.test(key)) {
-                appendToDisplay(key);
-            } else if (key === 'Enter' || key / key === '=') {
+            if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+            if (event.target.tagName === 'BUTTON' && (key === 'Enter' || key === ' ')) return;
+            if (/^[0-9+\-*/.()]$/.test(key) || key === ',') {
+                event.preventDefault();
+                appendToDisplay(key === ',' ? '.' : key);
+            } else if (key === 'Enter' || key === '=') {
                 event.preventDefault();
                 calculate();
             } else if (key === 'Escape' || key === 'c' || key === 'C') {
                 clearDisplay();
             } else if (key === 'Backspace') {
+                event.preventDefault();
                 display.value = display.value.slice(0, -1);
+                justCalculated = false;
             }
         });
     </script>

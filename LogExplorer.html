@@ -6406,6 +6406,7 @@
                 const minutes = Number(match[4] || 0);
                 const seconds = Number(match[5] || 0);
                 const millis = Number((match[6] || "0").padEnd(3, "0"));
+                if (minutes > 59 || seconds > 59 || (match[2] && hours > 23)) return null;
                 return sign * (((((days * 24) + hours) * 60 + minutes) * 60 + seconds) * 1000 + millis);
             }
 
@@ -6427,19 +6428,23 @@
             function parseDateTime(raw) {
                 const text = raw.trim();
                 if (!text) return null;
-                const direct = Date.parse(text);
-                if (!Number.isNaN(direct)) {
-                    return direct;
-                }
                 const match = text.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
-                if (!match) return null;
+                if (!match) {
+                    const direct = Date.parse(text);
+                    return Number.isNaN(direct) ? null : direct;
+                }
                 const day = Number(match[1]);
                 const month = Number(match[2]) - 1;
                 const year = Number(match[3]);
                 const hours = Number(match[4] || 0);
                 const minutes = Number(match[5] || 0);
                 const seconds = Number(match[6] || 0);
-                return new Date(year, month, day, hours, minutes, seconds).getTime();
+                const date = new Date(0);
+                date.setFullYear(year, month, day);
+                date.setHours(hours, minutes, seconds, 0);
+                if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day ||
+                    date.getHours() !== hours || date.getMinutes() !== minutes || date.getSeconds() !== seconds) return null;
+                return date.getTime();
             }
 
             function parseTypedValue(raw, valueType, forInvertDateTime) {
@@ -6447,7 +6452,9 @@
                     return { ok: true, raw, comparable: raw };
                 }
                 if (valueType === "number") {
-                    const numeric = Number(raw.trim().replace(/,/g, "."));
+                    const text = raw.trim();
+                    if (!text) return { ok: false, raw, comparable: null };
+                    const numeric = Number(text.replace(/,/g, "."));
                     return Number.isFinite(numeric) ? { ok: true, raw, comparable: numeric } : { ok: false, raw, comparable: null };
                 }
                 if (valueType === "time-span") {

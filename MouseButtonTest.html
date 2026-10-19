@@ -272,12 +272,22 @@
         });
 
         copyLogButton.addEventListener("click", async () => {
+            const text = logOutput.textContent;
+            let copied = false;
             try {
-                await navigator.clipboard.writeText(logOutput.textContent);
-                lastEvent.textContent = "Last event: log copied";
+                await navigator.clipboard.writeText(text);
+                copied = true;
             } catch (error) {
-                lastEvent.textContent = "Last event: clipboard copy failed";
+                const field = document.createElement("textarea");
+                field.value = text;
+                field.readOnly = true;
+                field.style.cssText = "position:fixed;left:-9999px;top:0";
+                document.body.appendChild(field);
+                field.select();
+                try { copied = document.execCommand("copy"); } catch (_) {}
+                field.remove();
             }
+            lastEvent.textContent = copied ? "Last event: log copied" : "Copy failed. Select the log and press Ctrl+C (Cmd+C on Mac).";
             testZone.focus();
         });
 

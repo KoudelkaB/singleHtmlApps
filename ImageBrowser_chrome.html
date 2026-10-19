@@ -1344,8 +1344,10 @@
                 controlsExpanded: false,
                 treeLoading: false,
                 imageLoading: false,
+                imageLoadErrors: 0,
                 scanToken: 0,
                 imageLoadToken: 0,
+                openDirectoryVersion: 0,
                 lightboxOpen: false,
                 lightboxRelativePath: "",
                 lightboxWheelUntil: 0,
@@ -1371,10 +1373,7 @@
             const narrowLayoutMediaQuery = window.matchMedia("(max-width: 980px)");
 
             function isSupported() {
-                return typeof window.showDirectoryPicker === "function"
-                    && window.indexedDB
-                    && typeof DataTransferItem !== "undefined"
-                    && typeof DataTransferItem.prototype.getAsFileSystemHandle === "function";
+                return typeof window.showDirectoryPicker === "function";
             }
 
             function escapeHtml(value) {
@@ -1483,7 +1482,15 @@
             }
 
             function saveHistory() {
-                localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(0, MAX_HISTORY)));
+                saveStoredValue(HISTORY_STORAGE_KEY, state.history.slice(0, MAX_HISTORY));
+            }
+
+            function saveStoredValue(key, value) {
+                try {
+                    localStorage.setItem(key, JSON.stringify(value));
+                } catch (error) {
+                    console.warn("Could not persist browser settings; continuing without storage.", error);
+                }
             }
 
             function loadSettings() {
@@ -1528,7 +1535,7 @@
             }
 
             function saveSettings() {
-                localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
+                saveStoredValue(SETTINGS_STORAGE_KEY, {
                     folderFilterText: state.folderFilterText,
                     filterText: state.filterText,
                     sortKey: state.sortKey,
@@ -1538,14 +1545,14 @@
                     zoomValue: state.zoomValue,
                     galleryExpanded: state.galleryExpanded,
                     lightboxScale: state.lightboxScale
-                }));
+                });
             }
 
             function saveSessionSnapshot() {
-                localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+                saveStoredValue(SESSION_STORAGE_KEY, {
                     currentDirectoryId: state.currentDirectoryId,
                     selectedFolderPath: state.selectedFolderPath
-                }));
+                });
             }
 
             function syncControls() {
@@ -1949,6 +1956,11 @@
             }
 
             function resetCurrentDirectory() {
+                state.openDirectoryVersion = (state.openDirectoryVersion || 0) + 1;
+                state.scanToken += 1;
+                state.imageLoadToken += 1;
+                state.imageLoadErrors = 0;
+                if (state.lightboxOpen) closeLightbox();
                 revokeImageUrls();
                 state.currentDirectoryId = "";
                 state.currentDirectoryName = "";
@@ -1991,7 +2003,7 @@
             }
 
             function prunePreviewQueue(allowedPaths) {
-                if (!(allowedPaths instanceof Set) || !allowedPaths.size || !state.previewQueue.length) {
+                if (!(allowedPaths instanceof Set) || !state.previewQueue.length) {
                     return;
                 }
                 const retainedTasks = [];
@@ -2029,17 +2041,25 @@
                 if (!handle || handle.kind !== "directory") {
                     throw new Error("A directory handle is required.");
                 }
+                const openVersion = (state.openDirectoryVersion || 0) + 1;
+                state.openDirectoryVersion = openVersion;
                 const permissionGranted = await verifyDirectoryPermission(handle, false);
+                if (openVersion !== state.openDirectoryVersion) return;
                 if (!permissionGranted) {
                     throw new Error("Directory access was not granted.");
                 }
                 let matchedEntry = null;
                 if (source !== "recent") {
-                    matchedEntry = await rememberDirectory(handle);
+                    try {
+                        matchedEntry = await rememberDirectory(handle);
+                    } catch (error) {
+                        console.warn("Could not remember this directory; opening it for this session.", error);
+                    }
                 }
                 if (!matchedEntry && knownId) {
                     matchedEntry = state.history.find((item) => item.id === knownId) || null;
                 }
+                if (openVersion !== state.openDirectoryVersion) return;
                 state.currentDirectoryId = matchedEntry ? matchedEntry.id : "";
                 state.currentDirectoryName = handle.name;
                 state.currentHandle = handle;
@@ -2110,8 +2130,8 @@
                     .catch((error) => {
                         if (scanToken === state.scanToken) {
                             state.treeLoading = false;
+                            handleError(error);
                         }
-                        handleError(error);
                     });
 
                 refreshVisibleImages().catch(handleError);
@@ -2154,6 +2174,7 @@
             }
 
             async function discoverFolderTree(directoryHandle, parts, scanToken, progress) {
+                if (scanToken !== state.scanToken) return;
                 const currentPath = normalizePath(parts);
                 ensureFolderRecord(currentPath, parts.length, directoryHandle);
                 for await (const [name, childHandle] of directoryHandle.entries()) {
@@ -2222,6 +2243,7 @@
             }
 
             async function loadImagesForScope(directoryHandle, parts, recursive, loadToken, progress) {
+                if (loadToken !== state.imageLoadToken) return;
                 const currentPath = normalizePath(parts);
                 ensureFolderRecord(currentPath, parts.length, directoryHandle);
                 for await (const [name, childHandle] of directoryHandle.entries()) {
@@ -2240,7 +2262,14 @@
                     if (!IMAGE_EXTENSIONS.has(extension)) {
                         continue;
                     }
-                    await loadImageEntryMetadata(childHandle, parts, name, loadToken, progress);
+                    try {
+                        await loadImageEntryMetadata(childHandle, parts, name, loadToken, progress);
+                    } catch (error) {
+                        if (loadToken === state.imageLoadToken) {
+                            state.imageLoadErrors += 1;
+                            console.warn("Could not read image " + normalizePath(parts.concat(name)), error);
+                        }
+                    }
                 }
             }
 
@@ -2249,6 +2278,7 @@
                 state.images = [];
                 state.imageMap = new Map();
                 state.imageLoading = true;
+                state.imageLoadErrors = 0;
                 state.imageLoadToken += 1;
                 const loadToken = state.imageLoadToken;
                 renderGallery();
@@ -3061,7 +3091,7 @@
                 }
                 const folderLabel = state.selectedFolderPath || "/";
                 elements.directorySummary.textContent = "Directory: " + state.currentDirectoryName + " | " + state.images.length + " image" + (state.images.length === 1 ? "" : "s");
-                elements.selectionSummary.textContent = message || "Folder: " + folderLabel + " | sort " + state.sortKey + " " + state.sortDirection + (state.flatten ? " | flat" : " | grouped") + (state.treeLoading ? " | scanning tree" : "") + (state.imageLoading ? " | reading file list" : " | previews on demand");
+                elements.selectionSummary.textContent = message || "Folder: " + folderLabel + " | sort " + state.sortKey + " " + state.sortDirection + (state.flatten ? " | flat" : " | grouped") + (state.treeLoading ? " | scanning tree" : "") + (state.imageLoading ? " | reading file list" : " | previews on demand") + (state.imageLoadErrors ? " | unreadable images: " + state.imageLoadErrors : "");
             }
 
             async function openImageByRelativePath(relativePath) {

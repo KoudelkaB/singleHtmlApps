@@ -965,7 +965,8 @@
             selectedId: null,
             filter: "",
             sourceBytes: null,
-            nextId: 1
+            nextId: 1,
+            loadVersion: 0
         };
 
         const dropZone = document.getElementById("dropZone");
@@ -1005,6 +1006,7 @@
 
         fileInput.addEventListener("change", (event) => {
             const file = event.target.files[0];
+            fileInput.value = "";
             if (file) {
                 loadFile(file);
             }
@@ -1040,7 +1042,15 @@
         });
 
         async function loadFile(file) {
-            const buffer = await file.arrayBuffer();
+            const version = ++state.loadVersion;
+            let buffer;
+            try {
+                buffer = await file.arrayBuffer();
+            } catch (error) {
+                if (version === state.loadVersion) treeHint.textContent = "Could not read file: " + error.message;
+                return;
+            }
+            if (version !== state.loadVersion) return;
             const bytes = new Uint8Array(buffer);
             state.sourceBytes = bytes;
             state.nextId = 1;
@@ -1338,17 +1348,22 @@
             let cursor = offset;
             let dataLength;
             let lengthFieldBytes;
+            const required = tag === TAGS.E_DATALENGTHBYTE ? 1 : 4;
+            if (cursor + required > bytes.length) {
+                return {
+                    node: createNode({
+                        kind: "warning", title: "Truncated embedded data length", offset: start,
+                        tagHex: "0x" + toHex(tag, 2), rawBytes: Array.from(bytes.slice(start)),
+                        summary: "Incomplete embedded payload length field", children: []
+                    }),
+                    nextOffset: bytes.length
+                };
+            }
             if (tag === TAGS.E_DATALENGTHBYTE) {
-                if (cursor >= bytes.length) {
-                    return { node: null, nextOffset: cursor };
-                }
                 dataLength = view.getUint8(cursor);
                 cursor += 1;
                 lengthFieldBytes = 1;
             } else {
-                if (cursor + 4 > bytes.length) {
-                    return { node: null, nextOffset: cursor };
-                }
                 dataLength = view.getUint32(cursor, true);
                 cursor += 4;
                 lengthFieldBytes = 4;
@@ -1356,19 +1371,21 @@
 
             const end = Math.min(bytes.length, cursor + dataLength);
             const payload = bytes.slice(cursor, end);
+            const availableLength = payload.length;
+            const truncated = availableLength < dataLength;
             cursor = end;
             const rawBytes = Array.from(bytes.slice(start, end));
             const node = createNode({
-                kind: "attribute",
-                title: "Embedded data",
+                kind: truncated ? "warning" : "attribute",
+                title: truncated ? "Truncated embedded data" : "Embedded data",
                 offset: start,
                 tagHex: `0x${toHex(tag, 2)}`,
                 tagDec: tag,
                 dataType: tag === TAGS.E_DATALENGTHBYTE ? "embedded_data_byte_length" : "embedded_data_length",
                 rawBytes,
                 valuePrintable: `${dataLength} byte${dataLength === 1 ? "" : "s"}`,
-                valueStructured: { dataLength, lengthFieldBytes },
-                valueDetail: `${dataLength} bytes of embedded payload`,
+                valueStructured: { dataLength, lengthFieldBytes, availableLength },
+                valueDetail: truncated ? "Truncated payload: " + dataLength + " bytes declared, only " + availableLength + " available" : dataLength + " bytes of embedded payload",
                 embeddedHex: toHexBytes(payload, PREVIEW_LIMIT),
                 children: []
             });
@@ -1378,6 +1395,15 @@
         function bindAttributeName(bytes, view, tag, start, offset, pendingAttributes) {
             let cursor = offset;
             let attrId;
+            const required = tag === TAGS.T_ATTR_UBYTE ? 1 : 2;
+            if (cursor + required > bytes.length) {
+                pendingAttributes.push(createNode({
+                    kind: "warning", title: "Truncated attribute identifier", offset: start,
+                    tagHex: "0x" + toHex(tag, 2), rawBytes: Array.from(bytes.slice(start)),
+                    summary: "Incomplete attribute identifier at end of stream", children: []
+                }));
+                return { nextOffset: bytes.length };
+            }
             if (tag === TAGS.T_ATTR_UBYTE) {
                 attrId = view.getUint8(cursor);
                 cursor += 1;

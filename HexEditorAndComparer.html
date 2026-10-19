@@ -1015,9 +1015,31 @@
                 }
             }
 
+            function parseInspectorNumber(value, typeName, size) {
+                const text = String(value).trim();
+                const floating = typeName.startsWith('Float');
+                if (floating && /^[+-]?(?:Infinity|NaN)$/i.test(text)) {
+                    return /NaN/i.test(text) ? NaN : text.startsWith('-') ? -Infinity : Infinity;
+                }
+                const pattern = floating ? /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i : /^[+-]?\d+$/;
+                if (!pattern.test(text)) return null;
+                const number = Number(text);
+                if (!Number.isFinite(number)) return null;
+                if (floating) {
+                    if (number === 0 && /[1-9]/.test(text.split(/e/i)[0])) return null;
+                    if (size === 4 && !Number.isFinite(Math.fround(number))) return null;
+                    if (size === 4 && number !== 0 && Math.fround(number) === 0) return null;
+                } else {
+                    const unsigned = typeName.startsWith('Uint');
+                    const limit = 2 ** (size * 8 - (unsigned ? 0 : 1));
+                    if (!Number.isInteger(number) || number < (unsigned ? 0 : -limit) || number >= limit) return null;
+                }
+                return number;
+            }
+
             function handleInspectorEdit(typeName, size, isLE, value) {
-                let numValue = typeName.includes('Float') ? parseFloat(value) : parseInt(value, 10);
-                if (isNaN(numValue)) { alert("Invalid number format."); updateInspector(); return; }
+                const numValue = parseInspectorNumber(value, typeName, size);
+                if (numValue === null) { alert("Invalid or out-of-range number."); updateInspector(); return; }
 
                 const buffer = new ArrayBuffer(size);
                 const view = new DataView(buffer);
@@ -1059,15 +1081,17 @@
                 
                 const start = Math.min(selectionStart1, selectionEnd1);
                 const count = Math.abs(selectionEnd1 - selectionStart1) + 1;
-                fileData1.splice(start, count, ...newBytes);
+                // Spread arguments overflow the call stack for large pasted selections.
+                fileData1 = fileData1.slice(0, start).concat(newBytes, fileData1.slice(start + count));
 
-                selectionStart1 = start;
-                selectionEnd1 = start + newBytes.length - 1;
+                selectionStart1 = newBytes.length ? start : Math.min(start, fileData1.length - 1);
+                selectionEnd1 = newBytes.length ? start + newBytes.length - 1 : selectionStart1;
                 fileDataChanged();
             }
 
             function parseHex(hexStr) {
-                const cleanHex = hexStr.replace(/[^0-9a-fA-F\s]/g, '').replace(/\s/g, '');
+                if (/[^0-9a-fA-F\s]/.test(hexStr)) return null;
+                const cleanHex = hexStr.replace(/\s/g, '');
                 if (cleanHex.length % 2 !== 0) return null;
                 const bytes = [];
                 for (let i = 0; i < cleanHex.length; i+=2) {
@@ -1324,9 +1348,9 @@
                 const def = inspectorDefs.find(d => d.name === typeName);
                 if (!def) return null;
 
-                let numValue = typeName.includes('Float') ? parseFloat(query) : parseInt(query, 10);
-                if (isNaN(numValue)) {
-                    alert("Invalid number format for search.");
+                const numValue = parseInspectorNumber(query, typeName, def.size);
+                if (numValue === null) {
+                    alert("Invalid or out-of-range number for search.");
                     return null;
                 }
 

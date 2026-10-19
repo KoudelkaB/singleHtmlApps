@@ -16,3 +16,13 @@ Open any app directly from the links below. The list mirrors the repository stru
 
 - Most apps are designed to open files you drop into the page, and some support multiple files or bundled inputs.
 - Some apps also let you export or download the modified result after editing.
+
+## Tests
+
+Run the complete regression suite from the repository root with Node.js 22 or newer:
+
+```sh
+node tests/run.cjs
+```
+
+No packages need to be installed. Tests exercise the actual inline scripts and functions, including calculations, file parsing, sorting, asynchronous loading, clipboard fallbacks, and error recovery. Lightweight DOM adapters check event handlers; browser rendering and real file-picker/clipboard permissions still require a browser smoke test.
