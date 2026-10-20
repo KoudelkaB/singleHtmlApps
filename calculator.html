@@ -187,7 +187,7 @@
         </div>
         <div class="actions">
           <button class="small-button" id="copyResult" title="Copy the result in the selected format (Ctrl/Cmd+C)">Copy result</button>
-          <button class="small-button" id="pasteExpression" title="Paste a number or expression (Ctrl/Cmd+V)">Paste</button>
+          <button class="small-button" id="pasteExpression" title="Paste a number or expression; replace a complete expression at its end (Ctrl/Cmd+V)">Paste</button>
         </div>
         <div class="manual-copy" id="manualCopy" hidden>
           <label for="copyField">Result to copy<input id="copyField" type="text" readonly spellcheck="false"></label>
@@ -269,7 +269,7 @@
             <p>Use a decimal point or comma. Fractions: <code>1/2 + 3/4</code>. Mixed numbers: <code>2 1/3</code> or <code>-1 1/2</code>. Scientific notation: <code>1e-6</code>.</p>
             <p><strong>% divides by 100:</strong> <code>200*10% = 20</code>. To add 10%, use <code>200*(1+10%) = 220</code>.</p>
             <p><kbd>Enter</kbd> / <kbd>=</kbd> calculate · <kbd>Esc</kbd> clear · <kbd>Backspace</kbd> delete · <kbd>F9</kbd> change sign.</p>
-            <p><kbd>Ctrl/Cmd+C</kbd> copies selected text, or the result when nothing is selected. <kbd>Ctrl/Cmd+V</kbd> pastes at the cursor. <kbd>Ctrl/Cmd+Z</kbd> undoes edits; <kbd>Ctrl/Cmd+Shift+Z</kbd> redoes them.</p>
+            <p><kbd>Ctrl/Cmd+C</kbd> copies selected text, or the result when nothing is selected. <kbd>Ctrl/Cmd+V</kbd> replaces a complete expression when the cursor is at its end; otherwise it pastes at the cursor or replaces selected text. <kbd>Ctrl/Cmd+Z</kbd> undoes edits; <kbd>Ctrl/Cmd+Shift+Z</kbd> redoes them.</p>
             <p><kbd>↑</kbd> / <kbd>↓</kbd> recall expressions. A digit after <kbd>=</kbd> starts fresh; an operator continues with the exact result. Pressing <kbd>=</kbd> again keeps that result.</p>
             <p><strong>≈</strong> marks a decimal rounded to 16 significant digits. Fraction and mixed views stay exact. Copy follows the selected result format. History is saved in this browser when storage is available.</p>
             <p><strong>Scientific:</strong> functions use parentheses, e.g. <code>sin(30)</code>, <code>ln(e)</code>, <code>sqrt(2)</code>. DEG/RAD also controls inverse trig. Powers associate right: <code>2^3^2 = 512</code>; <code>-2^2 = -4</code>. Factorial requires an integer from 0 to 1000. Other functions include <code>round</code>, <code>trunc</code> and <code>log10</code>.</p>
@@ -1087,7 +1087,8 @@
           if (!normalized || (isProgrammer() ? /[^0-9a-z_+\-*/%()&|^~<>= \t\r\n]/i : /[^0-9a-z.+\-*/()%!^ \t\r\n]/i).test(normalized)) {
             throw new Error('Paste a number or arithmetic expression only.');
           }
-          if (solved && input.selectionStart === input.selectionEnd && input.selectionEnd === input.value.length) return replace(normalized);
+          // A complete preview is already a result, even before Enter.
+          if (value !== null && input.selectionStart === input.selectionEnd && input.selectionEnd === input.value.length) return replace(normalized);
           return insert(normalized, true);
         } catch (error) { tell(error.message, true); return false; }
       }

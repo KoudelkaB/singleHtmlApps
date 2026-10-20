@@ -413,6 +413,31 @@ test('paste supports normalization, selection and denied permissions; rejects ar
   assert.match(denied.get('status').textContent, /Ctrl\+V/);
 });
 
+test('pasting replaces a complete preview without Enter, preserves insertion while editing, and supports undo', async () => {
+  for (const mode of ['standard', 'scientific', 'programmer']) for (const source of ['keyboard', 'button']) {
+    const page = app({ navigator: { clipboard: { readText: async () => '45' } } });
+    const paste = () => source === 'button' ? page.click('id', 'pasteExpression') :
+      page.document.fire('paste', { clipboardData: { getData: () => '45' } });
+    await page.click('mode', mode);
+    await page.type('123'); await paste();
+    assert.equal(page.get('expression').value, '45', mode + ': ' + source);
+    assert.equal(page.get('result').textContent, '45');
+    await paste();
+    assert.equal(page.get('expression').value, '45');
+    await page.press('z', { ctrlKey: true }); await page.press('z', { ctrlKey: true });
+    assert.equal(page.get('expression').value, '123');
+    await page.type('+'); await paste();
+    assert.equal(page.get('expression').value, '123+45');
+    await paste();
+    assert.equal(page.get('expression').value, '45');
+    await page.press('Enter'); await paste();
+    assert.equal(page.get('expression').value, '45');
+    page.get('expression').setSelectionRange(1, 2);
+    await paste();
+    assert.equal(page.get('expression').value, '445');
+  }
+});
+
 test('async clipboard reads cannot overwrite edits made while permission is pending', async () => {
   let finish;
   const page = app({ navigator: { clipboard: { readText: () => new Promise(resolve => { finish = resolve; }) } } });
