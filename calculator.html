@@ -53,6 +53,7 @@
     .approx { color: var(--muted); font-size: 25px; }
     .result {
       min-width: 0; max-height: 170px; overflow: auto; overflow-wrap: anywhere;
+      padding: 2px 0; /* Leave room for glyph ink so short results do not overflow by one pixel. */
       font-size: clamp(29px, 5vw, 40px); line-height: 1.25; font-weight: 650; text-align: right;
       font-variant-numeric: tabular-nums; user-select: text;
     }
@@ -150,7 +151,6 @@
       <section class="calculator" aria-label="Calculator">
         <div class="tabs" role="tablist" aria-label="Keypad mode">
           <button class="tab" id="standardTab" role="tab" aria-selected="true" aria-controls="keypadPanel" tabindex="0" data-mode="standard">Standard</button>
-          <button class="tab" id="fractionTab" role="tab" aria-selected="false" aria-controls="keypadPanel" tabindex="-1" data-mode="fraction">Fractions</button>
           <button class="tab" id="scientificTab" role="tab" aria-selected="false" aria-controls="keypadPanel" tabindex="-1" data-mode="scientific">Scientific</button>
           <button class="tab" id="programmerTab" role="tab" aria-selected="false" aria-controls="keypadPanel" tabindex="-1" data-mode="programmer">Programmer</button>
         </div>
@@ -271,7 +271,7 @@
         <details class="panel" id="helpPanel">
           <summary>Keyboard &amp; tips</summary>
           <div class="help">
-            <p>Type or paste a complete expression. Multiplication and division come before addition and subtraction. Parentheses work in both modes: <code>2*(3+4)</code> or <code>2(3+4)</code>.</p>
+            <p>Type or paste a complete expression. Multiplication and division come before addition and subtraction. Parentheses work in all modes: <code>2*(3+4)</code> or <code>2(3+4)</code>. In Standard and Scientific, select Fraction or Mixed below the result to show exact fractions and fraction-entry shortcuts.</p>
             <p>Use a decimal point or comma. Fractions: <code>1/2 + 3/4</code>. Mixed numbers: <code>2 1/3</code> or <code>-1 1/2</code>. Scientific notation: <code>1e-6</code>.</p>
             <p><strong>% divides by 100:</strong> <code>200*10% = 20</code>. To add 10%, use <code>200*(1+10%) = 220</code>.</p>
             <p><kbd>Enter</kbd> / <kbd>=</kbd> calculate · <kbd>Esc</kbd> clear · <kbd>Backspace</kbd> delete · <kbd>F9</kbd> change sign.</p>
@@ -693,8 +693,8 @@
       const math = CalculatorMath, $ = id => document.getElementById(id);
       const input = $('expression'), resultEl = $('result'), statusEl = $('status');
       const STORAGE_KEY = 'singleHtmlApps.calculator.v2';
-      const MODES = ['standard', 'fraction', 'scientific', 'programmer'];
-      const tabId = { standard:'standardTab', fraction:'fractionTab', scientific:'scientificTab', programmer:'programmerTab' };
+      const MODES = ['standard', 'scientific', 'programmer'];
+      const tabId = { standard:'standardTab', scientific:'scientificTab', programmer:'programmerTab' };
       let mode = 'standard', format = 'decimal', history = [], angle = 'deg', base = 10, bits = 64, signed = true;
       let value = math.rational(0n), solved = false, copyText = '0', memory = null, answer = math.rational(0n);
       let undoStack = [], redoStack = [], beforeEdit = null, historyIndex = -1, historyDraft = null, revision = 0, lastTransform = null;
@@ -874,6 +874,7 @@
       function render() {
         resultEl.replaceChildren(); $('approx').hidden = true;
         const fractional = !isProgrammer() && format !== 'decimal' && !(value && value.approximate);
+        $('fractionTools').hidden = !fractional;
         resultEl.classList.toggle('fraction-mode', fractional);
         $('copyResult').disabled = value === null;
         $('resultLabel').textContent = (solved ? 'Result' : input.value.trim() ? 'Preview' : 'Result') +
@@ -955,6 +956,7 @@
           const options = entrySettings(saved);
           ({ mode, angle, base, bits, signed } = options);
           if (['decimal', 'fraction', 'mixed'].includes(saved.format)) format = saved.format;
+          else if (saved.mode === 'fraction') format = 'fraction'; // Migrate the retired tab.
           try { if (saved.memory) memory = deserialize(saved.memory); } catch (_) {}
           try { if (saved.answer) answer = deserialize(saved.answer); } catch (_) {}
           if (Array.isArray(saved.history)) history = saved.history.slice(0, 30).filter(entry => {
@@ -970,7 +972,7 @@
       function useEntry(entry, edit) {
         const original = snapshot();
         const options = entrySettings(entry);
-        setMode(options.mode, false);
+        setMode(options.mode);
         ({ angle, base, bits, signed } = options); updateControls();
         const number = deserialize(entry), exact = canonical(number);
         const text = edit || exact.length > math.MAX_INPUT ? entry.expression : exact;
@@ -1005,7 +1007,6 @@
           const selected = button.dataset.mode === mode;
           button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1;
         });
-        $('fractionTools').hidden = mode !== 'fraction';
         $('scientificTools').hidden = mode !== 'scientific'; $('scienceOptions').hidden = mode !== 'scientific';
         $('programmerTools').hidden = !isProgrammer(); $('programOptions').hidden = !isProgrammer();
         $('baseReadings').hidden = !isProgrammer(); $('resultFormats').hidden = isProgrammer();
@@ -1027,7 +1028,7 @@
         $('wordNote').textContent = bits + '-bit ' + (signed ? "signed two's complement" : 'unsigned') +
           '. Wrap after every operation; % = remainder, ^ = XOR. Click a bit to toggle it.';
       }
-      function setMode(next, updateFormat = true) {
+      function setMode(next) {
         if (!MODES.includes(next)) return;
         const previousFamily = family(), nextFamily = next === 'programmer' ? 'programmer' : 'math';
         if (previousFamily !== nextFamily) {
@@ -1042,7 +1043,6 @@
           historyIndex = -1;
           refresh();
         } else mode = next;
-        if (updateFormat) format = mode === 'fraction' ? 'fraction' : 'decimal';
         updateControls(); render(); save();
       }
       function setFormat(next) { format = next; $('manualCopy').hidden = true; render(); save(); }

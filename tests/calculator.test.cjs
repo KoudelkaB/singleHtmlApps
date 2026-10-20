@@ -185,7 +185,7 @@ function app(options = {}) {
   return { document, get, find, press, click, type, enter, store, selection, localStorage };
 }
 
-test('both keypads: all digits, zero, operators, quick fractions, sign, parentheses and backspace', async () => {
+test('standard keypad: all digits, zero, operators, quick fractions, sign, parentheses and backspace', async () => {
   const page = app();
   await page.click('insert', '1'); await page.click('insert', '0'); await page.click('insert', '+'); await page.click('insert', '2');
   await page.click('action', 'calculate');
@@ -194,7 +194,7 @@ test('both keypads: all digits, zero, operators, quick fractions, sign, parenthe
   assert.equal(page.get('result').textContent, '36');
   await page.click('insert', '0');
   assert.equal(page.get('expression').value, '0');
-  await page.click('action', 'clear'); await page.click('mode', 'fraction');
+  await page.click('action', 'clear'); await page.click('format', 'fraction');
   await page.click('insert', '(1/2)'); await page.click('insert', '+'); await page.click('insert', '(1/4)');
   await page.click('action', 'calculate');
   assert.equal(page.get('result').getAttribute('aria-label'), '3/4');
@@ -360,21 +360,50 @@ test('async clipboard reads cannot overwrite edits made while permission is pend
 
 test('tabs and result format controls have independent accessible state', async () => {
   const page = app();
+  assert.equal(page.get('fractionTab'), undefined);
+  assert.equal(page.get('fractionTools').hidden, true);
   await page.type('1/2'); await page.press('Enter');
-  await page.click('mode', 'fraction');
+  await page.click('format', 'fraction');
   assert.equal(page.get('fractionTools').hidden, false);
-  assert.equal(page.get('fractionTab').getAttribute('aria-selected'), 'true');
-  assert.equal(page.get('keypadPanel').getAttribute('aria-labelledby'), 'fractionTab');
+  assert.equal(page.get('standardTab').getAttribute('aria-selected'), 'true');
+  assert.equal(page.get('keypadPanel').getAttribute('aria-labelledby'), 'standardTab');
   assert.equal(page.get('result').getAttribute('aria-label'), '1/2');
-  await page.get('fractionTab').fire('keydown', { key: 'ArrowLeft' });
+  await page.get('standardTab').fire('keydown', { key: 'ArrowRight' });
+  assert.equal(page.get('scientificTab').getAttribute('aria-selected'), 'true');
+  assert.equal(page.get('fractionTools').hidden, false);
+  assert.equal(page.get('result').getAttribute('aria-label'), '1/2');
+  await page.click('format', 'mixed');
+  assert.equal(page.get('fractionTools').hidden, false);
+  await page.click('mode', 'programmer');
+  assert.equal(page.get('fractionTools').hidden, true);
+  await page.click('mode', 'standard');
+  assert.equal(page.find('format', 'mixed').getAttribute('aria-pressed'), 'true');
+  await page.click('format', 'decimal');
   assert.equal(page.get('fractionTools').hidden, true);
   assert.equal(page.get('historyCount').textContent, '1');
 });
 
-test('every numeric keypad key works in both modes, including decimals, zero and percent', async () => {
+test('retired fraction mode restores in Standard without losing format, history or memory', async () => {
+  for (const format of ['fraction', 'mixed', 'decimal', undefined]) {
+    const page = app({ storage: JSON.stringify({ mode: 'fraction', format,
+      memory: { n: '1', d: '3' }, history: [{ expression: '1/2+1/4', n: '3', d: '4', mode: 'fraction' }] }) });
+    assert.equal(page.get('standardTab').getAttribute('aria-selected'), 'true');
+    assert.equal(page.find('format', format || 'fraction').getAttribute('aria-pressed'), 'true');
+    assert.equal(page.get('historyCount').textContent, '1');
+    await page.get('historyList').children[0].children[0].fire('click');
+    assert.equal(page.get('standardTab').getAttribute('aria-selected'), 'true');
+    assert.equal(page.get('result').getAttribute('aria-label'), format === 'decimal' ? '0.75' : '3/4');
+    await page.click('action', 'clear'); await page.click('memory', 'recall');
+    assert.equal(page.get('result').getAttribute('aria-label'), format === 'decimal' ? '0.3333333333333333' : '1/3');
+    const saved = JSON.parse(page.store.get('singleHtmlApps.calculator.v2'));
+    assert.equal(saved.mode, 'standard');
+  }
+});
+
+test('every numeric keypad key works in decimal and fraction formats, including decimals, zero and percent', async () => {
   const page = app();
-  for (const mode of ['standard', 'fraction']) {
-    await page.click('mode', mode);
+  for (const format of ['decimal', 'fraction']) {
+    await page.click('format', format);
     for (const digit of '0123456789') {
       await page.click('action', 'clear');
       await page.click('insert', digit);
@@ -384,10 +413,10 @@ test('every numeric keypad key works in both modes, including decimals, zero and
     await page.click('action', 'clear');
     for (const key of ['(', '2', '+', '3', ')', '*', '.', '5']) await page.click('insert', key);
     await page.click('action', 'calculate');
-    assert.equal(page.get('result').getAttribute('aria-label'), mode === 'standard' ? '2.5' : '5/2');
+    assert.equal(page.get('result').getAttribute('aria-label'), format === 'decimal' ? '2.5' : '5/2');
     await page.click('insert', '%');
     await page.click('action', 'calculate');
-    assert.equal(page.get('result').getAttribute('aria-label'), mode === 'standard' ? '0.025' : '1/40');
+    assert.equal(page.get('result').getAttribute('aria-label'), format === 'decimal' ? '0.025' : '1/40');
   }
 });
 
@@ -657,7 +686,7 @@ test('programmer history, persistence and clipboard preserve base, word size and
   assert.equal(restored.get('signedToggle').getAttribute('aria-pressed'), 'false');
 });
 
-test('scientific and programmer expressions can be pasted and all four tabs support keyboard navigation', async () => {
+test('scientific and programmer expressions can be pasted and all three tabs support keyboard navigation', async () => {
   const page = app();
   await page.click('mode', 'scientific');
   await page.document.fire('paste', { clipboardData: { getData: () => 'sin(30)+log(100)' } });
@@ -670,6 +699,12 @@ test('scientific and programmer expressions can be pasted and all four tabs supp
   assert.equal(page.get('decReading').textContent, '15');
   await page.get('programmerTab').fire('keydown', { key: 'ArrowRight' });
   assert.equal(page.get('standardTab').getAttribute('aria-selected'), 'true');
+  await page.get('standardTab').fire('keydown', { key: 'ArrowLeft' });
+  assert.equal(page.get('programmerTab').getAttribute('aria-selected'), 'true');
+  await page.get('programmerTab').fire('keydown', { key: 'Home' });
+  assert.equal(page.get('standardTab').getAttribute('aria-selected'), 'true');
+  await page.get('standardTab').fire('keydown', { key: 'End' });
+  assert.equal(page.get('programmerTab').getAttribute('aria-selected'), 'true');
 });
 
 test('a previous approximate answer does not prevent unrelated integer programmer calculations', async () => {
