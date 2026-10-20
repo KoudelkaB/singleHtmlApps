@@ -30,9 +30,6 @@
     :focus-visible { outline: 3px solid #9766e7; outline-offset: 3px; }
     [hidden] { display: none !important; }
     .app { max-width: 890px; margin: auto; }
-    .heading { display: flex; align-items: baseline; gap: 14px; margin: 0 0 20px 4px; flex-wrap: wrap; }
-    h1 { margin: 0; font-size: 27px; letter-spacing: -.8px; }
-    .heading p { margin: 0; color: var(--muted); font-size: 14px; }
     .layout { display: grid; grid-template-columns: minmax(0, 510px) minmax(240px, 1fr); gap: 20px; align-items: start; }
     .calculator { border: 1px solid #fff; border-radius: 22px; background: #fff; box-shadow: 0 14px 45px #39215e12; overflow: clip; }
     .tabs { display: flex; padding: 6px; gap: 4px; background: #f7f5fb; border-bottom: 1px solid var(--line); }
@@ -109,6 +106,7 @@
     .count { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 5px; }
     .history-list { list-style: none; margin: 0; padding: 0 10px; max-height: 420px; overflow-y: auto; }
     .history-item { padding: 10px 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; align-items: center; }
+    .history-item[aria-current="true"] { background: #eee5fc; border-radius: 6px; box-shadow: inset 3px 0 var(--accent); }
     .history-value { border: 0; border-radius: 6px; background: none; text-align: right; padding: 5px; min-width: 0; overflow-wrap: anywhere; }
     .history-value:hover { background: #eee5fc; }
     .history-expression { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
@@ -143,10 +141,6 @@
 </head>
 <body>
   <main class="app">
-    <header class="heading">
-      <h1>Calculator</h1>
-      <p>Exact fractions · Science · Programming</p>
-    </header>
     <div class="layout">
       <section class="calculator" aria-label="Calculator">
         <div class="tabs" role="tablist" aria-label="Keypad mode">
@@ -909,7 +903,7 @@
           $(id).textContent = radix === 2 && text !== '—' ? text.match(/.{1,4}/g).join(' ') : text;
         }
         document.querySelectorAll('[data-copy-base]').forEach(button => { button.disabled = !value; });
-        renderMemory(); renderBits();
+        renderMemory(); renderBits(); updateHistorySelection();
       }
       function serialize(number) { return number ? { n: String(number.n), d: String(number.d), approximate: !!number.approximate } : null; }
       function deserialize(saved) {
@@ -991,15 +985,22 @@
             options.mode === 'scientific' || /\b(?:a?sin|a?cos|a?tan)\(/i.test(entry.expression) ? ' [' + options.angle.toUpperCase() + ']' : '';
           expression.className = 'history-expression'; expression.textContent = entry.expression + context + ' =';
           result.className = 'history-result';
-          const exact = math.fraction(number), decimal = math.decimal(number);
+          const decimal = math.decimal(number);
           result.textContent = options.mode === 'programmer' ? math.baseText(number.n, options.base, options, true) :
-            number.approximate || exact.length > 64 ? (decimal.approximate ? '≈ ' : '') + decimal.text : exact;
+            number.approximate || format === 'decimal' ? (decimal.approximate ? '≈ ' : '') + decimal.text :
+              format === 'mixed' ? math.mixed(number) : math.fraction(number);
           use.append(expression, result); use.addEventListener('click', () => useEntry(entry, false));
           const edit = document.createElement('button');
           edit.className = 'edit-history'; edit.textContent = 'Edit'; edit.setAttribute('aria-label', 'Edit expression ' + entry.expression);
           edit.addEventListener('click', () => useEntry(entry, true));
           item.append(use, edit); $('historyList').append(item);
         }
+        updateHistorySelection();
+      }
+      function updateHistorySelection() {
+        Array.from($('historyList').children).forEach((item, index) => {
+          item.setAttribute('aria-current', String(index === historyIndex));
+        });
       }
       function updateControls() {
         document.querySelectorAll('.calculator').forEach(element => element.classList.toggle('extended', mode === 'scientific' || isProgrammer()));
@@ -1045,7 +1046,7 @@
         } else mode = next;
         updateControls(); render(); save();
       }
-      function setFormat(next) { format = next; $('manualCopy').hidden = true; render(); save(); }
+      function setFormat(next) { format = next; $('manualCopy').hidden = true; render(); renderHistory(); save(); }
       function changeBase(next) {
         if (base === next) return;
         try {
@@ -1064,6 +1065,8 @@
         if (index === -1) { restore(draft); }
         else useEntry(history[index], true);
         historyIndex = index; historyDraft = draft;
+        updateHistorySelection();
+        if (index !== -1) $('historyList').children[index].scrollIntoView({ block: 'nearest' });
       }
       function memoryAction(action) {
         try {

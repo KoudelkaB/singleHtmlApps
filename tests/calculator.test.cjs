@@ -115,6 +115,7 @@ class Element {
   replaceChildren(...children) { this._text = ''; this.children = []; this.append(...children); }
   remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(child => child !== this); }
   focus() { this.ownerDocument.activeElement = this; }
+  scrollIntoView(options) { this.scrollOptions = options; }
   setSelectionRange(start, end) { this.selectionStart = Math.min(this.value.length, start); this.selectionEnd = Math.min(this.value.length, end); }
   select() { this.focus(); this.setSelectionRange(0, this.value.length); }
   addEventListener(name, handler) { (this.listeners[name] ||= []).push(handler); }
@@ -278,6 +279,71 @@ test('history restores exact results and expressions, persists safely, and toler
     const instance = app(options);
     await instance.enter('2+2');
     assert.equal(instance.get('result').textContent, '4');
+  }
+});
+
+test('arrow history navigation marks and reveals the current row, respects bounds and restores the draft', async () => {
+  const page = app();
+  const rows = () => page.get('historyList').children;
+  const current = () => rows().flatMap((row, index) => row.getAttribute('aria-current') === 'true' ? [index] : []);
+  await page.enter('1/2'); await page.enter('7/3'); await page.type('42');
+  assert.equal(current().length, 0);
+  await page.press('ArrowUp');
+  assert.equal(page.get('expression').value, '7/3');
+  assert.deepEqual(current(), [0]);
+  assert.equal(rows()[0].scrollOptions.block, 'nearest');
+  await page.press('ArrowUp'); await page.press('ArrowUp');
+  assert.equal(page.get('expression').value, '1/2');
+  assert.deepEqual(current(), [1]);
+  assert.equal(rows()[1].scrollOptions.block, 'nearest');
+  await page.press('ArrowDown');
+  assert.deepEqual(current(), [0]);
+  await page.click('format', 'mixed');
+  assert.deepEqual(current(), [0]);
+  page.get('expression').focus();
+  await page.press('ArrowDown'); await page.press('ArrowDown');
+  assert.equal(page.get('expression').value, '42');
+  assert.equal(current().length, 0);
+  await page.press('ArrowUp'); await page.type('+1');
+  assert.equal(current().length, 0);
+  await page.press('ArrowUp'); await page.press('Enter');
+  assert.equal(current().length, 0); // Recalculating the newest entry adds no duplicate.
+  await page.press('ArrowUp'); await page.press('Escape');
+  assert.equal(current().length, 0);
+  await page.press('ArrowUp'); await page.click('id', 'clearHistory');
+  assert.equal(rows().length, 0);
+});
+
+test('history follows decimal, fraction and mixed formats immediately and after reload, retaining exact values', async () => {
+  const page = app();
+  const results = instance => instance.get('historyList').children.map(row => row.children[0].children[1].textContent);
+  await page.enter('-7/3'); await page.enter('1/2');
+  assert.deepEqual(results(page), ['0.5', '≈ -2.333333333333333']);
+  await page.click('format', 'fraction');
+  assert.deepEqual(results(page), ['1/2', '-7/3']);
+  await page.click('format', 'mixed');
+  assert.deepEqual(results(page), ['1/2', '-2 1/3']);
+  const restored = app({ storage: page.store.get('singleHtmlApps.calculator.v2') });
+  assert.deepEqual(results(restored), ['1/2', '-2 1/3']);
+  await page.click('format', 'decimal');
+  assert.deepEqual(results(page), ['0.5', '≈ -2.333333333333333']);
+  await page.get('historyList').children[1].children[0].fire('click');
+  await page.type('*3'); await page.press('Enter');
+  assert.equal(page.get('result').textContent, '-7');
+});
+
+test('history formats keep scientific approximations decimal and programmer results in their original base', async () => {
+  const page = app();
+  await page.click('mode', 'scientific'); await page.enter('sqrt(2)');
+  await page.click('mode', 'programmer'); await page.click('base', '16');
+  page.get('wordSize').value = '8'; await page.get('wordSize').fire('change'); await page.enter('FF');
+  await page.click('mode', 'standard'); await page.enter('7/3');
+  for (const [format, expected] of [['fraction', '7/3'], ['mixed', '2 1/3'], ['decimal', '≈ 2.333333333333333']]) {
+    await page.click('format', format);
+    const results = page.get('historyList').children.map(row => row.children[0].children[1].textContent);
+    assert.equal(results[0], expected);
+    assert.equal(results[1], '0xFF');
+    assert.equal(results[2], '≈ 1.4142135623731');
   }
 });
 
