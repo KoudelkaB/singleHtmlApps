@@ -55,6 +55,7 @@
       font-variant-numeric: tabular-nums; user-select: text;
     }
     .result.fraction-mode { font-size: 32px; }
+    .result.scientific-notation { white-space: nowrap; overflow-wrap: normal; }
     .fraction { display: inline-flex; flex-direction: column; align-items: stretch; vertical-align: middle; text-align: center; font-size: .74em; margin: 0 .1em; }
     .numerator { border-bottom: 2px solid currentColor; padding: 0 .16em .08em; }
     .denominator { padding: .08em .16em 0; }
@@ -865,8 +866,17 @@
           button.disabled = ['clear', 'recall'].includes(button.dataset.memory) ? memory === null : value === null;
         });
       }
+      function fitResult() {
+        resultEl.style.fontSize = '';
+        if (!resultEl.classList.contains('scientific-notation') || !resultEl.clientWidth) return;
+        if (resultEl.scrollWidth > resultEl.clientWidth) {
+          const size = parseFloat(getComputedStyle(resultEl).fontSize);
+          resultEl.style.fontSize = Math.max(16, Math.floor(size * resultEl.clientWidth / resultEl.scrollWidth)) + 'px';
+        }
+      }
       function render() {
         resultEl.replaceChildren(); $('approx').hidden = true;
+        resultEl.classList.toggle('scientific-notation', false);
         const fractional = !isProgrammer() && format !== 'decimal' && !(value && value.approximate);
         $('fractionTools').hidden = !fractional;
         resultEl.classList.toggle('fraction-mode', fractional);
@@ -891,6 +901,7 @@
           resultEl.setAttribute('aria-label', copyText);
           if (!fractional) {
             resultEl.textContent = decimal.text; $('approx').hidden = !decimal.approximate;
+            resultEl.classList.toggle('scientific-notation', /e[+-]?\d+$/i.test(decimal.text));
             $('equivalent').textContent = value.approximate ? 'Scientific approximation · 15 significant digits' :
               value.d !== 1n || decimal.approximate ? 'Exact: ' + exact : '';
           } else {
@@ -903,7 +914,7 @@
           $(id).textContent = radix === 2 && text !== '—' ? text.match(/.{1,4}/g).join(' ') : text;
         }
         document.querySelectorAll('[data-copy-base]').forEach(button => { button.disabled = !value; });
-        renderMemory(); renderBits(); updateHistorySelection();
+        renderMemory(); renderBits(); updateHistorySelection(); fitResult();
       }
       function serialize(number) { return number ? { n: String(number.n), d: String(number.d), approximate: !!number.approximate } : null; }
       function deserialize(saved) {
@@ -1221,6 +1232,8 @@
         }
       });
       load(); updateControls(); render(); renderHistory();
+      if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitResult).observe(resultEl.parentElement);
+      if (document.fonts) document.fonts.ready.then(fitResult);
     })();
   </script>
 </body>
